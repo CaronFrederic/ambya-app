@@ -1,0 +1,16 @@
+services:
+  db:
+    image: postgres:16
+    container_name: ambya-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ambya
+      POSTGRES_PASSWORD: ambya_password
+      POSTGRES_DB: ambya
+    ports:
+      - "5433:5432"
+    volumes:
+      - ambya_pgdata:/var/lib/postgresql/data
+
+volumes:
+  ambya_pgdata:
