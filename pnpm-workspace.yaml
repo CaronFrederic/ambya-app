@@ -2,4 +2,13 @@ packages:
   - apps/*
   - packages/*
 
+ignoredBuiltDependencies:
+  - unrs-resolver
+
 nodeLinker: hoisted
+
+onlyBuiltDependencies:
+  - '@nestjs/core'
+  - '@prisma/engines'
+  - bcrypt
+  - prisma

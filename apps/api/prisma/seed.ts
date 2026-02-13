@@ -1,7 +1,7 @@
 import { PrismaClient, UserRole, AppointmentStatus } from '@prisma/client'
 import { PrismaPg } from '@prisma/adapter-pg'
 import { Pool } from 'pg'
-import * as bcrypt from 'bcrypt'
+import * as bcrypt from 'bcryptjs'
 
 if (!process.env.DATABASE_URL) {
   throw new Error('DATABASE_URL is missing')
