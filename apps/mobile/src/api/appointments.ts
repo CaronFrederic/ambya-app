@@ -14,6 +14,14 @@ export type AppointmentListResponse = {
   total: number
 }
 
+export type CreateAppointmentPayload = {
+  salonId: string
+  serviceId: string
+  startAt: string
+  employeeId?: string
+  note?: string
+}
+
 export async function fetchAppointments() {
   const res = await api.get<AppointmentListResponse>('/appointments')
   return res.data
@@ -31,4 +39,9 @@ export function useAppointments() {
     refetchOnReconnect: true,
     refetchOnWindowFocus: true,
   })
+}
+
+export async function createAppointment(payload: CreateAppointmentPayload) {
+  const res = await api.post('/appointments', payload)
+  return res.data
 }

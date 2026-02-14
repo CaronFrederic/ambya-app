@@ -21,7 +21,8 @@
     "dev": "nest start --watch",
     "check:auth": "ts-node scripts/check-auth.ts",
     "check:appointments:api": "ts-node scripts/check-appointments-api.ts",
-    "check:appointments:cache": "ts-node scripts/check-appointments-cache.ts"
+    "check:appointments:cache": "ts-node scripts/check-appointments-cache.ts",
+    "check:appointments:create": "ts-node scripts/check-appointments-create.ts"
   },
   "dependencies": {
     "@ambya/shared": "workspace:*",

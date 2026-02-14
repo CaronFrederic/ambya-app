@@ -1,6 +1,8 @@
 import { View, Text, FlatList, RefreshControl } from 'react-native'
 import { useState } from 'react'
 import { useAppointments } from '../../src/api/appointments'
+import { Button } from '../../src/components/Button'
+import { router } from 'expo-router'
 
 export default function AppointmentsScreen() {
   const { data, isLoading, isError, refetch } = useAppointments()
@@ -32,14 +34,35 @@ export default function AppointmentsScreen() {
   }
 
   if (!data?.items?.length) {
-    return (
-      <View style={{ padding: 16 }}>
-        <Text>Aucun rendez-vous pour le moment.</Text>
-      </View>
-    )
-  }
+  return (
+    <View style={{ flex: 1, padding: 16, gap: 12 }}>
+      <Button
+        title="Créer un RDV"
+        onPress={() => router.push('/(tabs)/create-appointment')}
+        variant="secondary"
+      />
+      <Text>Aucun rendez-vous pour le moment.</Text>
+    </View>
+  )
+}
+
+
+  <Button
+  title="Créer un RDV"
+  onPress={() => router.push('/(tabs)/create-appointment')}
+  variant="secondary"
+  />
 
   return (
+    <View style={{ flex: 1 }}>
+    <View style={{ padding: 16 }}>
+      <Button
+        title="Créer un RDV"
+        onPress={() => router.push('/(tabs)/create-appointment')}
+        variant="secondary"
+      />
+    </View>
+
     <FlatList
       data={data.items}
       keyExtractor={(item) => item.id}
@@ -52,5 +75,6 @@ export default function AppointmentsScreen() {
         </View>
       )}
     />
+  </View>
   )
 }

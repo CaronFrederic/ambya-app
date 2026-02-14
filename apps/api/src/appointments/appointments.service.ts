@@ -1,7 +1,8 @@
-import { Injectable, ForbiddenException } from '@nestjs/common'
+import { BadRequestException, Injectable, ForbiddenException } from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service'
 import { ListAppointmentsDto } from './dto/list-appointments.dto'
-import { UserRole } from '@prisma/client'
+import { CreateAppointmentDto } from './dto/create-appointment.dto'
+import { AppointmentStatus, UserRole } from '@prisma/client'
 
 @Injectable()
 export class AppointmentsService {
@@ -47,4 +48,55 @@ export class AppointmentsService {
 
     return { items, total }
   }
+
+  async createForClient(
+  user: { userId: string; role: UserRole },
+  dto: CreateAppointmentDto,
+) {
+  if (user.role !== 'CLIENT') {
+    throw new BadRequestException('Only CLIENT can create appointments')
+  }
+
+  const startAt = new Date(dto.startAt)
+  if (Number.isNaN(startAt.getTime())) {
+    throw new BadRequestException('Invalid startAt')
+  }
+
+  const service = await this.prisma.service.findFirst({
+    where: { id: dto.serviceId, salonId: dto.salonId, isActive: true },
+    select: { id: true, durationMin: true },
+  })
+  if (!service) {
+    throw new BadRequestException('Service not found for this salon')
+  }
+
+  if (dto.employeeId) {
+    const emp = await this.prisma.employee.findFirst({
+      where: { id: dto.employeeId, salonId: dto.salonId, isActive: true },
+      select: { id: true },
+    })
+    if (!emp) throw new BadRequestException('Employee not found for this salon')
+  }
+
+  const endAt = new Date(startAt.getTime() + service.durationMin * 60_000)
+
+  return this.prisma.appointment.create({
+    data: {
+      salonId: dto.salonId,
+      serviceId: dto.serviceId,
+      clientId: user.userId,
+      employeeId: dto.employeeId ?? null,
+      note: dto.note ?? null,
+      startAt,
+      endAt,
+      status: AppointmentStatus.PENDING,
+    },
+    include: {
+      salon: { select: { id: true, name: true } },
+      service: { select: { id: true, name: true, durationMin: true, price: true } },
+      employee: { select: { id: true, displayName: true } },
+    },
+  })
+}
+
 }
