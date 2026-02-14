@@ -2,21 +2,36 @@ import { Pressable, Text, StyleSheet } from "react-native";
 import { colors } from "../theme/colors";
 import { spacing } from "../theme/spacing";
 
+type Props = {
+  title: string;
+  onPress: () => void;
+  variant?: "primary" | "secondary";
+  disabled?: boolean;
+};
+
 export function Button({
   title,
   onPress,
   variant = "primary",
-}: {
-  title: string;
-  onPress: () => void;
-  variant?: "primary" | "secondary";
-}) {
+  disabled = false,
+}: Props) {
   return (
     <Pressable
-      onPress={onPress}
-      style={[styles.base, variant === "primary" ? styles.primary : styles.secondary]}
+      onPress={disabled ? undefined : onPress}
+      disabled={disabled}
+      style={({ pressed }) => [
+        styles.base,
+        variant === "primary" ? styles.primary : styles.secondary,
+        disabled && styles.disabled,
+        pressed && !disabled && styles.pressed,
+      ]}
     >
-      <Text style={[styles.text, variant === "primary" ? styles.textPrimary : styles.textSecondary]}>
+      <Text
+        style={[
+          styles.text,
+          variant === "primary" ? styles.textPrimary : styles.textSecondary,
+        ]}
+      >
         {title}
       </Text>
     </Pressable>
@@ -37,4 +52,12 @@ const styles = StyleSheet.create({
   text: { fontSize: 16, fontWeight: "600" },
   textPrimary: { color: "#FFFFFF" },
   textSecondary: { color: colors.text },
+
+  disabled: {
+    opacity: 0.5,
+  },
+
+  pressed: {
+    opacity: 0.8,
+  },
 });
