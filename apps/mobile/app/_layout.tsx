@@ -1,13 +1,15 @@
-import { Stack } from "expo-router";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useState } from "react";
+import { Stack } from 'expo-router'
+import { QueryProvider } from '../src/providers/QueryProvider'
 
 export default function RootLayout() {
-  const [client] = useState(() => new QueryClient());
-
   return (
-    <QueryClientProvider client={client}>
-      <Stack screenOptions={{ headerShown: false }} />
-    </QueryClientProvider>
-  );
+    <QueryProvider>
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="(auth)" />
+        <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="(professional)" />
+        <Stack.Screen name="(employee)" />
+      </Stack>
+    </QueryProvider>
+  )
 }

@@ -1,25 +1,30 @@
-import { TextInput, StyleSheet } from "react-native";
-import { colors } from "../theme/colors";
-import { spacing } from "../theme/spacing";
+import { TextInput, StyleSheet } from 'react-native'
+import { colors } from '../theme/colors'
+import { spacing } from '../theme/spacing'
+import { radius } from '../theme/radius'
 
-export function Input(props: React.ComponentProps<typeof TextInput>) {
+type Props = React.ComponentProps<typeof TextInput>
+
+export function Input({ style, ...props }: Props) {
   return (
     <TextInput
-      placeholderTextColor={colors.muted}
       {...props}
-      style={[styles.input, props.style]}
+      style={[styles.input, style]}
+      placeholderTextColor={colors.textMuted}
+      selectionColor={colors.primary}
     />
-  );
+  )
 }
 
 const styles = StyleSheet.create({
   input: {
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 12,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    backgroundColor: colors.inputBackground,
+    padding: spacing.md,
+    borderRadius: radius.lg,
     fontSize: 16,
     color: colors.text,
+    minHeight: 48,
   },
-});
+})

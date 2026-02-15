@@ -1,11 +1,15 @@
 import { useState } from 'react'
-import { View, Text, TextInput, Alert } from 'react-native'
+import { View, Alert } from 'react-native'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { router } from 'expo-router'
 
 import { Screen } from '../../src/components/Screen'
+import { Header } from '../../src/components/Header'
+import { Card } from '../../src/components/Card'
+import { Input } from '../../src/components/Input'
 import { Button } from '../../src/components/Button'
 import { createAppointment } from '../../src/api/appointments'
+import { spacing } from '../../src/theme/spacing'
 
 export default function CreateAppointmentScreen() {
   const qc = useQueryClient()
@@ -29,43 +33,44 @@ export default function CreateAppointmentScreen() {
 
   return (
     <Screen>
-      <Text style={{ fontSize: 22, fontWeight: '700', marginBottom: 12 }}>Créer un RDV</Text>
+      <Header title="Créer un RDV" subtitle="Renseigne les informations du rendez-vous" />
 
-      <View style={{ gap: 12 }}>
-        <TextInput
-          placeholder="salonId"
-          value={salonId}
-          onChangeText={setSalonId}
-          autoCapitalize="none"
-          style={{ borderWidth: 1, padding: 12, borderRadius: 10 }}
-        />
-        <TextInput
-          placeholder="serviceId"
-          value={serviceId}
-          onChangeText={setServiceId}
-          autoCapitalize="none"
-          style={{ borderWidth: 1, padding: 12, borderRadius: 10 }}
-        />
-        <TextInput
-          placeholder="startAt (ISO)"
-          value={startAt}
-          onChangeText={setStartAt}
-          autoCapitalize="none"
-          style={{ borderWidth: 1, padding: 12, borderRadius: 10 }}
-        />
-        <TextInput
-          placeholder="note (optionnel)"
-          value={note}
-          onChangeText={setNote}
-          style={{ borderWidth: 1, padding: 12, borderRadius: 10 }}
-        />
+      <Card>
+        <View style={{ gap: spacing.md }}>
+          <Input
+            placeholder="salonId"
+            value={salonId}
+            onChangeText={setSalonId}
+            autoCapitalize="none"
+          />
 
-        <Button
-          title={mutation.isPending ? 'Création...' : 'Créer'}
-          onPress={() => mutation.mutate({ salonId, serviceId, startAt, note })}
-          disabled={mutation.isPending}
-        />
-      </View>
+          <Input
+            placeholder="serviceId"
+            value={serviceId}
+            onChangeText={setServiceId}
+            autoCapitalize="none"
+          />
+
+          <Input
+            placeholder="startAt (ISO)"
+            value={startAt}
+            onChangeText={setStartAt}
+            autoCapitalize="none"
+          />
+
+          <Input
+            placeholder="note (optionnel)"
+            value={note}
+            onChangeText={setNote}
+          />
+
+          <Button
+            title={mutation.isPending ? 'Création...' : 'Créer'}
+            onPress={() => mutation.mutate({ salonId, serviceId, startAt, note })}
+            disabled={mutation.isPending}
+          />
+        </View>
+      </Card>
     </Screen>
   )
 }

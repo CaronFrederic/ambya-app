@@ -1,11 +1,17 @@
 import { useState } from 'react'
-import { View, Text, TextInput, Alert } from 'react-native'
+import { View, Text, Alert } from 'react-native'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { router, useLocalSearchParams } from 'expo-router'
 
 import { Screen } from '../../src/components/Screen'
+import { Header } from '../../src/components/Header'
+import { Card } from '../../src/components/Card'
+import { Input } from '../../src/components/Input'
 import { Button } from '../../src/components/Button'
 import { assignEmployee } from '../../src/api/appointments'
+import { spacing } from '../../src/theme/spacing'
+import { colors } from '../../src/theme/colors'
+import { typography } from '../../src/theme/typography'
 
 export default function AssignEmployeeScreen() {
   const qc = useQueryClient()
@@ -17,56 +23,70 @@ export default function AssignEmployeeScreen() {
   const mutation = useMutation({
     mutationFn: async () => {
       if (!appointmentId) throw new Error('Missing appointmentId')
-      return assignEmployee(appointmentId, employeeId || undefined)
+      const cleaned = employeeId.trim()
+      return assignEmployee(appointmentId, cleaned.length ? cleaned : undefined)
     },
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ['appointments'] })
       Alert.alert('OK', 'Employé assigné')
       router.back()
     },
-    onError: () => Alert.alert('Erreur', 'Assignation échouée'),
+    onError: (err: any) => {
+      const msg = err?.response?.data?.message ?? err?.message ?? 'Assignation échouée'
+      Alert.alert('Erreur', String(msg))
+    },
   })
 
   if (!appointmentId) {
     return (
       <Screen>
-        <Text>appointmentId manquant</Text>
+        <Header title="Assigner un employé" />
+        <Card>
+          <Text style={[typography.body, { color: colors.danger }]}>
+            appointmentId manquant
+          </Text>
+        </Card>
       </Screen>
     )
   }
 
   return (
     <Screen>
-      <Text style={{ fontSize: 22, fontWeight: '700', marginBottom: 12 }}>Assigner un employé</Text>
+      <Header title="Assigner un employé" subtitle="Associe un employé au rendez-vous" />
 
-      <View style={{ gap: 12 }}>
-        <Text style={{ opacity: 0.7 }}>appointmentId</Text>
-        <Text selectable>{appointmentId}</Text>
+      <Card>
+        <View style={{ gap: spacing.md }}>
+          <View style={{ gap: spacing.xs }}>
+            <Text style={[typography.caption, { color: colors.textMuted }]}>appointmentId</Text>
+            <Text selectable style={typography.body}>
+              {appointmentId}
+            </Text>
+          </View>
 
-        <TextInput
-          placeholder="employeeId"
-          value={employeeId}
-          onChangeText={setEmployeeId}
-          autoCapitalize="none"
-          style={{ borderWidth: 1, padding: 12, borderRadius: 10 }}
-        />
+          <Input
+            placeholder="employeeId"
+            value={employeeId}
+            onChangeText={setEmployeeId}
+            autoCapitalize="none"
+          />
 
-        <Button
-          title={mutation.isPending ? 'Assignation...' : 'Assigner'}
-          onPress={() => mutation.mutate()}
-          disabled={mutation.isPending}
-        />
+          <Button
+            title={mutation.isPending ? 'Assignation...' : 'Assigner'}
+            onPress={() => mutation.mutate()}
+            disabled={mutation.isPending}
+          />
 
-        <Button
-          title="Désassigner (null)"
-          onPress={() => {
-            setEmployeeId('')
-            mutation.mutate()
-          }}
-          variant="secondary"
-          disabled={mutation.isPending}
-        />
-      </View>
+          <Button
+            title="Désassigner"
+            onPress={() => {
+              setEmployeeId('')
+              mutation.mutate()
+            }}
+            variant="secondary"
+            disabled={mutation.isPending}
+          />
+        </View>
+      </Card>
     </Screen>
   )
 }
