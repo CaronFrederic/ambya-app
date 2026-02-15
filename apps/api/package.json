@@ -22,7 +22,8 @@
     "check:auth": "ts-node scripts/check-auth.ts",
     "check:appointments:api": "ts-node scripts/check-appointments-api.ts",
     "check:appointments:cache": "ts-node scripts/check-appointments-cache.ts",
-    "check:appointments:create": "ts-node scripts/check-appointments-create.ts"
+    "check:appointments:create": "ts-node scripts/check-appointments-create.ts",
+    "check:appointments:assign": "ts-node scripts/check-appointments-assign.ts"
   },
   "dependencies": {
     "@ambya/shared": "workspace:*",

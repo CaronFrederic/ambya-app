@@ -1,7 +1,9 @@
-import { BadRequestException, Injectable, ForbiddenException } from '@nestjs/common'
+import { BadRequestException, Injectable, ForbiddenException, 
+  NotFoundException  } from '@nestjs/common'
 import { PrismaService } from '../prisma/prisma.service'
 import { ListAppointmentsDto } from './dto/list-appointments.dto'
 import { CreateAppointmentDto } from './dto/create-appointment.dto'
+import { AssignEmployeeDto } from './dto/assign-employee.dto'
 import { AppointmentStatus, UserRole } from '@prisma/client'
 
 @Injectable()
@@ -39,9 +41,10 @@ export class AppointmentsService {
         skip: q.skip ?? 0,
         take: q.take ?? 20,
         include: {
-          salon: { select: { name: true } },
-          service: { select: { name: true, durationMin: true } },
-        },
+        salon: { select: { id: true, name: true } },
+        service: { select: { id: true, name: true, durationMin: true, price: true } },
+        employee: { select: { id: true, displayName: true } },
+      },
       }),
       this.prisma.appointment.count({ where }),
     ])
@@ -98,5 +101,58 @@ export class AppointmentsService {
     },
   })
 }
+
+async assignEmployee(
+  user: { userId: string; role: UserRole },
+  appointmentId: string,
+  dto: AssignEmployeeDto,
+) {
+  // On récupère le RDV + salon ownerId pour check permissions
+  const appt = await this.prisma.appointment.findUnique({
+    where: { id: appointmentId },
+    select: { id: true, salonId: true, clientId: true, employeeId: true, salon: { select: { ownerId: true } } },
+  })
+  if (!appt) throw new NotFoundException('Appointment not found')
+
+  const isOwner = user.role === 'PROFESSIONAL' && appt.salon.ownerId === user.userId
+  const isAdmin = user.role === 'ADMIN'
+  const isClient = user.role === 'CLIENT' && appt.clientId === user.userId
+
+  // MVP: autorise PRO owner + ADMIN (et optionnellement CLIENT si tu veux)
+  if (!isOwner && !isAdmin && !isClient) {
+    throw new ForbiddenException('Not allowed')
+  }
+
+  // Unassign
+  if (!dto.employeeId) {
+    return this.prisma.appointment.update({
+      where: { id: appointmentId },
+      data: { employeeId: null },
+      include: {
+        salon: { select: { id: true, name: true } },
+        service: { select: { id: true, name: true, durationMin: true, price: true } },
+        employee: { select: { id: true, displayName: true } },
+      },
+    })
+  }
+
+  // Vérifie que l’employé existe et appartient au salon
+  const emp = await this.prisma.employee.findFirst({
+    where: { id: dto.employeeId, salonId: appt.salonId, isActive: true },
+    select: { id: true },
+  })
+  if (!emp) throw new BadRequestException('Employee not found for this salon')
+
+  return this.prisma.appointment.update({
+    where: { id: appointmentId },
+    data: { employeeId: dto.employeeId },
+    include: {
+      salon: { select: { id: true, name: true } },
+      service: { select: { id: true, name: true, durationMin: true, price: true } },
+      employee: { select: { id: true, displayName: true } },
+    },
+  })
+}
+
 
 }

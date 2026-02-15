@@ -45,3 +45,8 @@ export async function createAppointment(payload: CreateAppointmentPayload) {
   const res = await api.post('/appointments', payload)
   return res.data
 }
+
+export async function assignEmployee(appointmentId: string, employeeId?: string) {
+  const res = await api.patch(`/appointments/${appointmentId}/assign-employee`, { employeeId })
+  return res.data
+}
