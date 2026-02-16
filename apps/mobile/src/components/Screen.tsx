@@ -6,22 +6,15 @@ import { spacing } from '../theme/spacing'
 type Props = {
   children: React.ReactNode
   scroll?: boolean
-  padded?: boolean
 }
 
-export function Screen({ children, scroll = false, padded = true }: Props) {
-  const content = (
-    <View style={[styles.container, padded && { padding: spacing.lg }]}>
-      {children}
-    </View>
-  )
+export function Screen({ children, scroll = false }: Props) {
+  const content = <View style={styles.container}>{children}</View>
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
       {scroll ? (
-        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-          {content}
-        </ScrollView>
+        <ScrollView contentContainerStyle={styles.scroll}>{content}</ScrollView>
       ) : (
         content
       )}
@@ -30,14 +23,7 @@ export function Screen({ children, scroll = false, padded = true }: Props) {
 }
 
 const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: colors.backgroundSoft,
-  },
-  container: {
-    flex: 1,
-  },
-  scrollContent: {
-    flexGrow: 1,
-  },
+  safe: { flex: 1, backgroundColor: colors.background },
+  container: { flex: 1, padding: spacing.xl },
+  scroll: { flexGrow: 1 },
 })

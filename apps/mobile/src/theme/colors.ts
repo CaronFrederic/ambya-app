@@ -1,28 +1,32 @@
 export const colors = {
-  // Base (theme.css)
-  background: '#FFFFFF',
-  foreground: '#030213', // utilisé comme "primary text" / foreground dans le storyboard
-  card: '#FFFFFF',
+  // Brand (Ambya)
+  brand: '#6B2737',          // Bordeaux (CTA / header / active)
+  brandForeground: '#FFFFFF',
+  premium: '#D4AF6A',        // Or
+  text: '#3A3A3A',           // Graphite
+  textMuted: '#717182',
 
-  // Brand / actions
-  primary: '#030213',
-  primaryForeground: '#FFFFFF',
+  // Surfaces
+  background: '#FAF7F2',     // Crème
+  card: '#FFFFFF',
+  inputBackground: '#FFFFFF', // sur Figma souvent blanc dans card
 
   // Neutrals
+  border: 'rgba(58,58,58,0.12)', // graphite léger
   muted: '#ECECF0',
-  mutedForeground: '#717182',
-  accent: '#E9EBEF',
-  inputBackground: '#F3F3F5',
 
-  // UI
-  border: 'rgba(0,0,0,0.10)',
+  // Status (soft badges)
+  successSoft: '#DDF5E5',
+  successText: '#1F7A3A',
 
-  // States
-  danger: '#D4183D',
-  dangerForeground: '#FFFFFF',
+  warningSoft: '#FFF2CC',
+  warningText: '#946200',
 
-  // Aliases pratiques (pour ton code actuel)
-  text: '#030213',
-  textMuted: '#717182',
-  backgroundSoft: '#ECECF0',
+  dangerSoft: '#FCE1E6',
+  dangerText: '#9F1239',
+
+  // Aliases existants (compat)
+  primary: '#6B2737',
+  primaryForeground: '#FFFFFF',
+  backgroundSoft: '#FAF7F2',
 }

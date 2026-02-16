@@ -11,20 +11,20 @@ export function Input({ style, ...props }: Props) {
       {...props}
       style={[styles.input, style]}
       placeholderTextColor={colors.textMuted}
-      selectionColor={colors.primary}
+      selectionColor={colors.brand}
     />
   )
 }
 
 const styles = StyleSheet.create({
   input: {
+    minHeight: 48,
     borderWidth: 1,
     borderColor: colors.border,
     backgroundColor: colors.inputBackground,
     padding: spacing.md,
-    borderRadius: radius.lg,
+    borderRadius: radius.md,
     fontSize: 16,
     color: colors.text,
-    minHeight: 48,
   },
 })
