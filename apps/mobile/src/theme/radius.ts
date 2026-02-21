@@ -1,5 +1,7 @@
 export const radius = {
   sm: 8,
-  md: 10,
-  lg: 12, // option si tu veux cards plus rondes
+  md: 12,
+  lg: 16,
+  xl: 20,
+  full: 999,
 }

@@ -6,9 +6,10 @@ import { AppService } from './app.service';
 import { HealthModule } from './health/health.module';
 import { AuthModule } from './auth/auth.module'
 import { AppointmentsModule } from './appointments/appointments.module';
+import { ConfigModule as AppConfigModule } from './config/config.module'
 
 @Module({
-  imports: [AppointmentsModule, 
+  imports: [AppConfigModule, AppointmentsModule, 
     AuthModule, ConfigModule.forRoot({ isGlobal: true }), HealthModule, PrismaModule],
   controllers: [AppController],
   providers: [AppService],

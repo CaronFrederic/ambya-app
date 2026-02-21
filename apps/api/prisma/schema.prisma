@@ -149,3 +149,15 @@ model Appointment {
   @@index([employeeId, startAt])
   @@index([status])
 }
+
+model Country {
+  code     String @id          // "GA", "CD"...
+  name     String
+  currency String              // "FCFA", "$"...
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive])
+}

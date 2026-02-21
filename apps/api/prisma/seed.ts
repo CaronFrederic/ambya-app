@@ -20,7 +20,7 @@ const prisma = new PrismaClient({
 async function main() {
   console.log('🌱 Seeding database...')
 
-  const hashedPassword = await bcrypt.hash('password123', 10)
+  /*const hashedPassword = await bcrypt.hash('password123', 10)
 
   const professional = await prisma.user.create({
     data: {
@@ -82,7 +82,20 @@ async function main() {
       startAt: new Date(),
       endAt: new Date(Date.now() + 30 * 60000),
     },
-  })
+  })*/
+
+  await prisma.country.upsert({
+  where: { code: 'GA' },
+  update: { name: 'Gabon', currency: 'FCFA', isActive: true },
+  create: { code: 'GA', name: 'Gabon', currency: 'FCFA', isActive: true },
+})
+
+await prisma.country.upsert({
+  where: { code: 'CD' },
+  update: { name: 'RDC', currency: '$', isActive: true },
+  create: { code: 'CD', name: 'RDC', currency: '$', isActive: true },
+})
+
 
   console.log('✅ Seeding completed successfully')
 }

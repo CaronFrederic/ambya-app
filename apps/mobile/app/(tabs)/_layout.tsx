@@ -1,6 +1,9 @@
+// app/(tabs)/_layout.tsx
+import React from 'react'
 import { Tabs } from 'expo-router'
+import { Ionicons } from '@expo/vector-icons'
+
 import { colors } from '../../src/theme/colors'
-import { spacing } from '../../src/theme/spacing'
 
 export default function TabsLayout() {
   return (
@@ -8,31 +11,79 @@ export default function TabsLayout() {
       screenOptions={{
         headerShown: false,
 
-        // 🎨 Branding Ambya
         tabBarActiveTintColor: colors.brand,
         tabBarInactiveTintColor: colors.textMuted,
+
         tabBarStyle: {
           backgroundColor: colors.card,
           borderTopColor: colors.border,
-          paddingTop: spacing.xs,
+          borderTopWidth: 1,
           height: 64,
+          paddingTop: 6,
+          paddingBottom: 10,
         },
+
         tabBarLabelStyle: {
-          fontSize: 12,
+          fontSize: 11,
           fontWeight: '500',
         },
       }}
     >
-      <Tabs.Screen name="home" options={{ title: 'Accueil' }} />
-      <Tabs.Screen name="search" options={{ title: 'Recherche' }} />
-      <Tabs.Screen name="salon" options={{ title: 'Salon' }} />
-      <Tabs.Screen name="appointments" options={{ title: 'RDV' }} />
-      <Tabs.Screen name="payment" options={{ title: 'Paiement' }} />
-      <Tabs.Screen name="profile" options={{ title: 'Profil' }} />
+      <Tabs.Screen
+        name="home"
+        options={{
+          title: 'Accueil',
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons
+              name={focused ? 'home' : 'home-outline'}
+              size={size ?? 22}
+              color={color}
+            />
+          ),
+        }}
+      />
 
-      {/* Ces écrans ne doivent PAS être dans la tab bar */}
-      <Tabs.Screen name="create-appointment" options={{ href: null }} />
-      <Tabs.Screen name="assign-employee" options={{ href: null }} />
+      <Tabs.Screen
+        name="offers"
+        options={{
+          title: 'Offres',
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons
+              name={focused ? 'pricetag' : 'pricetag-outline'}
+              size={size ?? 22}
+              color={color}
+            />
+          ),
+        }}
+      />
+
+      <Tabs.Screen
+        name="appointments"
+        options={{
+          title: 'Rendez-vous',
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons
+              name={focused ? 'calendar' : 'calendar-outline'}
+              size={size ?? 22}
+              color={color}
+            />
+          ),
+        }}
+      />
+
+      <Tabs.Screen
+        name="profile"
+        options={{
+          title: 'Profil',
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons
+              name={focused ? 'person' : 'person-outline'}
+              size={size ?? 22}
+              color={color}
+            />
+          ),
+        }}
+      />
     </Tabs>
   )
 }

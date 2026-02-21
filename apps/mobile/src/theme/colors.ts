@@ -29,4 +29,31 @@ export const colors = {
   primary: '#6B2737',
   primaryForeground: '#FFFFFF',
   backgroundSoft: '#FAF7F2',
+
+  // UI helpers
+  placeholder: 'rgba(58,58,58,0.35)',
+  disabled: 'rgba(58,58,58,0.28)',
+  surfaceMuted: '#F3F1EE', // variante crème/gris très légère
+  overlayDark: 'rgba(0,0,0,0.18)',
+  hairline: 'rgba(58,58,58,0.08)',
+
+  promo: '#22C55E',
+  promoForeground: '#FFFFFF',
+  shadowColor: '#000',
 }
+
+// Overlays (pour éviter rgba inline partout)
+export const overlays = {
+  white10: 'rgba(255,255,255,0.10)',
+  white06: 'rgba(255,255,255,0.06)',
+
+  premium30: 'rgba(212,175,106,0.30)',
+  premium20: 'rgba(212,175,106,0.20)',
+  premium10: 'rgba(212,175,106,0.10)',
+
+  brand30: 'rgba(107,39,55,0.30)',
+  brand20: 'rgba(107,39,55,0.20)',
+  brand10: 'rgba(107,39,55,0.10)',
+  brand05: 'rgba(107,39,55,0.05)',
+}
+
