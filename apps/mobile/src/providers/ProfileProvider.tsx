@@ -1,4 +1,6 @@
-import React, { createContext, useContext, useMemo, useState } from 'react'
+// src/providers/ProfileProvider.tsx
+import React, { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import * as SecureStore from 'expo-secure-store'
 
 export type ProfileGeneral = {
   nickname?: string
@@ -6,37 +8,41 @@ export type ProfileGeneral = {
   ageRange?: '18–24' | '25–34' | '35–44' | '45+' | 'Je ne sais pas'
   city?: string
   country?: string
+
+  // NEW
+  email?: string
+  phone?: string
 }
 
 export type HairProfile = {
-  hairType?: string[] // ex: ["Bouclés", "Je ne sais pas"]
+  hairType?: string[]
   texture?: string
   length?: string
-  concerns?: string[] // ex: ["Sécheresse", "Frisottis"]
+  concerns?: string[]
 }
 
 export type NailsProfile = {
-  type?: string[] // ["Lisses", "Je ne sais pas"]
-  state?: string // "Ongles normaux"
-  concerns?: string[] // ["Cuticules"]
+  type?: string[]
+  state?: string
+  concerns?: string[]
 }
 
 export type FaceSkinProfile = {
-  skinType?: string // "Mixte"
-  concerns?: string[] // ["Taches", "Déshydratation"]
+  skinType?: string
+  concerns?: string[]
 }
 
 export type WellnessProfile = {
   bodySkinType?: string
-  tensionZones?: string[] // ["Épaules", "Dos"]
-  concerns?: string[] // ["Stress", "Relaxation"]
-  sensitiveMassageZones?: string // "Aucune sélection"
+  tensionZones?: string[]
+  concerns?: string[]
+  sensitiveMassageZones?: string
 }
 
 export type FitnessProfile = {
-  activityLevel?: string // "Occasionnel"
-  goals?: string[] // ["Condition générale"]
-  concerns?: string[] // ["Posture / mobilité"]
+  activityLevel?: string
+  goals?: string[]
+  concerns?: string[]
 }
 
 export type PracticalPrefs = {
@@ -60,7 +66,7 @@ export type ProfileData = {
   important: ImportantInfo
 }
 
-type SectionKey =
+export type SectionKey =
   | 'general'
   | 'hair'
   | 'nails'
@@ -72,18 +78,25 @@ type SectionKey =
 
 type ProfileContextValue = {
   data: ProfileData
-  patchSection: (key: SectionKey, partial: any) => void
+  patchSection: <K extends SectionKey>(key: K, partial: Partial<ProfileData[K]>) => void
+  setSection: <K extends SectionKey>(key: K, value: ProfileData[K]) => void
   reset: () => void
+  ready: boolean
 }
+
+const STORAGE_KEY = 'ambya_profile_v1'
 
 const defaultProfile: ProfileData = {
   general: {
-    nickname: 'Marie',
-    gender: 'Femme',
-    ageRange: '25–34',
-    city: 'Libreville',
-    country: 'Gabon',
-  },
+  nickname: 'Marie',
+  gender: 'Femme',
+  ageRange: '25–34',
+  city: 'Libreville',
+  country: 'Gabon',
+
+  email: 'marie.kouassi@example.com',
+  phone: '+241 XX XX XX XX',
+},
   hair: {
     hairType: ['Bouclés', 'Je ne sais pas'],
     texture: 'Je ne sais pas',
@@ -124,18 +137,76 @@ const ProfileContext = createContext<ProfileContextValue | null>(null)
 
 export function ProfileProvider({ children }: { children: React.ReactNode }) {
   const [data, setData] = useState<ProfileData>(defaultProfile)
+  const [ready, setReady] = useState(false)
+
+  // Load persisted profile
+  useEffect(() => {
+    let mounted = true
+    ;(async () => {
+      try {
+        const raw = await SecureStore.getItemAsync(STORAGE_KEY)
+        if (raw && mounted) {
+          const parsed = JSON.parse(raw) as ProfileData
+          // merge soft with defaults (in case new fields are added later)
+          setData({
+            ...defaultProfile,
+            ...parsed,
+            general: { ...defaultProfile.general, ...(parsed.general ?? {}) },
+            hair: { ...defaultProfile.hair, ...(parsed.hair ?? {}) },
+            nails: { ...defaultProfile.nails, ...(parsed.nails ?? {}) },
+            faceSkin: { ...defaultProfile.faceSkin, ...(parsed.faceSkin ?? {}) },
+            wellness: { ...defaultProfile.wellness, ...(parsed.wellness ?? {}) },
+            fitness: { ...defaultProfile.fitness, ...(parsed.fitness ?? {}) },
+            practical: { ...defaultProfile.practical, ...(parsed.practical ?? {}) },
+            important: { ...defaultProfile.important, ...(parsed.important ?? {}) },
+          })
+        }
+      } catch {
+        // ignore
+      } finally {
+        if (mounted) setReady(true)
+      }
+    })()
+    return () => {
+      mounted = false
+    }
+  }, [])
+
+  const persist = async (next: ProfileData) => {
+    try {
+      await SecureStore.setItemAsync(STORAGE_KEY, JSON.stringify(next))
+    } catch {
+      // ignore
+    }
+  }
 
   const value = useMemo<ProfileContextValue>(
     () => ({
       data,
-      patchSection: (key, partial) =>
-        setData((d) => ({
-          ...d,
-          [key]: { ...(d as any)[key], ...(partial ?? {}) },
-        })),
-      reset: () => setData(defaultProfile),
+      ready,
+      patchSection: (key, partial) => {
+        setData((d) => {
+          const next = {
+            ...d,
+            [key]: { ...(d as any)[key], ...(partial ?? {}) },
+          } as ProfileData
+          void persist(next)
+          return next
+        })
+      },
+      setSection: (key, value) => {
+        setData((d) => {
+          const next = { ...d, [key]: value } as ProfileData
+          void persist(next)
+          return next
+        })
+      },
+      reset: () => {
+        setData(defaultProfile)
+        void persist(defaultProfile)
+      },
     }),
-    [data]
+    [data, ready]
   )
 
   return <ProfileContext.Provider value={value}>{children}</ProfileContext.Provider>
@@ -146,5 +217,3 @@ export function useProfile() {
   if (!ctx) throw new Error('useProfile must be used within ProfileProvider')
   return ctx
 }
-
-export type { SectionKey }

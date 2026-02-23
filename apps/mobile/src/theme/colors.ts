@@ -3,6 +3,7 @@ export const colors = {
   brand: '#6B2737',          // Bordeaux (CTA / header / active)
   brandForeground: '#FFFFFF',
   premium: '#D4AF6A',        // Or
+  gold: '#D4AF6A',  
   text: '#3A3A3A',           // Graphite
   textMuted: '#717182',
 
@@ -50,6 +51,10 @@ export const overlays = {
   premium30: 'rgba(212,175,106,0.30)',
   premium20: 'rgba(212,175,106,0.20)',
   premium10: 'rgba(212,175,106,0.10)',
+
+  gold30: 'rgba(212,175,106,0.30)',   // ✅ alias
+  gold20: 'rgba(212,175,106,0.20)',
+  gold10: 'rgba(212,175,106,0.10)',
 
   brand30: 'rgba(107,39,55,0.30)',
   brand20: 'rgba(107,39,55,0.20)',

@@ -19,10 +19,12 @@ import { colors } from '../../src/theme/colors'
 import { overlays } from '../../src/theme/colors'
 import { spacing } from '../../src/theme/spacing'
 import { radius } from '../../src/theme/radius'
+import { useAuthRefresh } from '../../src/providers/AuthRefreshProvider'
 
 const logo = require('../../assets/splash-logo.png')
 
 export default function Login() {
+  const { refreshAuth } = useAuthRefresh()
   const [activeTab, setActiveTab] = useState<'login' | 'signup'>('login')
   const [userType, setUserType] = useState<'client' | 'professional'>('client')
 
@@ -35,7 +37,7 @@ export default function Login() {
 
       await SecureStore.setItemAsync('accessToken', data.accessToken)
       await SecureStore.setItemAsync('userRole', data.user.role)
-
+      await refreshAuth()
       if (data.user.role === 'PROFESSIONAL') router.replace('/(professional)/dashboard')
       else if (data.user.role === 'EMPLOYEE') router.replace('/(employee)/dashboard')
       else router.replace('/(tabs)/home')

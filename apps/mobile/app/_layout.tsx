@@ -5,6 +5,9 @@ import * as SecureStore from 'expo-secure-store'
 import { QueryProvider } from '../src/providers/QueryProvider'
 import { BookingProvider } from '../src/providers/BookingProvider'
 import { ProfileProvider } from '../src/providers/ProfileProvider'
+import { PaymentProvider } from '../src/providers/PaymentProvider'
+import { AuthRefreshProvider } from '../src/providers/AuthRefreshProvider'
+import { AppState } from 'react-native'
 
 const AUTH_TOKEN_KEY = 'accessToken'
 const ROLE_KEY = 'userRole'
@@ -35,37 +38,46 @@ export default function RootLayout() {
   const router = useRouter()
   const segments = useSegments()
 
+  const refreshAuth = async () => {
+    try {
+      const [token, storedRole] = await Promise.all([
+        SecureStore.getItemAsync(AUTH_TOKEN_KEY),
+        SecureStore.getItemAsync(ROLE_KEY),
+      ])
+      setIsLoggedIn(!!token)
+      setRole(normalizeRole(storedRole))
+    } catch {
+      setIsLoggedIn(false)
+      setRole('CLIENT')
+    }
+  }
+
   const [ready, setReady] = useState(false)
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [role, setRole] = useState<Role>('CLIENT')
 
   // read token + role at startup
   useEffect(() => {
-    let mounted = true
+  let mounted = true
 
-    ;(async () => {
-      try {
-        const [token, storedRole] = await Promise.all([
-          SecureStore.getItemAsync(AUTH_TOKEN_KEY),
-          SecureStore.getItemAsync(ROLE_KEY),
-        ])
-        if (!mounted) return
-        setIsLoggedIn(!!token)
-        setRole(normalizeRole(storedRole))
-      } catch {
-        if (!mounted) return
-        setIsLoggedIn(false)
-        setRole('CLIENT')
-      } finally {
-        if (!mounted) return
-        setReady(true)
-      }
-    })()
+  ;(async () => {
+    await refreshAuth()
+    if (mounted) setReady(true)
+  })()
 
-    return () => {
-      mounted = false
+  // ✅ optionnel mais utile: si l’app revient au foreground, on resync
+  const sub = AppState.addEventListener('change', (state) => {
+    if (state === 'active') {
+      refreshAuth()
     }
-  }, [])
+  })
+
+  return () => {
+    mounted = false
+    sub.remove()
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [])
 
   // allowed groups per role (EXACTEMENT comme tu l'as demandé)
   const allowedGroups = useMemo(() => {
@@ -112,18 +124,22 @@ export default function RootLayout() {
   if (!ready) return null
 
   return (
-    <QueryProvider>
-      <BookingProvider>
-        <ProfileProvider>
-          <Stack screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="(auth)" />
-            <Stack.Screen name="(tabs)" />
-            <Stack.Screen name="(screens)" />
-            <Stack.Screen name="(professional)" />
-            <Stack.Screen name="(employee)" />
-          </Stack>
-        </ProfileProvider>
-      </BookingProvider>
-    </QueryProvider>
+    <AuthRefreshProvider refreshAuth={refreshAuth}>
+      <QueryProvider>
+        <BookingProvider>
+          <ProfileProvider>
+            <PaymentProvider>
+              <Stack screenOptions={{ headerShown: false }}>
+                <Stack.Screen name="(auth)" />
+                <Stack.Screen name="(tabs)" />
+                <Stack.Screen name="(screens)" />
+                <Stack.Screen name="(professional)" />
+                <Stack.Screen name="(employee)" />
+              </Stack>
+            </PaymentProvider>
+          </ProfileProvider>
+        </BookingProvider>
+      </QueryProvider>
+    </AuthRefreshProvider>
   )
 }

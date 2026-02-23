@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react'
-import { View, Text, StyleSheet, ScrollView } from 'react-native'
+import { View, Text, StyleSheet, ScrollView, Pressable} from 'react-native'
 import { useLocalSearchParams, router } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 
@@ -69,7 +69,27 @@ export default function EditSectionScreen() {
         {section === 'general' && (
           <Card style={styles.card}>
             <Field label="Surnom">
-              <Input value={draft.nickname ?? ''} onChangeText={(v) => setField('nickname', v)} placeholder="Ex: Marie" />
+              <Input
+                value={draft.nickname ?? ''}
+                onChangeText={(v) => setField('nickname', v)}
+                placeholder="Ex: Marie"
+              />
+            </Field>
+
+            <Field label="Email">
+              <Input
+                value={draft.email ?? ''}
+                onChangeText={(v) => setField('email', v)}
+                placeholder="Ex: marie@email.com"
+              />
+            </Field>
+
+            <Field label="Téléphone">
+              <Input
+                value={draft.phone ?? ''}
+                onChangeText={(v) => setField('phone', v)}
+                placeholder="Ex: +241 06 00 00 00"
+              />
             </Field>
 
             <Field label="Genre">
@@ -95,6 +115,25 @@ export default function EditSectionScreen() {
             <Field label="Pays">
               <Input value={draft.country ?? ''} onChangeText={(v) => setField('country', v)} placeholder="Ex: Gabon" />
             </Field>
+
+            {/* SÉCURITÉ */}
+            <View style={styles.securityBox}>
+            <Text style={styles.securityTitle}>Sécurité</Text>
+            <Text style={styles.securityText}>
+              Réinitialisez votre mot de passe via un lien envoyé par email.
+            </Text>
+
+            <Button
+              title="Réinitialiser le mot de passe"
+              variant="secondary"
+              onPress={() =>
+                router.push({
+                  pathname: '../(screens)/forgot-password',
+                  params: { email: String(draft.email ?? '') },
+                })
+              }
+            />
+          </View>
           </Card>
         )}
 
@@ -418,4 +457,16 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.border,
   },
+
+  securityBox: {
+    marginTop: spacing.md,
+    backgroundColor: overlays.premium10,
+    borderRadius: radius.xl,
+    padding: spacing.lg,
+    borderWidth: 1,
+    borderColor: overlays.premium20,
+  },
+  securityTitle: { color: colors.brand, ...typography.h3, fontWeight: '800' },
+  securityText: { marginTop: 6, color: colors.textMuted, ...typography.small, marginBottom: spacing.md },
 })
+
