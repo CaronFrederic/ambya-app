@@ -1,13 +1,22 @@
-import { Stack } from 'expo-router'
+import React from "react";
+import { Stack } from "expo-router";
 
-export default function ProfessionalLayout() {
+export default function ProLayout() {
   return (
-    <Stack screenOptions={{ headerShown: false }}>
+    <Stack
+      screenOptions={{
+        headerShown: false,
+        animation: "slide_from_right",
+      }}
+    >
       <Stack.Screen name="dashboard" />
-      <Stack.Screen name="employees" />
-      <Stack.Screen name="services" />
-      <Stack.Screen name="caisse" />
-      <Stack.Screen name="settings" />
+      <Stack.Screen name="cash-register" />
+      <Stack.Screen name="salon-settings" />
+      <Stack.Screen name="promotions" />
+      <Stack.Screen name="loyalty" />
+      <Stack.Screen name="booking-history" />
+      <Stack.Screen name="client-details" />
+      <Stack.Screen name="accounting-reports" />
     </Stack>
-  )
+  );
 }
