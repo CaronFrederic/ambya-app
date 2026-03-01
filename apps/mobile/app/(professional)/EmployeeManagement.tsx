@@ -1,29 +1,8 @@
 import React, { useMemo, useState } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  Pressable,
-  Modal,
-  TextInput,
-  Platform,
-} from "react-native";
+import { View, Text, StyleSheet, ScrollView, Pressable, Modal, TextInput, Platform, Image } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-
-type Screen =
-  | "pro-dashboard"
-  | "pro-employee-management"
-  | "pro-expense-management"
-  | "pro-accounting-reports"
-  | "pro-cash-register"
-  | "pro-salon-settings"
-  | "pro-promotions"
-  | "pro-loyalty"
-  | "pro-booking-history"
-  | "pro-client-details";
-
-type Props = { navigate: (screen: Screen) => void };
+import * as ImagePicker from "expo-image-picker";
+import { ProHeader } from "./components/ProHeader";
 
 type EmployeeStatus = "active" | "leave" | "absent";
 
@@ -33,9 +12,11 @@ type Employee = {
   role: string;
   status: EmployeeStatus;
   photo?: string | null;
+  phone?: string;
+  email?: string;
 };
 
-export function EmployeeManagement({ navigate }: Props) {
+export default function EmployeeManagement() {
   const [showModal, setShowModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<number | null>(null);
   const [editingEmployee, setEditingEmployee] = useState<number | null>(null);
@@ -45,94 +26,125 @@ export function EmployeeManagement({ navigate }: Props) {
 
   const [editFormData, setEditFormData] = useState({
     name: "",
-    role: "",
-    customRole: "",
+    firstName: "",
     phone: "",
     email: "",
-    firstName: "",
+    role: "",
+    customRole: "",
+    photo: null as string | null,
   });
-
-  const [showLeaveCalendar, setShowLeaveCalendar] = useState<number | null>(null);
-  const [showLeaveConfirmation, setShowLeaveConfirmation] = useState(false);
-  const [pendingLeaveData, setPendingLeaveData] = useState<{ [k: number]: string[] }>({});
-  const [originalLeaveData, setOriginalLeaveData] = useState<{ [k: number]: string[] }>({});
-  const [originalEmployees, setOriginalEmployees] = useState<Employee[]>([]);
-
-  const [showAppointmentRequests, setShowAppointmentRequests] = useState(false);
-  const [showInvitationSent, setShowInvitationSent] = useState(false);
 
   const [showAbsenceModal, setShowAbsenceModal] = useState<number | null>(null);
   const [absenceReason, setAbsenceReason] = useState("");
   const [absenceStartDate, setAbsenceStartDate] = useState(""); // yyyy-mm-dd
   const [absenceEndDate, setAbsenceEndDate] = useState("");
 
-  const [showAbsenceNotification, setShowAbsenceNotification] = useState(false);
-  const [absenceNotificationMessage, setAbsenceNotificationMessage] = useState("");
+  const [toastVisible, setToastVisible] = useState(false);
+  const [toastMsg, setToastMsg] = useState("");
 
-  const [appointmentRequests, setAppointmentRequests] = useState([
-    { id: 1, employeeName: "Marie Kouassi", subject: "Demande de rendez-vous mensuel", date: "2026-02-05", time: "10:00", status: "pending" as const },
-    { id: 2, employeeName: "Jean Bongo", subject: "Discussion sur planification", date: "2026-02-07", time: "14:30", status: "pending" as const },
-    { id: 3, employeeName: "Sophie Mbongo", subject: "Retour de congé - Briefing", date: "2026-02-10", time: "09:00", status: "accepted" as const },
-    { id: 4, employeeName: "Paul N'Guema", subject: "Formation continue", date: "2026-02-12", time: "15:00", status: "refused" as const },
-  ]);
+  const [showInvitationSent, setShowInvitationSent] = useState(false);
 
-  const [leaveData, setLeaveData] = useState<{ [key: number]: string[] }>({
-    3: ["2026-01-20", "2026-01-21", "2026-01-22", "2026-01-23", "2026-01-24"],
-  });
-
-  const [selectedMonth, setSelectedMonth] = useState(() => new Date());
   const [employees, setEmployees] = useState<Employee[]>([
-    { id: 1, name: "Marie Kouassi", role: "Coiffeuse", status: "active", photo: null },
-    { id: 2, name: "Jean Bongo", role: "Barbier", status: "active", photo: null },
-    { id: 3, name: "Sophie Mbongo", role: "Esthéticienne", status: "leave", photo: null },
-    { id: 4, name: "Paul N'Guema", role: "Masseur", status: "active", photo: null },
+    { id: 1, name: "Marie Kouassi", role: "Coiffeuse", status: "active", photo: null, phone: "+241 77 00 00 00", email: "marie@exemple.com" },
+    { id: 2, name: "Jean Bongo", role: "Barbier", status: "active", photo: null, phone: "+241 77 11 22 33", email: "jean@exemple.com" },
+    { id: 3, name: "Sophie Mbongo", role: "Esthéticienne", status: "leave", photo: null, phone: "+241 77 44 55 66", email: "sophie@exemple.com" },
+    { id: 4, name: "Paul N'Guema", role: "Masseur", status: "active", photo: null, phone: "+241 77 77 88 99", email: "paul@exemple.com" },
   ]);
+
+  const headerSubtitle = useMemo(() => `${employees.length} membres dans votre équipe`, [employees.length]);
+
+  const toast = (msg: string) => {
+    setToastMsg(msg);
+    setToastVisible(true);
+    setTimeout(() => setToastVisible(false), 2200);
+  };
 
   const handleDeleteEmployee = (id: number) => {
     setEmployees((prev) => prev.filter((e) => e.id !== id));
     setShowDeleteConfirm(null);
+    toast("Employé supprimé");
+  };
+
+  const resetForm = () => {
+    setSelectedRole("");
+    setCustomRole("");
+    setEditFormData({ name: "", firstName: "", phone: "", email: "", role: "", customRole: "", photo: null });
   };
 
   const handleEditEmployee = (id: number) => {
     const emp = employees.find((e) => e.id === id);
     if (!emp) return;
+
     setEditingEmployee(id);
-    setEditFormData((p) => ({
-      ...p,
+    const roleIsOther = emp.role && !["Coiffeur/Coiffeuse", "Esthéticienne", "Barbier", "Masseur/Masseuse", "Manucure", "Coach sportif"].includes(emp.role);
+
+    setSelectedRole(roleIsOther ? "Autre" : emp.role);
+    setCustomRole(roleIsOther ? emp.role : "");
+
+    setEditFormData({
       name: emp.name,
-      role: emp.role,
-      customRole: emp.role === "Autre" ? customRole : "",
-    }));
+      firstName: "",
+      phone: emp.phone ?? "",
+      email: emp.email ?? "",
+      role: roleIsOther ? "Autre" : emp.role,
+      customRole: roleIsOther ? emp.role : "",
+      photo: emp.photo ?? null,
+    });
+
     setShowModal(true);
   };
 
+  const pickPhoto = async () => {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      toast("Permission galerie refusée");
+      return;
+    }
+    const res = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.8,
+      allowsEditing: true,
+      aspect: [1, 1],
+    });
+
+    if (!res.canceled) {
+      setEditFormData((p) => ({ ...p, photo: res.assets[0]?.uri ?? null }));
+    }
+  };
+
   const handleSaveEmployee = () => {
-    const resolvedRole = editFormData.role === "Autre" ? editFormData.customRole : editFormData.role;
-    if (!editFormData.name?.trim()) return;
+    const fullName = [editFormData.firstName.trim(), editFormData.name.trim()].filter(Boolean).join(" ").trim();
+    if (!fullName) return;
+
+    const resolvedRole = editFormData.role === "Autre" ? editFormData.customRole.trim() : editFormData.role;
+    if (!resolvedRole) return;
 
     if (editingEmployee) {
       setEmployees((prev) =>
-        prev.map((e) => (e.id === editingEmployee ? { ...e, name: editFormData.name.trim(), role: resolvedRole || e.role } : e))
+        prev.map((e) =>
+          e.id === editingEmployee
+            ? { ...e, name: fullName, role: resolvedRole, phone: editFormData.phone, email: editFormData.email, photo: editFormData.photo }
+            : e
+        )
       );
-      setEditingEmployee(null);
+      toast("Employé modifié");
     } else {
       const newEmployee: Employee = {
         id: Math.max(0, ...employees.map((e) => e.id)) + 1,
-        name: editFormData.name.trim(),
-        role: resolvedRole || "Employé",
+        name: fullName,
+        role: resolvedRole,
         status: "active",
-        photo: null,
+        photo: editFormData.photo,
+        phone: editFormData.phone,
+        email: editFormData.email,
       };
-      setEmployees((prev) => [...prev, newEmployee]);
+      setEmployees((prev) => [newEmployee, ...prev]);
       setShowInvitationSent(true);
     }
-    setShowModal(false);
-  };
 
-  const handleOpenLeaveCalendar = (employeeId: number) => {
-    setOriginalLeaveData({ ...leaveData });
-    setOriginalEmployees([...employees]);
-    setShowLeaveCalendar(employeeId);
+    setEditingEmployee(null);
+    setShowModal(false);
+    resetForm();
   };
 
   const handleToggleAbsence = (employeeId: number) => {
@@ -141,7 +153,7 @@ export function EmployeeManagement({ navigate }: Props) {
 
     if (emp.status === "absent") {
       setEmployees((prev) => prev.map((e) => (e.id === employeeId ? { ...e, status: "active" } : e)));
-      toast(`${emp.name} a été marqué(e) comme présent(e)`);
+      toast(`${emp.name} est marqué(e) présent(e)`);
     } else {
       setShowAbsenceModal(employeeId);
       setAbsenceReason("");
@@ -150,53 +162,42 @@ export function EmployeeManagement({ navigate }: Props) {
     }
   };
 
-  const toast = (msg: string) => {
-    setAbsenceNotificationMessage(msg);
-    setShowAbsenceNotification(true);
-    setTimeout(() => setShowAbsenceNotification(false), 2500);
-  };
-
   const handleConfirmAbsence = () => {
     if (!showAbsenceModal || !absenceStartDate) return;
     const emp = employees.find((e) => e.id === showAbsenceModal);
+
     setEmployees((prev) => prev.map((e) => (e.id === showAbsenceModal ? { ...e, status: "absent" } : e)));
     setShowAbsenceModal(null);
-    toast(`${emp?.name ?? "Employé"} a été marqué(e) comme absent(e)`);
+    toast(`${emp?.name ?? "Employé"} a été marqué(e) absent(e)`);
   };
-
-  const headerSubtitle = useMemo(() => `${employees.length} membres dans votre équipe`, [employees.length]);
 
   return (
     <View style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Pressable onPress={() => navigate("pro-dashboard")} style={styles.backBtn}>
-          <Ionicons name="arrow-back" size={22} color="#fff" />
-        </Pressable>
-        <Text style={styles.headerTitle}>Gestion des Employés</Text>
-        <Text style={styles.headerSub}>{headerSubtitle}</Text>
-      </View>
+      <ProHeader title="Gestion des Employés" subtitle={headerSubtitle} />
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Add Employee */}
-        <Pressable onPress={() => { setEditingEmployee(null); setShowModal(true); }} style={styles.primaryBtn}>
+        <Pressable
+          onPress={() => {
+            setEditingEmployee(null);
+            resetForm();
+            setShowModal(true);
+          }}
+          style={styles.primaryBtn}
+        >
           <Ionicons name="add" size={18} color="#fff" />
           <Text style={styles.primaryBtnText}>Ajouter un employé</Text>
         </Pressable>
 
-        {/* Leave Requests */}
-        <Pressable onPress={() => setShowAppointmentRequests(true)} style={styles.goldBtn}>
-          <Ionicons name="calendar" size={18} color="#fff" />
-          <Text style={styles.goldBtnText}>Demandes de congés</Text>
-        </Pressable>
-
-        {/* Employees list */}
         <View style={{ gap: 12 }}>
           {employees.map((employee) => (
             <View key={employee.id} style={styles.card}>
               <View style={styles.rowTop}>
                 <View style={styles.avatar}>
-                  <Ionicons name="person" size={18} color="#6B2737" />
+                  {employee.photo ? (
+                    <Image source={{ uri: employee.photo }} style={{ width: 48, height: 48, borderRadius: 999 }} />
+                  ) : (
+                    <Ionicons name="person" size={18} color="#6B2737" />
+                  )}
                 </View>
 
                 <View style={{ flex: 1 }}>
@@ -219,10 +220,6 @@ export function EmployeeManagement({ navigate }: Props) {
                     />
                   </Pressable>
 
-                  <Pressable onPress={() => handleOpenLeaveCalendar(employee.id)} style={styles.iconBtn}>
-                    <Ionicons name="calendar-outline" size={20} color="#D4AF6A" />
-                  </Pressable>
-
                   <Pressable onPress={() => handleEditEmployee(employee.id)} style={styles.iconBtn}>
                     <Ionicons name="create-outline" size={20} color="#6B2737" />
                   </Pressable>
@@ -240,11 +237,11 @@ export function EmployeeManagement({ navigate }: Props) {
       </ScrollView>
 
       {/* Toast */}
-      <Modal visible={showAbsenceNotification} transparent animationType="fade">
+      <Modal visible={toastVisible} transparent animationType="fade">
         <View style={styles.toastWrap}>
           <View style={styles.toast}>
             <Ionicons name="checkmark-circle" size={18} color="#fff" />
-            <Text style={styles.toastText}>{absenceNotificationMessage}</Text>
+            <Text style={styles.toastText}>{toastMsg}</Text>
           </View>
         </View>
       </Modal>
@@ -268,22 +265,10 @@ export function EmployeeManagement({ navigate }: Props) {
             </View>
 
             <Text style={styles.label}>Date de début *</Text>
-            <TextInput
-              value={absenceStartDate}
-              onChangeText={setAbsenceStartDate}
-              placeholder="YYYY-MM-DD"
-              autoCapitalize="none"
-              style={styles.input}
-            />
+            <TextInput value={absenceStartDate} onChangeText={setAbsenceStartDate} placeholder="YYYY-MM-DD" autoCapitalize="none" style={styles.input} />
 
             <Text style={styles.label}>Date de fin (optionnelle)</Text>
-            <TextInput
-              value={absenceEndDate}
-              onChangeText={setAbsenceEndDate}
-              placeholder="YYYY-MM-DD"
-              autoCapitalize="none"
-              style={styles.input}
-            />
+            <TextInput value={absenceEndDate} onChangeText={setAbsenceEndDate} placeholder="YYYY-MM-DD" autoCapitalize="none" style={styles.input} />
 
             <Text style={styles.label}>Motif (optionnel)</Text>
             <TextInput value={absenceReason} onChangeText={setAbsenceReason} placeholder="Maladie, urgence..." style={styles.input} />
@@ -292,11 +277,7 @@ export function EmployeeManagement({ navigate }: Props) {
               <Pressable onPress={() => setShowAbsenceModal(null)} style={styles.secondaryBtn}>
                 <Text style={styles.secondaryBtnText}>Annuler</Text>
               </Pressable>
-              <Pressable
-                onPress={handleConfirmAbsence}
-                disabled={!absenceStartDate}
-                style={[styles.dangerBtn, !absenceStartDate && { opacity: 0.5 }]}
-              >
+              <Pressable onPress={handleConfirmAbsence} disabled={!absenceStartDate} style={[styles.dangerBtn, !absenceStartDate && { opacity: 0.5 }]}>
                 <Text style={styles.dangerBtnText}>Confirmer</Text>
               </Pressable>
             </View>
@@ -311,30 +292,40 @@ export function EmployeeManagement({ navigate }: Props) {
             <ScrollView showsVerticalScrollIndicator={false}>
               <Text style={styles.modalTitle}>{editingEmployee ? "Modifier un employé" : "Ajouter un employé"}</Text>
 
+              {/* Photo */}
+              <Text style={styles.label}>Photo (optionnel)</Text>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                <View style={styles.photoBox}>
+                  {editFormData.photo ? (
+                    <Image source={{ uri: editFormData.photo }} style={{ width: "100%", height: "100%" }} />
+                  ) : (
+                    <Ionicons name="camera" size={24} color="rgba(107,39,55,0.6)" />
+                  )}
+                </View>
+
+                <View style={{ flex: 1, gap: 10 }}>
+                  <Pressable onPress={pickPhoto} style={styles.smallPrimary}>
+                    <Ionicons name="image-outline" size={16} color="#fff" />
+                    <Text style={styles.smallPrimaryText}>Choisir</Text>
+                  </Pressable>
+
+                  {!!editFormData.photo && (
+                    <Pressable onPress={() => setEditFormData((p) => ({ ...p, photo: null }))} style={styles.smallDanger}>
+                      <Ionicons name="trash-outline" size={16} color="#fff" />
+                      <Text style={styles.smallPrimaryText}>Retirer</Text>
+                    </Pressable>
+                  )}
+                </View>
+              </View>
+
               <Text style={styles.label}>Nom</Text>
-              <TextInput
-                value={editFormData.name}
-                onChangeText={(v) => setEditFormData((p) => ({ ...p, name: v }))}
-                placeholder="Nom complet"
-                style={styles.input}
-              />
+              <TextInput value={editFormData.name} onChangeText={(v) => setEditFormData((p) => ({ ...p, name: v }))} placeholder="Nom" style={styles.input} />
 
               <Text style={styles.label}>Prénom</Text>
-              <TextInput
-                value={editFormData.firstName}
-                onChangeText={(v) => setEditFormData((p) => ({ ...p, firstName: v }))}
-                placeholder="Prénom"
-                style={styles.input}
-              />
+              <TextInput value={editFormData.firstName} onChangeText={(v) => setEditFormData((p) => ({ ...p, firstName: v }))} placeholder="Prénom" style={styles.input} />
 
               <Text style={styles.label}>Téléphone</Text>
-              <TextInput
-                value={editFormData.phone}
-                onChangeText={(v) => setEditFormData((p) => ({ ...p, phone: v }))}
-                placeholder="+241 .."
-                keyboardType="phone-pad"
-                style={styles.input}
-              />
+              <TextInput value={editFormData.phone} onChangeText={(v) => setEditFormData((p) => ({ ...p, phone: v }))} placeholder="+241 ..." keyboardType="phone-pad" style={styles.input} />
 
               <Text style={styles.label}>Email</Text>
               <TextInput
@@ -346,11 +337,8 @@ export function EmployeeManagement({ navigate }: Props) {
                 style={styles.input}
               />
 
-              <Text style={styles.helpText}>
-                Ces informations seront utilisées pour inviter l'employé à créer son mot de passe.
-              </Text>
+              <Text style={styles.helpText}>Ces informations seront utilisées pour inviter l'employé à créer son mot de passe.</Text>
 
-              {/* Role (simple RN version: quick chips) */}
               <Text style={styles.label}>Rôle / Spécialité</Text>
               <View style={styles.chipsWrap}>
                 {["Coiffeur/Coiffeuse", "Esthéticienne", "Barbier", "Masseur/Masseuse", "Manucure", "Coach sportif", "Autre"].map((r) => {
@@ -385,20 +373,15 @@ export function EmployeeManagement({ navigate }: Props) {
                 </>
               )}
 
-              {/* Planning hebdo (UI only) */}
-              <View style={styles.sectionSep} />
-              <Text style={styles.sectionTitle}>Planning hebdomadaire</Text>
-              {["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"].map((day) => (
-                <View key={day} style={styles.planningRow}>
-                  <Text style={styles.planningDay}>{day}</Text>
-                  <TextInput style={styles.timeInput} placeholder="09:00" />
-                  <Text style={{ color: "#999" }}>–</Text>
-                  <TextInput style={styles.timeInput} placeholder="18:00" />
-                </View>
-              ))}
-
               <View style={styles.modalFooter}>
-                <Pressable onPress={() => setShowModal(false)} style={styles.secondaryBtn}>
+                <Pressable
+                  onPress={() => {
+                    setShowModal(false);
+                    setEditingEmployee(null);
+                    resetForm();
+                  }}
+                  style={styles.secondaryBtn}
+                >
                   <Text style={styles.secondaryBtnText}>Annuler</Text>
                 </Pressable>
 
@@ -422,9 +405,7 @@ export function EmployeeManagement({ navigate }: Props) {
               <Ionicons name="checkmark" size={20} color="#16a34a" />
             </View>
             <Text style={styles.confirmTitle}>Invitation envoyée !</Text>
-            <Text style={styles.confirmText}>
-              L'employé peut créer son mot de passe via email/SMS et accéder à l'espace via le login unique.
-            </Text>
+            <Text style={styles.confirmText}>L'employé peut créer son mot de passe via email/SMS et accéder à l'espace via le login unique.</Text>
             <Pressable onPress={() => setShowInvitationSent(false)} style={styles.primaryBtn}>
               <Text style={styles.primaryBtnText}>Compris</Text>
             </Pressable>
@@ -453,10 +434,6 @@ export function EmployeeManagement({ navigate }: Props) {
           </View>
         </View>
       </Modal>
-
-      {/* Leave calendar + leave confirmation + appointment requests
-          -> je te mets une version RN compacte (calendrier "grille") dans un 2e message si tu veux.
-          Là on continue les autres écrans pour avancer vite. */}
     </View>
   );
 }
@@ -476,12 +453,6 @@ function badgeByStatus(status: EmployeeStatus) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#FAF7F2" },
-
-  header: { backgroundColor: "#6B2737", paddingTop: 52, paddingBottom: 18, paddingHorizontal: 18 },
-  backBtn: { width: 40, height: 40, justifyContent: "center" },
-  headerTitle: { color: "#fff", fontSize: 22, fontWeight: "700" },
-  headerSub: { color: "rgba(255,255,255,0.8)", marginTop: 6, fontSize: 13 },
-
   content: { padding: 18, paddingBottom: 32, gap: 12 },
 
   primaryBtn: {
@@ -507,18 +478,6 @@ const styles = StyleSheet.create({
   },
   primaryBtnText: { color: "#fff", fontSize: 14, fontWeight: "600" },
 
-  goldBtn: {
-    backgroundColor: "#D4AF6A",
-    borderRadius: 999,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    flexDirection: "row",
-    gap: 8,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  goldBtnText: { color: "#fff", fontSize: 14, fontWeight: "600" },
-
   card: { backgroundColor: "#fff", borderRadius: 18, padding: 14, shadowColor: "#000", shadowOpacity: 0.06, shadowRadius: 10 },
   rowTop: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
 
@@ -529,6 +488,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(107,39,55,0.10)",
     justifyContent: "center",
     alignItems: "center",
+    overflow: "hidden",
   },
   empName: { color: "#3A3A3A", fontSize: 15, fontWeight: "700" },
   empRole: { color: "rgba(58,58,58,0.6)", marginTop: 2, marginBottom: 8, fontSize: 12 },
@@ -574,18 +534,19 @@ const styles = StyleSheet.create({
   chipText: { fontSize: 12, color: "#3A3A3A" },
   chipTextActive: { fontWeight: "800", color: "#6B2737" },
 
-  sectionSep: { height: 1, backgroundColor: "rgba(107,39,55,0.12)", marginTop: 14, marginBottom: 12 },
-  sectionTitle: { fontSize: 13, fontWeight: "800", color: "#3A3A3A", marginBottom: 8 },
-
-  planningRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 10 },
-  planningDay: { width: 88, color: "#3A3A3A", fontWeight: "700" },
-  timeInput: {
-    flex: 1,
+  photoBox: {
+    width: 72,
+    height: 72,
+    borderRadius: 18,
     backgroundColor: "#FAF7F2",
-    borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
     borderWidth: 1,
     borderColor: "rgba(107,39,55,0.2)",
+    justifyContent: "center",
+    alignItems: "center",
+    overflow: "hidden",
   },
+
+  smallPrimary: { backgroundColor: "#6B2737", borderRadius: 999, paddingVertical: 10, paddingHorizontal: 12, flexDirection: "row", gap: 6, justifyContent: "center", alignItems: "center" },
+  smallDanger: { backgroundColor: "#dc2626", borderRadius: 999, paddingVertical: 10, paddingHorizontal: 12, flexDirection: "row", gap: 6, justifyContent: "center", alignItems: "center" },
+  smallPrimaryText: { color: "#fff", fontWeight: "900", fontSize: 12 },
 });
