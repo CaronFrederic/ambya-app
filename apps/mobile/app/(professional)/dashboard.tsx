@@ -2,6 +2,14 @@ import React from "react";
 import { View, Text, StyleSheet, Pressable, ScrollView, SafeAreaView } from "react-native";
 import { router, type Href } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { ProHeader } from "./components/ProHeader";
+
+const today = new Date().toLocaleDateString("fr-FR", {
+  weekday: "long",
+  day: "numeric",
+  month: "long",
+  year: "numeric",
+});
 
 const COLORS = {
   bg: "#FAF7F2",
@@ -45,6 +53,9 @@ export default function ProDashboard() {
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Espace Professionnel</Text>
         <Text style={styles.headerSub}>Accès rapide à la gestion du salon</Text>
+        <Text style={styles.headerDate}>
+    📅 {today.charAt(0).toUpperCase() + today.slice(1)}
+  </Text>
       </View>
 
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 28 }}>
@@ -54,6 +65,11 @@ export default function ProDashboard() {
         <Tile title="Carte de Fidélité" subtitle="Programme personnalisé salon" icon="gift-outline" href="/(professional)/loyalty" tone="gold" />
         <Tile title="Historique Réservations" subtitle="Terminé • Annulé • No-show" icon="calendar-outline" href="/(professional)/booking-history" />
         <Tile title="Fiche Client (exemple)" subtitle="Détails + gestion acompte" icon="person-outline" href="/(professional)/client-details" />
+      
+        <Tile title="Gestion des Employés" subtitle="Ajouter, modifier ou supprimer des employés" icon="people-outline" href="/(professional)/EmployeeManagement" />
+        <Tile title="Dépenses & Revenus" subtitle="Gestion des dépenses et revenus du salon" icon="cash-outline" href="/(professional)/ExpenseManagement" />
+        <Tile title="Rapports Comptables" subtitle="Analyse des revenus et dépenses" icon="bar-chart-outline" href="/(professional)/AccountingReports" />
+        <Tile title="Fidélité" subtitle="Gestion du programme de fidélité" icon="gift-outline" href="/(professional)/loyalty" />
       </ScrollView>
     </SafeAreaView>
   );
@@ -104,5 +120,11 @@ const styles = StyleSheet.create({
     color: `${COLORS.text}88`,
     marginTop: 2,
     fontSize: 12,
+  },
+  headerDate: {
+    color: "rgba(255,255,255,0.85)",
+    marginTop: 10,
+    fontSize: 13,
+    fontWeight: "600",
   },
 });
