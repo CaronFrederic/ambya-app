@@ -197,24 +197,40 @@ export class MeService {
   }
 
   async updateClientProfile(userId: string, dto: UpdateClientProfileDto) {
+    // on lit l'existant (si présent) pour merger le questionnaire
     const existing = await this.prisma.clientProfile.findUnique({
       where: { userId },
-      select: { id: true, questionnaire: true },
+      select: { questionnaire: true },
     })
 
-    if (!existing) {
-      throw new BadRequestException('Client profile not found')
-    }
-
-    // Merge questionnaire si dto.questionnaire est fourni
     const mergedQuestionnaire =
       dto.questionnaire === undefined
         ? undefined
-        : this.mergeJson(existing.questionnaire, dto.questionnaire)
+        : this.mergeJson(existing?.questionnaire, dto.questionnaire)
 
-    const updated = await this.prisma.clientProfile.update({
+    const updated = await this.prisma.clientProfile.upsert({
       where: { userId },
-      data: {
+      create: {
+        userId,
+
+        // champs obligatoires dans ton schema (non null)
+        nickname: dto.nickname ?? '',
+        gender: dto.gender ?? '',
+        ageRange: dto.ageRange ?? '',
+        city: dto.city ?? '',
+        country: dto.country ?? '',
+
+        allergies: dto.allergies ?? null,
+        comments: dto.comments ?? null,
+
+        questionnaire:
+          dto.questionnaire === undefined
+            ? Prisma.DbNull
+            : mergedQuestionnaire === null
+              ? Prisma.DbNull
+              : mergedQuestionnaire,
+      },
+      update: {
         nickname: dto.nickname ?? undefined,
         gender: dto.gender ?? undefined,
         ageRange: dto.ageRange ?? undefined,

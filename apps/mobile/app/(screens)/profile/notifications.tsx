@@ -1,56 +1,104 @@
 // app/(tabs)/profile/notifications.tsx
-import React, { useMemo } from 'react'
-import { View, Text, StyleSheet, Pressable } from 'react-native'
+import React, { useMemo, useState } from 'react'
+import { View, Text, StyleSheet, Pressable, ActivityIndicator, Alert } from 'react-native'
 import { router } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 
 import { Screen } from '../../../src/components/Screen'
-import { useProfile } from '../../../src/providers/ProfileProvider'
 import { colors, overlays } from '../../../src/theme/colors'
 import { spacing } from '../../../src/theme/spacing'
 import { radius } from '../../../src/theme/radius'
 import { typography } from '../../../src/theme/typography'
 
-const ALL = ['Push', 'Email'] as const
-type Notif = (typeof ALL)[number]
+import { useMeSummary } from '../../../src/api/me'
+import { useUpdateMeProfile } from '../../../src/api/me'
+
+type NotifValue = 'push' | 'email'
+
+const OPTIONS: { label: string; value: NotifValue; icon: any; sub: string }[] = [
+  { label: 'Push', value: 'push', icon: 'notifications-outline', sub: 'Notifications sur votre téléphone' },
+  { label: 'Email', value: 'email', icon: 'mail-outline', sub: 'Recevoir un email' },
+]
 
 export default function NotificationsScreen() {
-  const { data, patchSection } = useProfile()
+  const { data: summary, isLoading, isRefetching } = useMeSummary(true)
+  const update = useUpdateMeProfile()
 
-  const selected = useMemo(
-    () => new Set((data.practical.notifications ?? []) as Notif[]),
-    [data.practical.notifications]
-  )
+  const current = useMemo(() => {
+    const q = (summary?.profile?.questionnaire ?? {}) as any
+    const prefs = (q?.practical?.notifPrefs ?? []) as string[]
+    return new Set(prefs.filter((x) => x === 'push' || x === 'email') as NotifValue[])
+  }, [summary])
 
-  const toggle = (n: Notif) => {
+  // état local pour feedback instantané
+  const [local, setLocal] = useState<Set<NotifValue> | null>(null)
+  const selected = local ?? current
+
+  const saving = update.isPending
+
+  const commit = async (next: Set<NotifValue>) => {
+    setLocal(new Set(next)) // optimiste
+    try {
+      await update.mutateAsync({
+        questionnaire: {
+          practical: {
+            notifPrefs: Array.from(next),
+          },
+        },
+      })
+      setLocal(null) // on laisse le refetch confirmer
+    } catch (e: any) {
+      setLocal(null)
+      Alert.alert('Erreur', e?.message ?? "Impossible de mettre à jour les notifications.")
+    }
+  }
+
+  const toggle = (v: NotifValue) => {
     const next = new Set(selected)
-    if (next.has(n)) next.delete(n)
-    else next.add(n)
-    patchSection('practical', { notifications: Array.from(next) })
+    if (next.has(v)) next.delete(v)
+    else next.add(v)
+    commit(next)
   }
 
   return (
     <Screen noPadding style={styles.screen}>
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.headerBack}>
+        <Pressable onPress={() => router.back()} style={styles.headerBack} hitSlop={10}>
           <Ionicons name="arrow-back" size={22} color="#fff" />
         </Pressable>
         <Text style={styles.headerTitle}>Notifications</Text>
       </View>
 
       <View style={styles.content}>
-        <Text style={styles.hint}>Choisissez comment vous souhaitez être notifié.</Text>
+        <View style={styles.topRow}>
+          <Text style={styles.hint}>Choisissez comment vous souhaitez être notifié.</Text>
+
+          {(isLoading || isRefetching || saving) && (
+            <View style={styles.savingRow}>
+              <ActivityIndicator />
+              <Text style={styles.savingText}>{saving ? 'Enregistrement…' : 'Chargement…'}</Text>
+            </View>
+          )}
+        </View>
 
         <View style={{ gap: spacing.md }}>
-          {ALL.map((n) => {
-            const on = selected.has(n)
-            const icon = n === 'Push' ? 'notifications-outline' : 'mail-outline'
+          {OPTIONS.map((o) => {
+            const on = selected.has(o.value)
             return (
-              <Pressable key={n} onPress={() => toggle(n)} style={[styles.row, on ? styles.rowOn : styles.rowOff]}>
-                <Ionicons name={icon} size={22} color={colors.brand} />
+              <Pressable
+                key={o.value}
+                onPress={() => toggle(o.value)}
+                disabled={saving || isLoading}
+                style={[
+                  styles.row,
+                  on ? styles.rowOn : styles.rowOff,
+                  (saving || isLoading) && { opacity: 0.7 },
+                ]}
+              >
+                <Ionicons name={o.icon} size={22} color={colors.brand} />
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.rowTitle}>{n}</Text>
-                  <Text style={styles.rowSub}>{n === 'Push' ? 'Notifications sur votre téléphone' : 'Recevoir un email'}</Text>
+                  <Text style={styles.rowTitle}>{o.label}</Text>
+                  <Text style={styles.rowSub}>{o.sub}</Text>
                 </View>
                 {on ? <Ionicons name="checkmark" size={20} color={colors.brand} /> : null}
               </Pressable>
@@ -76,7 +124,11 @@ const styles = StyleSheet.create({
   headerTitle: { color: '#fff', ...typography.h2, marginTop: spacing.lg },
 
   content: { padding: spacing.lg, gap: spacing.lg },
+  topRow: { gap: 10 },
   hint: { color: colors.textMuted, ...typography.small },
+
+  savingRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  savingText: { color: colors.textMuted, ...typography.small, fontWeight: '700' },
 
   row: {
     backgroundColor: colors.card,

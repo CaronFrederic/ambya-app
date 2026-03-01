@@ -19,6 +19,10 @@ import { spacing } from '../../src/theme/spacing'
 import { radius } from '../../src/theme/radius'
 import { typography } from '../../src/theme/typography'
 
+import * as SecureStore from 'expo-secure-store'
+import { registerClient, patchMeProfile, persistAuth } from '../../src/api/auth'
+import { useAuthRefresh } from '../../src/providers/AuthRefreshProvider'
+
 type StepKey =
   | 'general'
   | 'hair'
@@ -378,10 +382,77 @@ export default function ClientSignup() {
     setStepIndex(Math.max(0, stepIndex - 1))
   }
 
-  const onFinish = () => {
-    // Option B: uniquement l’affichage pour l’instant.
-    // Plus tard: call /profile/update + /auth/signup etc.
-    router.replace('/(tabs)/home')
+  const { refreshAuth } = useAuthRefresh()
+  const [submitting, setSubmitting] = useState(false)
+
+  const onFinish = async () => {
+    try {
+      setSubmitting(true)
+
+      // 1) register user
+      const reg = await registerClient({
+        email: email.trim() || undefined,
+        phone: phone.trim() || undefined,
+        password,
+      })
+
+      // 2) store token + role
+      await persistAuth(reg.accessToken, reg.user.role)
+
+      // 3) build /me/profile payload (upsert robuste)
+      const payload = {
+        nickname: nickname.trim(),
+        gender,
+        ageRange,
+        city: city.trim(),
+        country: country.trim(),
+        allergies, // 'yes' | 'no'
+        comments: comments?.trim() || null,
+        questionnaire: {
+          hair: {
+            hairTypes,
+            hairTexture,
+            hairLength,
+            hairConcerns,
+          },
+          nails: {
+            nailTypes,
+            nailStates,
+            nailConcerns,
+          },
+          face: {
+            faceSkin,
+            faceConcerns,
+          },
+          body: {
+            bodySkin,
+            tensionZones,
+            wellbeingConcerns,
+            massageSensitiveZones,
+          },
+          fitness: {
+            activityLevel,
+            fitnessGoals,
+            fitnessConcerns,
+          },
+          practical: {
+            paymentPrefs,
+            notifPrefs,
+          },
+        },
+      }
+
+      // 4) patch profile with token
+      await patchMeProfile(reg.accessToken, payload)
+
+      // 5) refresh app auth state + go home
+      await refreshAuth()
+      router.replace('/(tabs)/home')
+    } catch (e: any) {
+      Alert.alert('Erreur', e?.message ?? "Impossible de créer le compte.")
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   return (
@@ -738,8 +809,10 @@ export default function ClientSignup() {
             <Text style={styles.nextBtnText}>Suivant  ›</Text>
           </Pressable>
         ) : (
-          <Pressable onPress={onFinish} style={styles.finishBtn}>
-            <Text style={styles.finishBtnText}>Terminer  ✓</Text>
+          <Pressable onPress={onFinish} style={styles.finishBtn} disabled={submitting}>
+            <Text style={styles.finishBtnText}>
+              {submitting ? 'Création…' : 'Terminer  ✓'}
+            </Text>
           </Pressable>
         )}
       </View>

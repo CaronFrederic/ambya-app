@@ -1,33 +1,42 @@
-import React, { useMemo, useState } from 'react'
-import { View, Text, StyleSheet, ScrollView, Pressable, TextInput, Alert, Platform } from 'react-native'
+// app/(screens)/profile/payment-methods.tsx
+import React, { useEffect, useMemo, useState } from 'react'
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  Pressable,
+  TextInput,
+  Alert,
+  Platform,
+  ActivityIndicator,
+  RefreshControl,
+} from 'react-native'
 import { router } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
+import * as SecureStore from 'expo-secure-store'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 
 import { Screen } from '../../../src/components/Screen'
 import { Button } from '../../../src/components/Button'
 import { Card } from '../../../src/components/Card'
-import {
-  usePayment,
-  CardPaymentMethod,
-  CardBrand,
-  MobileMoneyMethod,
-  MobileMoneyProvider,
-} from '../../../src/providers/PaymentProvider'
 
 import { colors, overlays } from '../../../src/theme/colors'
 import { spacing } from '../../../src/theme/spacing'
 import { radius } from '../../../src/theme/radius'
 import { typography } from '../../../src/theme/typography'
 
+// -------------------------
+// Helpers
+// -------------------------
 function onlyDigits(v: string) {
   return (v ?? '').replace(/\D/g, '')
 }
-
 function formatCardNumber(v: string) {
   const d = onlyDigits(v).slice(0, 19)
   return d.replace(/(.{4})/g, '$1 ').trim()
 }
-
+type CardBrand = 'Visa' | 'Mastercard' | 'Amex' | 'Autre'
 function detectBrand(digits: string): CardBrand {
   if (!digits) return 'Autre'
   if (digits.startsWith('4')) return 'Visa'
@@ -35,57 +44,146 @@ function detectBrand(digits: string): CardBrand {
   if (/^3[47]/.test(digits)) return 'Amex'
   return 'Autre'
 }
-
 function maskCard(last4: string) {
   return `•••• •••• •••• ${last4}`
 }
-
 function normalizePhone(v: string) {
-  // conserve + et chiffres
   return (v ?? '').replace(/[^\d+]/g, '').slice(0, 20)
 }
 
+type MobileMoneyProvider = 'Airtel Money' | 'Moov Money' | 'Orange Money' | 'MTN' | 'Autre'
 const MM_PROVIDERS: MobileMoneyProvider[] = ['Airtel Money', 'Moov Money', 'Orange Money', 'MTN', 'Autre']
 
+// -------------------------
+// API types (aligné à ton Prisma PaymentMethod)
+// -------------------------
+type PaymentType = 'MOMO' | 'CARD' | 'CASH'
+
+type PaymentMethodApi = {
+  id: string
+  userId: string
+  type: PaymentType
+  provider: string | null
+  providerRef: string | null
+  providerData: any
+  label: string | null
+  phone: string | null
+  last4: string | null
+  isDefault: boolean
+  isActive: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+type CreatePaymentMethodBody = {
+  type: PaymentType
+  provider?: string | null
+  label?: string | null
+  phone?: string | null
+  last4?: string | null
+  isDefault?: boolean
+}
+
+const API_URL = process.env.EXPO_PUBLIC_API_URL
+const BASE = '/me/payment-methods'
+
+async function apiFetch<T>(token: string, path: string, init?: RequestInit): Promise<T> {
+  if (!API_URL) throw new Error('EXPO_PUBLIC_API_URL manquant')
+  const res = await fetch(`${API_URL}${path}`, {
+    ...init,
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+      ...(init?.headers ?? {}),
+    },
+  })
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    throw new Error(text || `HTTP ${res.status}`)
+  }
+  // certains DELETE renvoient {success:true}
+  return (await res.json()) as T
+}
+
+// -------------------------
+// Queries / Mutations
+// -------------------------
+function usePaymentMethods(enabled: boolean, token: string | null) {
+  return useQuery({
+    queryKey: ['me', 'payment-methods'],
+    enabled: enabled && !!token,
+    queryFn: () => apiFetch<PaymentMethodApi[]>(token!, BASE),
+  })
+}
+
+function useCreatePaymentMethod(token: string | null) {
+  return useMutation({
+    mutationFn: (body: CreatePaymentMethodBody) =>
+      apiFetch<PaymentMethodApi>(token!, BASE, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+  })
+}
+
+function useSetDefaultPaymentMethod(token: string | null) {
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiFetch<PaymentMethodApi>(token!, `${BASE}/${id}/set-default`, { method: 'PATCH' }),
+  })
+}
+
+function useDeletePaymentMethod(token: string | null) {
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiFetch<{ success: true }>(token!, `${BASE}/${id}`, { method: 'DELETE' }),
+  })
+}
+
+// -------------------------
+// Screen
+// -------------------------
 export default function PaymentMethodsScreen() {
-  const {
-    // Cards
-    cards,
-    upsertCard,
-    removeCard,
-    setDefault,
+  const qc = useQueryClient()
+  const [token, setToken] = useState<string | null>(null)
 
-    // Mobile Money (depuis Provider)
-    mobileMoney,
-    upsertMobileMoney,
-    removeMobileMoney,
-    setDefaultMobileMoney,
-  } = usePayment()
+  useEffect(() => {
+    SecureStore.getItemAsync('accessToken').then(setToken)
+  }, [])
 
-  // -----------------------
-  // Carte (existante)
-  // -----------------------
+  const { data, isLoading, isRefetching, refetch } = usePaymentMethods(!!token, token)
+  const createPM = useCreatePaymentMethod(token)
+  const setDefaultPM = useSetDefaultPaymentMethod(token)
+  const deletePM = useDeletePaymentMethod(token)
+
+  const methods = data ?? []
+  const cards = useMemo(() => methods.filter((m) => m.type === 'CARD' && m.isActive), [methods])
+  const momos = useMemo(() => methods.filter((m) => m.type === 'MOMO' && m.isActive), [methods])
+
   const defaultCard = useMemo(() => cards.find((c) => c.isDefault) ?? cards[0], [cards])
+  const defaultMomo = useMemo(() => momos.find((m) => m.isDefault) ?? momos[0], [momos])
+
+  // -----------------------
+  // Card form
+  // -----------------------
   const [editingCard, setEditingCard] = useState(false)
 
-  const [holderName, setHolderName] = useState(defaultCard?.holderName ?? '')
-  const [number, setNumber] = useState('') // jamais pré-remplir
-  const [expMonth, setExpMonth] = useState(defaultCard?.expMonth ?? '')
-  const [expYear, setExpYear] = useState(defaultCard?.expYear ?? '')
+  const [holderName, setHolderName] = useState(defaultCard?.label ?? '')
+  const [number, setNumber] = useState('')
+  const [expMonth, setExpMonth] = useState('')
+  const [expYear, setExpYear] = useState('')
   const [cvc, setCvc] = useState('')
 
-  const onStartEditCard = () => {
+  const startEditCard = () => {
     setEditingCard(true)
-    setHolderName(defaultCard?.holderName ?? '')
-    setExpMonth(defaultCard?.expMonth ?? '')
-    setExpYear(defaultCard?.expYear ?? '')
+    setHolderName(defaultCard?.label ?? '')
     setNumber('')
+    setExpMonth('')
+    setExpYear('')
     setCvc('')
   }
 
-  const onCancelCard = () => setEditingCard(false)
-
-  const onSaveCard = () => {
+  const saveCard = async () => {
     const numDigits = onlyDigits(number)
     const mm = onlyDigits(expMonth).slice(0, 2)
     const yy = onlyDigits(expYear).slice(0, 2)
@@ -100,88 +198,123 @@ export default function PaymentMethodsScreen() {
     const brand = detectBrand(numDigits)
     const last4 = numDigits.slice(-4)
 
-    const updated: CardPaymentMethod = {
-      id: defaultCard?.id ?? `card_${Date.now()}`,
-      brand,
-      last4,
-      expMonth: mm.padStart(2, '0'),
-      expYear: yy.padStart(2, '0'),
-      holderName: holderName.trim(),
-      isDefault: true,
-    }
+    try {
+      // ⚠️ pas de PATCH :id côté back => stratégie bêta :
+      // si une carte existe, on la supprime puis on recrée
+      if (defaultCard?.id) {
+        await deletePM.mutateAsync(defaultCard.id)
+      }
 
-    upsertCard(updated)
-    setDefault(updated.id)
-    setEditingCard(false)
-    Alert.alert('OK', 'Carte mise à jour.')
+      const created = await createPM.mutateAsync({
+        type: 'CARD',
+        provider: brand, // provider = marque
+        last4,
+        label: holderName.trim(), // label = titulaire
+        isDefault: true,
+      })
+
+      // set default (au cas où)
+      await setDefaultPM.mutateAsync(created.id)
+
+      await qc.invalidateQueries({ queryKey: ['me', 'payment-methods'] })
+      setEditingCard(false)
+      Alert.alert('OK', 'Carte enregistrée.')
+    } catch (e: any) {
+      Alert.alert('Erreur', e?.message ?? 'Impossible de sauvegarder la carte.')
+    }
   }
 
-  const onDeleteCard = () => {
+  const removeCard = () => {
     if (!defaultCard) return
     Alert.alert('Supprimer la carte', 'Voulez-vous supprimer cette carte ?', [
       { text: 'Annuler', style: 'cancel' },
       {
         text: 'Supprimer',
         style: 'destructive',
-        onPress: () => {
-          removeCard(defaultCard.id)
-          setEditingCard(false)
+        onPress: async () => {
+          try {
+            await deletePM.mutateAsync(defaultCard.id)
+            await qc.invalidateQueries({ queryKey: ['me', 'payment-methods'] })
+            setEditingCard(false)
+          } catch (e: any) {
+            Alert.alert('Erreur', e?.message ?? 'Suppression impossible.')
+          }
         },
       },
     ])
   }
 
   // -----------------------
-  // Mobile Money
+  // MOMO form
   // -----------------------
-  const defaultMM = useMemo(() => mobileMoney.find((m) => m.isDefault) ?? mobileMoney[0], [mobileMoney])
-  const [editingMM, setEditingMM] = useState(false)
+  const [editingMomo, setEditingMomo] = useState(false)
 
-  const [mmProvider, setMmProvider] = useState<MobileMoneyProvider>(defaultMM?.provider ?? 'Airtel Money')
-  const [mmPhone, setMmPhone] = useState(defaultMM?.phone ?? '')
-  const [mmHolder, setMmHolder] = useState(defaultMM?.holderName ?? '')
+  const [momoProvider, setMomoProvider] = useState<MobileMoneyProvider>(
+    (defaultMomo?.provider as MobileMoneyProvider) ?? 'Airtel Money',
+  )
+  const [momoPhone, setMomoPhone] = useState(defaultMomo?.phone ?? '')
+  const [momoHolder, setMomoHolder] = useState(defaultMomo?.label ?? '')
 
-  const onStartEditMM = () => {
-    setEditingMM(true)
-    setMmProvider(defaultMM?.provider ?? 'Airtel Money')
-    setMmPhone(defaultMM?.phone ?? '')
-    setMmHolder(defaultMM?.holderName ?? '')
+  const startEditMomo = () => {
+    setEditingMomo(true)
+    setMomoProvider(((defaultMomo?.provider as MobileMoneyProvider) ?? 'Airtel Money') as MobileMoneyProvider)
+    setMomoPhone(defaultMomo?.phone ?? '')
+    setMomoHolder(defaultMomo?.label ?? '')
   }
 
-  const onCancelMM = () => setEditingMM(false)
-
-  const onSaveMM = () => {
-    const phone = normalizePhone(mmPhone).trim()
+  const saveMomo = async () => {
+    const phone = normalizePhone(momoPhone).trim()
     if (!phone || phone.length < 6) return Alert.alert('Erreur', 'Numéro Mobile Money invalide.')
 
-    const updated: MobileMoneyMethod = {
-      id: defaultMM?.id ?? `mm_${Date.now()}`,
-      provider: mmProvider,
-      phone,
-      holderName: mmHolder.trim() || undefined,
-      isDefault: true,
-    }
+    try {
+      // même stratégie (pas d'update endpoint)
+      if (defaultMomo?.id) {
+        await deletePM.mutateAsync(defaultMomo.id)
+      }
 
-    upsertMobileMoney(updated)
-    setDefaultMobileMoney(updated.id)
-    setEditingMM(false)
-    Alert.alert('OK', 'Mobile Money mis à jour.')
+      const created = await createPM.mutateAsync({
+        type: 'MOMO',
+        provider: momoProvider,
+        phone,
+        label: momoHolder.trim() || null,
+        isDefault: true,
+      })
+
+      await setDefaultPM.mutateAsync(created.id)
+
+      await qc.invalidateQueries({ queryKey: ['me', 'payment-methods'] })
+      setEditingMomo(false)
+      Alert.alert('OK', 'Mobile Money enregistré.')
+    } catch (e: any) {
+      Alert.alert('Erreur', e?.message ?? "Impossible de sauvegarder Mobile Money.")
+    }
   }
 
-  const onDeleteMM = () => {
-    if (!defaultMM) return
+  const removeMomo = () => {
+    if (!defaultMomo) return
     Alert.alert('Supprimer Mobile Money', 'Voulez-vous supprimer ce moyen de paiement ?', [
       { text: 'Annuler', style: 'cancel' },
       {
         text: 'Supprimer',
         style: 'destructive',
-        onPress: () => {
-          removeMobileMoney(defaultMM.id)
-          setEditingMM(false)
+        onPress: async () => {
+          try {
+            await deletePM.mutateAsync(defaultMomo.id)
+            await qc.invalidateQueries({ queryKey: ['me', 'payment-methods'] })
+            setEditingMomo(false)
+          } catch (e: any) {
+            Alert.alert('Erreur', e?.message ?? 'Suppression impossible.')
+          }
         },
       },
     ])
   }
+
+  const busy =
+    isLoading ||
+    createPM.isPending ||
+    setDefaultPM.isPending ||
+    deletePM.isPending
 
   return (
     <Screen noPadding style={{ backgroundColor: colors.background }}>
@@ -195,21 +328,33 @@ export default function PaymentMethodsScreen() {
         <Text style={styles.headerSubtitle}>Carte & Mobile Money</Text>
       </View>
 
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} />}
+      >
+        {busy && (
+          <View style={styles.loadingRow}>
+            <ActivityIndicator />
+            <Text style={styles.loadingText}>Synchronisation…</Text>
+          </View>
+        )}
+
         {/* ----------------------- */}
-        {/* CARTE */}
+        {/* CARD */}
         {/* ----------------------- */}
         <Card style={styles.cardBox}>
           <View style={styles.cardTop}>
             <View style={{ flex: 1, minWidth: 0 }}>
               <Text style={styles.cardLabel}>Carte enregistrée</Text>
+
               {defaultCard ? (
                 <>
-                  <Text style={styles.cardValue}>{maskCard(defaultCard.last4)}</Text>
+                  <Text style={styles.cardValue}>{maskCard(defaultCard.last4 ?? '••••')}</Text>
                   <Text style={styles.cardMeta}>
-                    {defaultCard.brand ?? 'Carte'} • Exp. {defaultCard.expMonth}/{defaultCard.expYear}
+                    {defaultCard.provider ?? 'Carte'} • Par défaut
                   </Text>
-                  {!!defaultCard.holderName && <Text style={styles.cardMeta}>Titulaire : {defaultCard.holderName}</Text>}
+                  {!!defaultCard.label && <Text style={styles.cardMeta}>Titulaire : {defaultCard.label}</Text>}
                 </>
               ) : (
                 <Text style={styles.cardMeta}>Aucune carte enregistrée</Text>
@@ -217,7 +362,7 @@ export default function PaymentMethodsScreen() {
             </View>
 
             {!editingCard && (
-              <Pressable onPress={onStartEditCard} style={styles.editPill}>
+              <Pressable onPress={startEditCard} style={styles.editPill}>
                 <Ionicons name="create-outline" size={16} color={colors.brand} />
                 <Text style={styles.editPillText}>{defaultCard ? 'Modifier' : 'Ajouter'}</Text>
               </Pressable>
@@ -295,15 +440,15 @@ export default function PaymentMethodsScreen() {
 
             <View style={{ flexDirection: 'row', gap: spacing.md }}>
               <View style={{ flex: 1 }}>
-                <Button title="Annuler" variant="secondary" onPress={onCancelCard} />
+                <Button title="Annuler" variant="secondary" onPress={() => setEditingCard(false)} />
               </View>
               <View style={{ flex: 1 }}>
-                <Button title="Enregistrer" onPress={onSaveCard} />
+                <Button title="Enregistrer" onPress={saveCard} />
               </View>
             </View>
 
             {!!defaultCard && (
-              <Pressable onPress={onDeleteCard} style={styles.deleteRow}>
+              <Pressable onPress={removeCard} style={styles.deleteRow}>
                 <Ionicons name="trash-outline" size={18} color={colors.dangerText} />
                 <Text style={styles.deleteText}>Supprimer la carte</Text>
               </Pressable>
@@ -311,46 +456,46 @@ export default function PaymentMethodsScreen() {
           </Card>
         )}
 
-        {/* Spacer */}
         <View style={{ height: spacing.md }} />
 
         {/* ----------------------- */}
-        {/* MOBILE MONEY */}
+        {/* MOMO */}
         {/* ----------------------- */}
         <Card style={styles.cardBox}>
           <View style={styles.cardTop}>
             <View style={{ flex: 1, minWidth: 0 }}>
               <Text style={styles.cardLabel}>Mobile Money</Text>
-              {defaultMM ? (
+
+              {defaultMomo ? (
                 <>
-                  <Text style={styles.cardValue}>{defaultMM.provider}</Text>
-                  <Text style={styles.cardMeta}>Numéro : {defaultMM.phone}</Text>
-                  {!!defaultMM.holderName && <Text style={styles.cardMeta}>Titulaire : {defaultMM.holderName}</Text>}
+                  <Text style={styles.cardValue}>{defaultMomo.provider ?? 'Mobile Money'}</Text>
+                  <Text style={styles.cardMeta}>Numéro : {defaultMomo.phone}</Text>
+                  {!!defaultMomo.label && <Text style={styles.cardMeta}>Titulaire : {defaultMomo.label}</Text>}
                 </>
               ) : (
                 <Text style={styles.cardMeta}>Aucun Mobile Money enregistré</Text>
               )}
             </View>
 
-            {!editingMM && (
-              <Pressable onPress={onStartEditMM} style={styles.editPill}>
+            {!editingMomo && (
+              <Pressable onPress={startEditMomo} style={styles.editPill}>
                 <Ionicons name="create-outline" size={16} color={colors.brand} />
-                <Text style={styles.editPillText}>{defaultMM ? 'Modifier' : 'Ajouter'}</Text>
+                <Text style={styles.editPillText}>{defaultMomo ? 'Modifier' : 'Ajouter'}</Text>
               </Pressable>
             )}
           </View>
         </Card>
 
-        {editingMM && (
+        {editingMomo && (
           <Card style={styles.formCard}>
             <Text style={styles.label}>Opérateur</Text>
             <View style={styles.chipsRow}>
               {MM_PROVIDERS.map((p) => {
-                const active = mmProvider === p
+                const active = momoProvider === p
                 return (
                   <Pressable
                     key={p}
-                    onPress={() => setMmProvider(p)}
+                    onPress={() => setMomoProvider(p)}
                     style={[styles.chip, active && styles.chipActive]}
                   >
                     <Text style={[styles.chipText, active && styles.chipTextActive]}>{p}</Text>
@@ -361,8 +506,8 @@ export default function PaymentMethodsScreen() {
 
             <Field label="Numéro Mobile Money">
               <TextInput
-                value={mmPhone}
-                onChangeText={(v) => setMmPhone(normalizePhone(v))}
+                value={momoPhone}
+                onChangeText={(v) => setMomoPhone(normalizePhone(v))}
                 keyboardType={Platform.select({ ios: 'phone-pad', android: 'phone-pad', default: 'phone-pad' })}
                 placeholder="Ex: +241 06 12 34 56"
                 placeholderTextColor={colors.placeholder}
@@ -372,8 +517,8 @@ export default function PaymentMethodsScreen() {
 
             <Field label="Nom du titulaire (optionnel)">
               <TextInput
-                value={mmHolder}
-                onChangeText={setMmHolder}
+                value={momoHolder}
+                onChangeText={setMomoHolder}
                 placeholder="Ex: Marie Kouassi"
                 placeholderTextColor={colors.placeholder}
                 style={styles.input}
@@ -384,15 +529,15 @@ export default function PaymentMethodsScreen() {
 
             <View style={{ flexDirection: 'row', gap: spacing.md }}>
               <View style={{ flex: 1 }}>
-                <Button title="Annuler" variant="secondary" onPress={onCancelMM} />
+                <Button title="Annuler" variant="secondary" onPress={() => setEditingMomo(false)} />
               </View>
               <View style={{ flex: 1 }}>
-                <Button title="Enregistrer" onPress={onSaveMM} />
+                <Button title="Enregistrer" onPress={saveMomo} />
               </View>
             </View>
 
-            {!!defaultMM && (
-              <Pressable onPress={onDeleteMM} style={styles.deleteRow}>
+            {!!defaultMomo && (
+              <Pressable onPress={removeMomo} style={styles.deleteRow}>
                 <Ionicons name="trash-outline" size={18} color={colors.dangerText} />
                 <Text style={styles.deleteText}>Supprimer Mobile Money</Text>
               </Pressable>
@@ -437,6 +582,9 @@ const styles = StyleSheet.create({
   headerSubtitle: { marginTop: 6, color: 'rgba(255,255,255,0.85)', ...typography.small },
 
   content: { paddingHorizontal: spacing.lg, paddingTop: spacing.lg, paddingBottom: 120 },
+
+  loadingRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: spacing.md },
+  loadingText: { color: colors.textMuted, ...typography.small, fontWeight: '700' },
 
   cardBox: {
     padding: spacing.lg,

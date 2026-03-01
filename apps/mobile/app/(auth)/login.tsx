@@ -19,6 +19,8 @@ import { colors } from '../../src/theme/colors'
 import { overlays } from '../../src/theme/colors'
 import { spacing } from '../../src/theme/spacing'
 import { radius } from '../../src/theme/radius'
+import { useQueryClient } from '@tanstack/react-query'
+import { fetchMeLoyalty, fetchMeSummary } from '../../src/api/me'
 import { useAuthRefresh } from '../../src/providers/AuthRefreshProvider'
 
 const logo = require('../../assets/splash-logo.png')
@@ -31,13 +33,23 @@ export default function Login() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
 
+  const qc = useQueryClient()
+
   const onSubmit = async () => {
     try {
       const data = await login({ email, password })
 
       await SecureStore.setItemAsync('accessToken', data.accessToken)
       await SecureStore.setItemAsync('userRole', data.user.role)
+
+      const summary = await fetchMeSummary()
+      qc.setQueryData(['me', 'summary'], summary)
+
+      const loyalty = await fetchMeLoyalty()
+      qc.setQueryData(['me', 'loyalty'], loyalty)
+
       await refreshAuth()
+
       if (data.user.role === 'PROFESSIONAL') router.replace('/(professional)/dashboard')
       else if (data.user.role === 'EMPLOYEE') router.replace('/(employee)/dashboard')
       else router.replace('/(tabs)/home')
