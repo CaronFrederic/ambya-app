@@ -12,8 +12,8 @@ export default function ClientDetailsScreen() {
   const [depositExempt, setDepositExempt] = useState(false);
 
   return (
-    <View style={{ flex: 1, backgroundColor: COLORS.bg }}>
-      <ProHeader title="Fiche Client" backTo="/(professional)/booking-history" />
+<View style={{ flex: 1, backgroundColor: COLORS.bg }}>
+  <ProHeader title="Fiche Client" backTo="/(professional)/dashboard" />
 
       <ScrollView contentContainerStyle={{ padding: 18 }} showsVerticalScrollIndicator={false}>
         {/* Header */}
