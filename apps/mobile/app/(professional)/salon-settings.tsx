@@ -139,6 +139,8 @@ export default function SalonSettingsScreen() {
               placeholder="18:00"
               style={[styles.input, { flex: 1 }]}
             />
+
+            
             {slots.length > 1 && (
               <Pressable onPress={() => onChange(slots.filter((_, i) => i !== idx))} style={styles.smallDangerBtn}>
                 <Text style={styles.smallDangerBtnText}>✕</Text>
