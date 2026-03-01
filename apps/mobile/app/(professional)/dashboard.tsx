@@ -1,6 +1,6 @@
 import React from "react";
 import { View, Text, StyleSheet, Pressable, ScrollView, SafeAreaView } from "react-native";
-import { router } from "expo-router";
+import { router, type Href } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
 const COLORS = {
@@ -11,7 +11,12 @@ const COLORS = {
   white: "#FFFFFF",
 };
 
-function CardLink(props: { title: string; subtitle: string; icon: any; href: string; tone?: "primary" | "gold" }) {
+type TileProps = {
+  title: string;
+  href: Href; // ✅ pas string
+};
+
+function Tile(props: TileProps & { subtitle: string; icon: any; tone?: "primary" | "gold" }) {
   const tone = props.tone ?? "primary";
   return (
     <Pressable
@@ -43,12 +48,12 @@ export default function ProDashboard() {
       </View>
 
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 28 }}>
-        <CardLink title="Caisse & Transactions" subtitle="Suivi des paiements" icon="cash-outline" href="/(professional)/cash-register" />
-        <CardLink title="Paramètres du Salon" subtitle="Infos • Photos • Horaires • Paiements • Acompte" icon="settings-outline" href="/(professional)/salon-settings" />
-        <CardLink title="Promotions & Offres" subtitle="Créer et piloter vos promos" icon="pricetags-outline" href="/(professional)/promotions" tone="gold" />
-        <CardLink title="Carte de Fidélité" subtitle="Programme personnalisé salon" icon="gift-outline" href="/(professional)/loyalty" tone="gold" />
-        <CardLink title="Historique Réservations" subtitle="Terminé • Annulé • No-show" icon="calendar-outline" href="/(professional)/booking-history" />
-        <CardLink title="Fiche Client (exemple)" subtitle="Détails + gestion acompte" icon="person-outline" href="/(professional)/client-details" />
+        <Tile title="Caisse & Transactions" subtitle="Suivi des paiements" icon="cash-outline" href="/(professional)/cash-register" />
+        <Tile title="Paramètres du Salon" subtitle="Infos • Photos • Horaires • Paiements • Acompte" icon="settings-outline" href="/(professional)/salon-settings" />
+        <Tile title="Promotions & Offres" subtitle="Créer et piloter vos promos" icon="pricetags-outline" href="/(professional)/promotions" tone="gold" />
+        <Tile title="Carte de Fidélité" subtitle="Programme personnalisé salon" icon="gift-outline" href="/(professional)/loyalty" tone="gold" />
+        <Tile title="Historique Réservations" subtitle="Terminé • Annulé • No-show" icon="calendar-outline" href="/(professional)/booking-history" />
+        <Tile title="Fiche Client (exemple)" subtitle="Détails + gestion acompte" icon="person-outline" href="/(professional)/client-details" />
       </ScrollView>
     </SafeAreaView>
   );

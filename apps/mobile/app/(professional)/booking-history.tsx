@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { View, Text, ScrollView, Pressable, StyleSheet } from "react-native";
-import { router } from "expo-router";
+import { Href, router } from "expo-router";
 import { ProHeader } from "./components/ProHeader";
 import { formatFCFA, formatDateFR } from "./utils/format";
 
@@ -35,7 +35,7 @@ export default function BookingHistoryScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: COLORS.bg }}>
-      <ProHeader title="Historique des Réservations" subtitle="Toutes vos réservations" backTo="/(pro)/dashboard" />
+      <ProHeader title="Historique des Réservations" subtitle="Toutes vos réservations" backTo="/(professional)/dashboard" />
 
       <ScrollView contentContainerStyle={{ padding: 18 }} showsVerticalScrollIndicator={false}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: 10 }}>
@@ -85,7 +85,7 @@ export default function BookingHistoryScreen() {
               </View>
 
               <Pressable
-                onPress={() => router.push({ pathname: "/professional/client-details", params: { client: b.client } })}
+                onPress={() => router.push({ pathname: "/(professional)/client-details", params: { client: b.client }, } satisfies Href)}
                 style={styles.detailsBtn}
               >
                 <Text style={styles.detailsBtnText}>Voir détails</Text>
