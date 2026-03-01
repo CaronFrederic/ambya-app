@@ -1,69 +1,108 @@
-import { View, Text } from 'react-native'
+import React from "react";
+import { View, Text, StyleSheet, Pressable, ScrollView, SafeAreaView } from "react-native";
+import { router, type Href } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 
-import { Screen } from '../../src/components/Screen'
-import { Header } from '../../src/components/Header'
-import { Card } from '../../src/components/Card'
-import { Button } from '../../src/components/Button'
-import { spacing } from '../../src/theme/spacing'
-import { typography } from '../../src/theme/typography'
-import { colors } from '../../src/theme/colors'
+const COLORS = {
+  bg: "#FAF7F2",
+  primary: "#6B2737",
+  gold: "#D4AF6A",
+  text: "#3A3A3A",
+  white: "#FFFFFF",
+};
 
-export default function Dashboard() {
+type TileProps = {
+  title: string;
+  href: Href; // ✅ pas string
+};
+
+function Tile(props: TileProps & { subtitle: string; icon: any; tone?: "primary" | "gold" }) {
+  const tone = props.tone ?? "primary";
   return (
-    <Screen>
-      <Header
-        title="Tableau de bord"
-        subtitle="Vue globale de ton salon"
-      />
-
-      <View style={{ gap: spacing.md }}>
-        <Card>
-          <Text style={[typography.medium, { color: colors.text }]}>
-            Aujourd’hui
-          </Text>
-          <Text style={typography.body}>
-            • 8 rendez-vous
-          </Text>
-          <Text style={typography.body}>
-            • 120 000 FCFA générés
-          </Text>
-        </Card>
-
-        <Card>
-          <Text style={[typography.medium, { color: colors.text }]}>
-            Employés actifs
-          </Text>
-          <Text style={typography.body}>
-            • 3 disponibles
-          </Text>
-          <Text style={typography.body}>
-            • 1 en congé
-          </Text>
-        </Card>
-
-        <Card>
-          <Text style={[typography.medium, { color: colors.text }]}>
-            Activité récente
-          </Text>
-          <Text style={typography.body}>
-            • Nouveau RDV confirmé
-          </Text>
-          <Text style={typography.body}>
-            • Paiement validé
-          </Text>
-        </Card>
-
-        <Button
-          title="Gérer les services"
-          onPress={() => {}}
-        />
-
-        <Button
-          title="Voir la caisse"
-          onPress={() => {}}
-          variant="secondary"
-        />
+    <Pressable
+      onPress={() => router.push(props.href)}
+      style={({ pressed }) => [
+        styles.card,
+        pressed && { transform: [{ scale: 0.99 }], opacity: 0.95 },
+        tone === "gold" && { borderColor: COLORS.gold },
+      ]}
+    >
+      <View style={[styles.cardIconWrap, tone === "gold" && { backgroundColor: `${COLORS.gold}22` }]}>
+        <Ionicons name={props.icon} size={20} color={tone === "gold" ? COLORS.gold : COLORS.primary} />
       </View>
-    </Screen>
-  )
+      <View style={{ flex: 1 }}>
+        <Text style={styles.cardTitle}>{props.title}</Text>
+        <Text style={styles.cardSubtitle}>{props.subtitle}</Text>
+      </View>
+      <Ionicons name="chevron-forward" size={18} color={`${COLORS.text}66`} />
+    </Pressable>
+  );
 }
+
+export default function ProDashboard() {
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.bg }}>
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Espace Professionnel</Text>
+        <Text style={styles.headerSub}>Accès rapide à la gestion du salon</Text>
+      </View>
+
+      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 28 }}>
+        <Tile title="Caisse & Transactions" subtitle="Suivi des paiements" icon="cash-outline" href="/(professional)/cash-register" />
+        <Tile title="Paramètres du Salon" subtitle="Infos • Photos • Horaires • Paiements • Acompte" icon="settings-outline" href="/(professional)/salon-settings" />
+        <Tile title="Promotions & Offres" subtitle="Créer et piloter vos promos" icon="pricetags-outline" href="/(professional)/promotions" tone="gold" />
+        <Tile title="Carte de Fidélité" subtitle="Programme personnalisé salon" icon="gift-outline" href="/(professional)/loyalty" tone="gold" />
+        <Tile title="Historique Réservations" subtitle="Terminé • Annulé • No-show" icon="calendar-outline" href="/(professional)/booking-history" />
+        <Tile title="Fiche Client (exemple)" subtitle="Détails + gestion acompte" icon="person-outline" href="/(professional)/client-details" />
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  header: {
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: 16,
+    paddingTop: 18,
+    paddingBottom: 16,
+  },
+  headerTitle: {
+    color: COLORS.white,
+    fontSize: 20,
+    fontWeight: "800",
+  },
+  headerSub: {
+    color: `${COLORS.white}CC`,
+    marginTop: 6,
+    fontSize: 13,
+  },
+  card: {
+    backgroundColor: COLORS.white,
+    borderRadius: 18,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: `${COLORS.primary}14`,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginBottom: 12,
+  },
+  cardIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: `${COLORS.primary}12`,
+  },
+  cardTitle: {
+    color: COLORS.text,
+    fontWeight: "800",
+    fontSize: 14,
+  },
+  cardSubtitle: {
+    color: `${COLORS.text}88`,
+    marginTop: 2,
+    fontSize: 12,
+  },
+});
