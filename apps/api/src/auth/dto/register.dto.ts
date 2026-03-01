@@ -1,23 +1,58 @@
-import { IsEmail, IsEnum, IsOptional, IsString, MinLength } from 'class-validator'
+import {
+  IsEmail,
+  IsObject,
+  IsOptional,
+  IsString,
+  MinLength,
+  ValidateNested,
+} from 'class-validator'
+import { Type } from 'class-transformer'
 
-enum UserRole {
-  CLIENT = 'CLIENT',
-  PROFESSIONAL = 'PROFESSIONAL',
-  EMPLOYEE = 'EMPLOYEE',
-  ADMIN = 'ADMIN',
+export class ClientProfileDto {
+  @IsString()
+  nickname!: string
+
+  @IsString()
+  gender!: string
+
+  @IsString()
+  ageRange!: string
+
+  @IsString()
+  city!: string
+
+  @IsString()
+  country!: string
+
+  @IsOptional()
+  @IsString()
+  allergies?: string
+
+  @IsOptional()
+  @IsString()
+  comments?: string
+
+  // Questionnaire complet (hair/nails/face/body/fitness/practical)
+  // On accepte un objet libre car ça évolue vite côté app
+  @IsOptional()
+  @IsObject()
+  questionnaire?: Record<string, any>
 }
 
 export class RegisterDto {
+  @IsOptional()
   @IsEmail()
-  email!: string
+  email?: string
+
+  @IsOptional()
+  @IsString()
+  phone?: string
 
   @IsString()
-  @MinLength(8)
+  @MinLength(6)
   password!: string
 
-  // Optionnel : utile si tu veux créer pro/employee dès le register.
-  // Sinon supprime ce champ et laisse le défaut CLIENT.
-  @IsOptional()
-  @IsEnum(UserRole)
-  role?: UserRole
+  @ValidateNested()
+  @Type(() => ClientProfileDto)
+  profile!: ClientProfileDto
 }
