@@ -1,23 +1,54 @@
-import React, { useMemo, useState } from 'react'
-import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native'
+import React, { useEffect, useMemo, useState } from 'react'
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  Pressable,
+  RefreshControl,
+} from 'react-native'
 import { router } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
-import { TextInput } from 'react-native'
 import { LinearGradient } from 'expo-linear-gradient'
 import * as SecureStore from 'expo-secure-store'
+import { useQueryClient } from '@tanstack/react-query'
 
 import { Screen } from '../../src/components/Screen'
 import { Button } from '../../src/components/Button'
-import { useProfile } from '../../src/providers/ProfileProvider'
 
 import { colors, overlays } from '../../src/theme/colors'
 import { spacing } from '../../src/theme/spacing'
 import { radius } from '../../src/theme/radius'
 import { typography } from '../../src/theme/typography'
 import { useAuthRefresh } from '../../src/providers/AuthRefreshProvider'
+import { useMeSummary } from '../../src/api/me'
+
+import {
+  MAP_GENDER,
+  MAP_AGE,
+  MAP_HAIR_TYPES,
+  MAP_HAIR_TEXTURE,
+  MAP_HAIR_LENGTH,
+  MAP_HAIR_CONCERNS,
+  MAP_NAIL_TYPE,
+  MAP_NAIL_STATE,
+  MAP_NAIL_CONCERNS,
+  MAP_FACE_SKIN,
+  MAP_FACE_CONCERNS,
+  MAP_BODY_SKIN,
+  MAP_ZONES,
+  MAP_WELLBEING,
+  MAP_ACTIVITY,
+  MAP_FITNESS_GOALS,
+  MAP_FITNESS_CONCERNS,
+  MAP_PAYMENT_PREFS,
+  MAP_NOTIF_PREFS,
+  MAP_ALLERGIES,
+  labelOf,
+  labelsOf,
+} from '../../src/constants/questionnaireLabels'
 
 type TabKey = 'infos' | 'fidelity' | 'settings'
-
 
 const SECTIONS = [
   { key: 'general', title: 'Informations générales' },
@@ -30,95 +61,224 @@ const SECTIONS = [
   { key: 'important', title: 'Informations importantes' },
 ] as const
 
+type LoyaltyTier = 'BRONZE' | 'SILVER' | 'GOLD' | 'PLATINUM'
+
 export default function ProfileScreen() {
   const { refreshAuth } = useAuthRefresh()
-  const { data } = useProfile()
+  const qc = useQueryClient()
+
   const [tab, setTab] = useState<TabKey>('infos')
   const [open, setOpen] = useState<string>('general')
+  const [token, setToken] = useState<string | null>(null)
+
+  useEffect(() => {
+    SecureStore.getItemAsync('accessToken').then(setToken)
+  }, [])
+
+  const {
+    data: summary,
+    isLoading,
+    refetch,
+    isRefetching,
+  } = useMeSummary(!!token)
+
+  const profile = summary?.profile
+  const user = summary?.user
+  const loyalty = summary?.loyalty
+
+  // questionnaire JSON
+  const q = (profile?.questionnaire ?? {}) as any
 
   async function handleLogout() {
     await SecureStore.deleteItemAsync('accessToken')
     await SecureStore.deleteItemAsync('userRole')
-    await refreshAuth()
 
+    // ✅ évite d’afficher des data d’un ancien user après logout
+    qc.clear()
+
+    await refreshAuth()
     router.replace('/(auth)/login')
   }
 
-  const [salonSearchQuery, setSalonSearchQuery] = useState('')
-
-  const LOYALTY_CARDS = useMemo(
-    () => [
-      { id: 'ambya-gold', title: 'Carte de Fidélité AMBYA', salonLabel: 'Tous les salons AMBYA' },
-      { id: 'parrainage', title: 'Programme Parrainage', salonLabel: 'Tous les salons partenaires' },
-      { id: 'anniversaire', title: 'Programme Anniversaire', salonLabel: 'Spa Zenitude & Wellness' },
-      { id: 'cashback', title: 'Programme Cashback', salonLabel: 'Salon Belle Vue Premium' },
-    ],
-    []
-  )
-
-  const filteredCards = useMemo(() => {
-    const q = salonSearchQuery.trim().toLowerCase()
-    if (!q) return LOYALTY_CARDS
-    return LOYALTY_CARDS.filter((c) => {
-      return (
-        c.title.toLowerCase().includes(q) ||
-        c.salonLabel.toLowerCase().includes(q) ||
-        c.id.toLowerCase().includes(q)
-      )
-    })
-  }, [LOYALTY_CARDS, salonSearchQuery])
+  /**
+   * ✅ Source de vérité = summary (back)
+   * On reconstruit un objet "data" au format attendu par ton UI (rows)
+   */
+  const data = useMemo(() => {
+    return {
+      general: {
+        nickname: profile?.nickname ?? null,
+        email: user?.email ?? null,
+        phone: user?.phone ?? null,
+        gender: profile?.gender ?? null,
+        ageRange: profile?.ageRange ?? null,
+        city: profile?.city ?? null,
+        country: profile?.country ?? null,
+      },
+      hair: {
+        hairType: q?.hair?.hairTypes ?? [],
+        texture: q?.hair?.hairTexture ?? null,
+        length: q?.hair?.hairLength ?? null,
+        concerns: q?.hair?.hairConcerns ?? [],
+      },
+      nails: {
+        type: q?.nails?.nailTypes ?? [],
+        state: q?.nails?.nailStates ?? [],
+        concerns: q?.nails?.nailConcerns ?? [],
+      },
+      faceSkin: {
+        skinType: q?.face?.faceSkin ?? null,
+        concerns: q?.face?.faceConcerns ?? [],
+      },
+      wellness: {
+        bodySkinType: q?.body?.bodySkin ?? null,
+        tensionZones: q?.body?.tensionZones ?? [],
+        concerns: q?.body?.wellbeingConcerns ?? [],
+        sensitiveMassageZones: (q?.body?.massageSensitiveZones ?? []).join(', '),
+      },
+      fitness: {
+        activityLevel: q?.fitness?.activityLevel ?? null,
+        goals: q?.fitness?.fitnessGoals ?? [],
+        concerns: q?.fitness?.fitnessConcerns ?? [],
+      },
+      practical: {
+        paymentModes: q?.practical?.paymentPrefs ?? [],
+        notifications: q?.practical?.notifPrefs ?? [],
+      },
+      important: {
+        allergies: profile?.allergies ?? null,
+        notes: profile?.comments ?? '',
+      },
+    }
+  }, [profile, user, q])
 
   const rows = useMemo(() => {
+    const safe = (v: string | null | undefined) => (v && String(v).trim() ? String(v) : null)
+    const display = (v: string | null | undefined) => safe(v) ?? 'Non renseigné'
+    const displayList = (arr: string[]) => (arr.length ? arr.join(', ') : 'Non renseigné')
+
     return {
       general: [
-        { label: 'Surnom', value: data.general.nickname ?? 'Non renseigné' },
-        { label: 'Email', value: data.general.email ?? 'Non renseigné' },
-        { label: 'Téléphone', value: data.general.phone ?? 'Non renseigné' },
-        { label: 'Genre', value: data.general.gender ?? 'Non renseigné' },
-        { label: 'Âge', value: data.general.ageRange ?? 'Non renseigné' },
-        { label: 'Ville', value: data.general.city ?? 'Non renseigné' },
-        { label: 'Pays', value: data.general.country ?? 'Non renseigné' },
+        { label: 'Surnom', value: display(data.general.nickname ?? null) },
+        { label: 'Email', value: display(data.general.email ?? null) },
+        { label: 'Téléphone', value: display(data.general.phone ?? null) },
+        { label: 'Genre', value: display(labelOf(data.general.gender, MAP_GENDER)) },
+        { label: 'Âge', value: display(labelOf(data.general.ageRange, MAP_AGE)) },
+        { label: 'Ville', value: display(data.general.city ?? null) },
+        { label: 'Pays', value: display(data.general.country ?? null) },
       ],
+
       hair: [
-        { label: 'Type de cheveux', value: (data.hair.hairType ?? []).join(', ') || 'Non renseigné' },
-        { label: 'Texture', value: data.hair.texture ?? 'Non renseigné' },
-        { label: 'Longueur', value: data.hair.length ?? 'Non renseigné' },
-        { label: 'Préoccupations', value: (data.hair.concerns ?? []).join(', ') || 'Non renseigné' },
+        { label: 'Type de cheveux', value: displayList(labelsOf(data.hair.hairType ?? [], MAP_HAIR_TYPES)) },
+        { label: 'Texture', value: display(labelOf(data.hair.texture, MAP_HAIR_TEXTURE)) },
+        { label: 'Longueur', value: display(labelOf(data.hair.length, MAP_HAIR_LENGTH)) },
+        { label: 'Préoccupations', value: displayList(labelsOf(data.hair.concerns ?? [], MAP_HAIR_CONCERNS)) },
       ],
+
       nails: [
-        { label: 'Type', value: (data.nails.type ?? []).join(', ') || 'Non renseigné' },
-        { label: 'État', value: data.nails.state ?? 'Non renseigné' },
-        { label: 'Préoccupations', value: (data.nails.concerns ?? []).join(', ') || 'Non renseigné' },
+        { label: 'Type', value: displayList(labelsOf(data.nails.type ?? [], MAP_NAIL_TYPE)) },
+        { label: 'État', value: displayList(labelsOf(data.nails.state ?? [], MAP_NAIL_STATE)) },
+        { label: 'Préoccupations', value: displayList(labelsOf(data.nails.concerns ?? [], MAP_NAIL_CONCERNS)) },
       ],
+
       faceSkin: [
-        { label: 'Type de peau', value: data.faceSkin.skinType ?? 'Non renseigné' },
-        { label: 'Préoccupations', value: (data.faceSkin.concerns ?? []).join(', ') || 'Non renseigné' },
+        { label: 'Type de peau', value: display(labelOf(data.faceSkin.skinType, MAP_FACE_SKIN)) },
+        { label: 'Préoccupations', value: displayList(labelsOf(data.faceSkin.concerns ?? [], MAP_FACE_CONCERNS)) },
       ],
+
       wellness: [
-        { label: 'Type de peau (corps)', value: data.wellness.bodySkinType ?? 'Non renseigné' },
-        { label: 'Zones de tension', value: (data.wellness.tensionZones ?? []).join(', ') || 'Non renseigné' },
-        { label: 'Préoccupations', value: (data.wellness.concerns ?? []).join(', ') || 'Non renseigné' },
-        { label: 'Zones sensibles massage', value: data.wellness.sensitiveMassageZones ?? 'Non renseigné' },
+        { label: 'Type de peau (corps)', value: display(labelOf(data.wellness.bodySkinType, MAP_BODY_SKIN)) },
+        { label: 'Zones de tension', value: displayList(labelsOf(data.wellness.tensionZones ?? [], MAP_ZONES)) },
+        { label: 'Préoccupations', value: displayList(labelsOf(data.wellness.concerns ?? [], MAP_WELLBEING)) },
+        {
+          label: 'Zones sensibles massage',
+          value: displayList(labelsOf(data.wellness.sensitiveMassageZones ?? [], MAP_ZONES)),
+        },
       ],
+
       fitness: [
-        { label: "Niveau d'activité", value: data.fitness.activityLevel ?? 'Non renseigné' },
-        { label: 'Objectifs', value: (data.fitness.goals ?? []).join(', ') || 'Non renseigné' },
-        { label: 'Préoccupations', value: (data.fitness.concerns ?? []).join(', ') || 'Non renseigné' },
+        { label: "Niveau d'activité", value: display(labelOf(data.fitness.activityLevel, MAP_ACTIVITY)) },
+        { label: 'Objectifs', value: displayList(labelsOf(data.fitness.goals ?? [], MAP_FITNESS_GOALS)) },
+        { label: 'Préoccupations', value: displayList(labelsOf(data.fitness.concerns ?? [], MAP_FITNESS_CONCERNS)) },
       ],
+
       practical: [
-        { label: 'Modes de paiement', value: (data.practical.paymentModes ?? []).join(', ') || 'Non renseigné' },
-        { label: 'Notifications', value: (data.practical.notifications ?? []).join(', ') || 'Non renseigné' },
+        { label: 'Modes de paiement', value: displayList(labelsOf(data.practical.paymentModes ?? [], MAP_PAYMENT_PREFS)) },
+        { label: 'Notifications', value: displayList(labelsOf(data.practical.notifications ?? [], MAP_NOTIF_PREFS)) },
       ],
+
       important: [
-        { label: 'Allergies', value: data.important.allergies ?? 'Non renseigné' },
-        { label: 'Besoins spécifiques', value: data.important.notes?.trim() ? data.important.notes : 'Non renseigné' },
+        { label: 'Allergies', value: display(labelOf(data.important.allergies, MAP_ALLERGIES)) },
+        { label: 'Besoins spécifiques', value: display(data.important.notes?.trim() ? data.important.notes : null) },
       ],
     } as Record<string, { label: string; value: string }[]>
   }, [data])
 
+  // ---- Loyalty computed (dynamic) ----
+  const loyaltyComputed = useMemo(() => {
+    const tier = (loyalty?.tier ?? 'BRONZE') as LoyaltyTier
+    const currentPoints = loyalty?.currentPoints ?? 0
+
+    const thresholds: Record<LoyaltyTier, number> = {
+      BRONZE: 500,
+      SILVER: 2000,
+      GOLD: 5000,
+      PLATINUM: 5000, // max
+    }
+
+    const nextTargetByTier: Record<LoyaltyTier, number> = {
+      BRONZE: 500,
+      SILVER: 2000,
+      GOLD: 5000,
+      PLATINUM: 5000,
+    }
+
+    const baseByTier: Record<LoyaltyTier, number> = {
+      BRONZE: 0,
+      SILVER: 500,
+      GOLD: 2000,
+      PLATINUM: 5000,
+    }
+
+    const nextTarget = nextTargetByTier[tier]
+    const base = baseByTier[tier]
+
+    const denom = Math.max(1, nextTarget - base)
+    const pct =
+      tier === 'PLATINUM'
+        ? 100
+        : Math.max(0, Math.min(100, Math.round(((currentPoints - base) / denom) * 100)))
+
+    // texte "X / Y points"
+    const progressText =
+      tier === 'PLATINUM'
+        ? `${currentPoints} points`
+        : `${currentPoints} / ${nextTarget} points`
+
+    const tierLabel =
+      tier === 'BRONZE' ? 'Niveau Bronze'
+      : tier === 'SILVER' ? 'Niveau Argent'
+      : tier === 'GOLD' ? 'Niveau Gold'
+      : 'Niveau Platine'
+
+    const pendingAmount =
+    loyalty?.pendingDiscount?.amount ??
+    loyalty?.pendingDiscount ??
+    0
+
+    return {
+      tier,
+      tierLabel,
+      currentPoints,
+      progressText,
+      progressPct: pct,
+      pendingAmount,
+    }
+  }, [loyalty])
+
   return (
     <Screen noPadding style={{ backgroundColor: colors.background }}>
-      {/* ✅ HEADER (même logique que Payment / Booking) */}
+      {/* HEADER */}
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} style={styles.headerBack} hitSlop={10}>
           <Ionicons name="arrow-back" size={22} color={colors.brandForeground} />
@@ -138,78 +298,64 @@ export default function ProfileScreen() {
       </View>
 
       {/* CONTENT */}
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={isRefetching} onRefresh={refetch} />
+        }
+      >
         {tab === 'infos' && (
           <View style={{ gap: spacing.md }}>
-            {SECTIONS.map((s) => (
-              <SectionAccordion
-                key={s.key}
-                title={s.title}
-                open={open === s.key}
-                onToggle={() => setOpen(open === s.key ? '' : s.key)}
-                onEdit={() =>
-                  router.push({
-                    pathname: '/(screens)/edit-section',
-                    params: { section: s.key, title: s.title },
-                  })
-                }
-              >
-                <View style={{ gap: spacing.sm }}>
-                  {(rows as any)[s.key]?.map((r: any, idx: number) => (
-                    <View key={idx} style={styles.kvRow}>
-                      <Text style={styles.kLabel}>{r.label}</Text>
-                      <Text style={styles.kValue}>{r.value}</Text>
-                    </View>
-                  ))}
-                </View>
-              </SectionAccordion>
-            ))}
+            {isLoading ? (
+              <View style={styles.placeholderCard}>
+                <Text style={styles.placeholderTitle}>Chargement…</Text>
+                <Text style={styles.placeholderText}>Récupération de vos informations.</Text>
+              </View>
+            ) : (
+              SECTIONS.map((s) => (
+                <SectionAccordion
+                  key={s.key}
+                  title={s.title}
+                  open={open === s.key}
+                  onToggle={() => setOpen(open === s.key ? '' : s.key)}
+                  onEdit={() =>
+                    router.push({
+                      pathname: '/(screens)/edit-section',
+                      params: { section: s.key, title: s.title },
+                    })
+                  }
+                >
+                  <View style={{ gap: spacing.sm }}>
+                    {(rows as any)[s.key]?.map((r: any, idx: number) => (
+                      <View key={idx} style={styles.kvRow}>
+                        <Text style={styles.kLabel}>{r.label}</Text>
+                        <Text style={styles.kValue}>{r.value}</Text>
+                      </View>
+                    ))}
+                  </View>
+                </SectionAccordion>
+              ))
+            )}
           </View>
         )}
 
-        {tab === 'fidelity' && (
-        <View style={{ gap: spacing.md }}>
-          {/* Search */}
-          <View style={styles.searchWrap}>
-            <Ionicons name="search" size={18} color="rgba(58,58,58,0.35)" style={styles.searchIcon} />
-            <TextInput
-              value={salonSearchQuery}
-              onChangeText={setSalonSearchQuery}
-              placeholder="Rechercher un salon..."
-              placeholderTextColor="rgba(58,58,58,0.40)"
-              style={styles.searchInput}
-              autoCapitalize="none"
-              autoCorrect={false}
-              returnKeyType="search"
+        {tab === 'fidelity' && (() => {
+        const pendingDiscountAmount = Number(loyaltyComputed?.pendingAmount ?? 0)
+        const hasDiscount = pendingDiscountAmount > 0
+
+        return (
+          <View style={{ gap: spacing.md }}>
+            <LoyaltyGoldCard
+              progressText={loyaltyComputed.progressText}
+              tierLabel={loyaltyComputed.tierLabel}
+              progressPct={loyaltyComputed.progressPct}
+              pendingDiscountAmount={pendingDiscountAmount}
+              showBenefit={hasDiscount}
             />
-            {!!salonSearchQuery && (
-              <Pressable onPress={() => setSalonSearchQuery('')} hitSlop={10} style={styles.searchClear}>
-                <Text style={styles.searchClearText}>Effacer</Text>
-              </Pressable>
-            )}
           </View>
-
-          {!!salonSearchQuery && (
-            <Text style={styles.resultsText}>
-              {filteredCards.length} {filteredCards.length > 1 ? 'cartes trouvées' : 'carte trouvée'}
-            </Text>
-          )}
-
-          {!!salonSearchQuery && filteredCards.length === 0 && (
-            <View style={styles.emptyCard}>
-              <Ionicons name="search" size={36} color="rgba(58,58,58,0.18)" />
-              <Text style={styles.emptyTitle}>Aucune carte trouvée</Text>
-              <Text style={styles.emptySub}>Essayez avec un autre nom de salon</Text>
-            </View>
-          )}
-
-          {/* Cards */}
-          {filteredCards.some((c) => c.id === 'ambya-gold') && <LoyaltyGoldCard />}
-          {filteredCards.some((c) => c.id === 'parrainage') && <ReferralCard />}
-          {filteredCards.some((c) => c.id === 'anniversaire') && <BirthdayCard />}
-          {filteredCards.some((c) => c.id === 'cashback') && <CashbackCard />}
-        </View>
-      )}
+        )
+      })()}
 
         {tab === 'settings' && (
           <View style={{ gap: spacing.md }}>
@@ -237,11 +383,7 @@ export default function ProfileScreen() {
               />
             </View>
 
-            <Button
-              title="Se déconnecter"
-              variant="secondary"
-              onPress={handleLogout}
-            />
+            <Button title="Se déconnecter" variant="secondary" onPress={handleLogout} />
           </View>
         )}
 
@@ -329,54 +471,24 @@ function SettingsRow({
   )
 }
 
-function DotLine({ color }: { color: string }) {
-  return <View style={{ width: 4, height: 4, borderRadius: 4, backgroundColor: color }} />
-}
 
-function Badge({
-  label,
-  backgroundColor,
-  color,
+
+/** ✅ Carte AMBYA (dynamique) */
+function LoyaltyGoldCard({
+  progressText,
+  tierLabel,
+  progressPct,
+  pendingDiscountAmount,
+  showBenefit,
 }: {
-  label: string
-  backgroundColor: string
-  color: string
+  progressText: string
+  tierLabel: string
+  progressPct: number
+  pendingDiscountAmount: number
+  showBenefit: boolean
 }) {
-  return (
-    <View style={[styles.badge, { backgroundColor }]}>
-      <Text style={[styles.badgeText, { color }]}>{label}</Text>
-    </View>
-  )
-}
-
-function RoundLogo({
-  variant,
-}: {
-  variant: 'gold' | 'friends' | 'vip' | 'cash'
-}) {
-  const bg =
-    variant === 'gold'
-      ? 'rgba(255,255,255,0.10)'
-      : variant === 'vip'
-        ? colors.gold ?? '#D4AF6A'
-        : colors.brand
-
-  const border =
-    variant === 'gold' ? 'rgba(255,255,255,0.20)' : overlays.brand20
-
-  return (
-    <View style={[styles.roundLogo, { backgroundColor: bg, borderColor: border }]}>
-      <Text style={styles.roundLogoTop}>AMBYA</Text>
-      <Text style={styles.roundLogoBottom}>
-        {variant === 'friends' ? 'Friends' : variant === 'vip' ? 'VIP' : variant === 'cash' ? 'Cash' : ''}
-      </Text>
-    </View>
-  )
-}
-
-/** 1) Carte AMBYA Gold */
-function LoyaltyGoldCard() {
   const gold = '#D4AF6A'
+
   return (
     <LinearGradient
       colors={[colors.brand, '#8B3747']}
@@ -384,10 +496,12 @@ function LoyaltyGoldCard() {
       end={{ x: 1, y: 0 }}
       style={styles.goldCard}
     >
+      {/* Logo AMBYA rond en haut à droite */}
       <View style={styles.goldLogoWrap}>
         <Text style={styles.goldLogoText}>AMBYA</Text>
       </View>
 
+      {/* Titre */}
       <View style={styles.cardHeaderRow}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, minWidth: 0 }}>
           <Ionicons name="ribbon-outline" size={22} color={gold} />
@@ -395,203 +509,45 @@ function LoyaltyGoldCard() {
             Carte de Fidélité AMBYA
           </Text>
         </View>
-        <Badge label="Actif" backgroundColor={gold} color={colors.brand} />
       </View>
 
+      {/* Sous-titre */}
       <View style={styles.salonLine}>
-        <DotLine color={gold} />
+        <View style={{ width: 4, height: 4, borderRadius: 4, backgroundColor: gold }} />
         <Text style={styles.goldSalon}>Tous les salons AMBYA</Text>
       </View>
 
+      {/* Progress */}
       <View style={{ marginTop: spacing.sm }}>
         <View style={styles.progressRow}>
-          <Text style={styles.goldProgressText}>750 / 1000 points</Text>
-          <Text style={styles.goldProgressText}>Niveau Gold</Text>
+          <Text style={styles.goldProgressText}>{progressText}</Text>
+          <Text style={styles.goldProgressText}>{tierLabel}</Text>
         </View>
 
         <View style={styles.progressTrack}>
-          <View style={[styles.progressFill, { width: '75%', backgroundColor: gold }]} />
+          <View
+            style={[
+              styles.progressFill,
+              { width: `${Math.max(0, Math.min(100, progressPct))}%`, backgroundColor: gold },
+            ]}
+          />
         </View>
       </View>
 
-      <View style={styles.goldBenefit}>
-        <Text style={styles.goldBenefitLabel}>🎁 Votre avantage fidélité</Text>
-        <Text style={[styles.goldBenefitValue, { color: gold }]}>500 FCFA offerts</Text>
-        <Text style={styles.goldBenefitSub}>sur votre prochaine prestation</Text>
-      </View>
+      {/* ✅ Avantage fidélité : seulement si réduction dispo */}
+      {showBenefit && (
+        <View style={styles.goldBenefit}>
+          <Text style={styles.goldBenefitLabel}>🎁 Votre avantage fidélité</Text>
+          <Text style={[styles.goldBenefitValue, { color: gold }]}>
+            {pendingDiscountAmount} FCFA offerts
+          </Text>
+          <Text style={styles.goldBenefitSub}>sur votre prochaine prestation</Text>
+        </View>
+      )}
     </LinearGradient>
   )
 }
 
-/** 2) Parrainage */
-function ReferralCard() {
-  const gold = '#D4AF6A'
-  return (
-    <View style={styles.whiteCard}>
-      <View style={styles.cornerLogo}>
-        <RoundLogo variant="friends" />
-      </View>
-
-      <View style={styles.programHeader}>
-        <View style={styles.programIconWrap}>
-          <Ionicons name="people-outline" size={22} color={gold} />
-        </View>
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={styles.programTitle}>Programme Parrainage</Text>
-          <Text style={styles.programSub}>Invitez vos amis et gagnez ensemble</Text>
-        </View>
-      </View>
-
-      <View style={styles.programSalonLine}>
-        <DotLine color={colors.brand} />
-        <Text style={styles.programSalon}>Tous les salons partenaires</Text>
-      </View>
-
-      <View style={styles.codeBox}>
-        <View style={styles.codeTopRow}>
-          <Text style={styles.codeLabel}>Votre code parrain</Text>
-          <Pressable hitSlop={10}>
-            <Text style={styles.codeCopy}>Copier</Text>
-          </Pressable>
-        </View>
-        <Text style={styles.codeValue}>MARIE2024</Text>
-      </View>
-
-      <View style={{ gap: spacing.sm }}>
-        <View style={styles.benefitRow}>
-          <View style={styles.benefitIcon}>
-            <Ionicons name="gift-outline" size={14} color={colors.brand} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.benefitText}>
-              <Text style={styles.benefitStrong}>1000 FCFA</Text> pour vous
-            </Text>
-            <Text style={styles.benefitSub}>À chaque ami inscrit</Text>
-          </View>
-        </View>
-
-        <View style={styles.benefitRow}>
-          <View style={styles.benefitIcon}>
-            <Ionicons name="gift-outline" size={14} color={colors.brand} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.benefitText}>
-              <Text style={styles.benefitStrong}>500 FCFA</Text> pour votre ami
-            </Text>
-            <Text style={styles.benefitSub}>Dès sa première réservation</Text>
-          </View>
-        </View>
-      </View>
-
-      <Pressable style={styles.primaryButton} onPress={() => {}}>
-        <Text style={styles.primaryButtonText}>Partager mon code</Text>
-      </Pressable>
-    </View>
-  )
-}
-
-/** 3) Anniversaire */
-function BirthdayCard() {
-  return (
-    <LinearGradient
-      colors={['rgba(212,175,106,0.20)', 'rgba(212,175,106,0.08)']}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 1 }}
-      style={styles.goldSoftCard}
-    >
-      <View style={styles.cornerLogo}>
-        <RoundLogo variant="vip" />
-      </View>
-
-      <View style={styles.programHeader}>
-        <View style={[styles.programIconWrap, { backgroundColor: 'rgba(212,175,106,0.95)' }]}>
-          <Ionicons name="sparkles-outline" size={22} color={colors.brandForeground} />
-        </View>
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={styles.programTitle}>Programme Anniversaire</Text>
-          <Text style={styles.programSub}>Votre mois spécial</Text>
-        </View>
-      </View>
-
-      <View style={styles.programSalonLine}>
-        <DotLine color={colors.brand} />
-        <Text style={styles.programSalon}>Spa Zenitude & Wellness</Text>
-      </View>
-
-      <View style={styles.whiteInset}>
-        <Text style={styles.insetLabel}>Votre anniversaire</Text>
-        <Text style={styles.insetValue}>15 Mars</Text>
-      </View>
-
-      <LinearGradient
-        colors={[colors.brand, '#8B3747']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
-        style={styles.birthdayGift}
-      >
-        <Text style={styles.birthdayGiftLabel}>🎉 Cadeau d'anniversaire</Text>
-        <Text style={styles.birthdayGiftValue}>Prestation gratuite</Text>
-        <Text style={styles.birthdayGiftSub}>Jusqu'à 5000 FCFA - Valable le mois de votre anniversaire</Text>
-      </LinearGradient>
-    </LinearGradient>
-  )
-}
-
-/** 4) Cashback */
-function CashbackCard() {
-  const gold = '#D4AF6A'
-  return (
-    <View style={styles.whiteCard}>
-      <View style={styles.cornerLogo}>
-        <RoundLogo variant="cash" />
-      </View>
-
-      <View style={styles.programHeader}>
-        <View style={styles.programIconWrap}>
-          <Ionicons name="wallet-outline" size={22} color={gold} />
-        </View>
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={styles.programTitle}>Programme Cashback</Text>
-          <Text style={styles.programSub}>Récupérez une partie de vos dépenses</Text>
-        </View>
-      </View>
-
-      <View style={styles.programSalonLine}>
-        <DotLine color={colors.brand} />
-        <Text style={styles.programSalon}>Salon Belle Vue Premium</Text>
-      </View>
-
-      <View style={styles.codeBox}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md }}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.codeLabel}>Cashback disponible</Text>
-            <Text style={styles.cashValue}>2 450 FCFA</Text>
-          </View>
-          <Pressable style={styles.useButton} onPress={() => {}}>
-            <Text style={styles.useButtonText}>Utiliser</Text>
-          </Pressable>
-        </View>
-      </View>
-
-      <View style={styles.metricRow}>
-        <Text style={styles.metricLabel}>Taux de cashback actuel</Text>
-        <Text style={styles.metricValue}>3%</Text>
-      </View>
-
-      <View style={styles.metricRowNoBorder}>
-        <Text style={styles.metricLabel}>Ce mois-ci</Text>
-        <Text style={styles.metricPlus}>+450 FCFA</Text>
-      </View>
-
-      <View style={styles.tipBox}>
-        <Ionicons name="gift-outline" size={16} color={colors.brand} style={{ marginTop: 1 }} />
-        <Text style={styles.tipText}>
-          <Text style={styles.tipStrong}>Niveau Platinum :</Text> débloquez 5% de cashback sur toutes vos prestations
-        </Text>
-      </View>
-    </View>
-  )
-}
 
 const styles = StyleSheet.create({
   header: {
@@ -718,71 +674,9 @@ const styles = StyleSheet.create({
   settingsSubtitle: { marginTop: 4, color: colors.textMuted, ...typography.small },
   rowDivider: { height: 1, backgroundColor: colors.border },
 
-    // Loyalty - search
-  searchWrap: {
-    backgroundColor: colors.card,
-    borderRadius: radius.full,
-    borderWidth: 1,
-    borderColor: overlays.brand20,
-    paddingVertical: 10,
-    paddingLeft: 44,
-    paddingRight: 90,
-    shadowColor: colors.shadowColor,
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 1,
-  },
-  searchIcon: {
-    position: 'absolute',
-    left: 16,
-    top: 12,
-  },
-  searchInput: {
-    color: colors.text,
-    ...typography.body,
-    fontWeight: '600',
-  },
-  searchClear: {
-    position: 'absolute',
-    right: 14,
-    top: 10,
-    height: 30,
-    justifyContent: 'center',
-  },
-  searchClearText: {
-    color: colors.brand,
-    ...typography.small,
-    fontWeight: '800',
-  },
-  resultsText: {
-    paddingHorizontal: 6,
-    color: 'rgba(58,58,58,0.60)',
-    ...typography.small,
-    fontWeight: '600',
-  },
-  emptyCard: {
-    backgroundColor: colors.card,
-    borderRadius: radius.xl,
-    padding: spacing.xl,
-    alignItems: 'center',
-    gap: 6,
-    borderWidth: 1,
-    borderColor: overlays.brand20,
-  },
-  emptyTitle: { color: colors.text, ...typography.body, fontWeight: '800', marginTop: 6 },
-  emptySub: { color: colors.textMuted, ...typography.small },
-
   // Cards common
-  badge: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: radius.full,
-  },
-  badgeText: {
-    ...typography.small,
-    fontWeight: '900',
-  },
+  badge: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: radius.full },
+  badgeText: { ...typography.small, fontWeight: '900' },
   cardHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -799,21 +693,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  roundLogoTop: {
-    color: '#FFFFFF',
-    ...typography.small,
-  },
-  roundLogoBottom: {
-    marginTop: 2,
-    color: '#FFFFFF',
-    ...typography.small,
-  },
-
-  cornerLogo: {
-    position: 'absolute',
-    right: 18,
-    top: 18,
-  },
+  roundLogoTop: { color: '#FFFFFF', ...typography.small },
+  roundLogoBottom: { marginTop: 2, color: '#FFFFFF', ...typography.small },
+  cornerLogo: { position: 'absolute', right: 18, top: 18 },
 
   // Gold card
   goldCard: {
@@ -836,16 +718,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  goldLogoText: {
-    color: '#D4AF6A',
-    ...typography.small,
-    fontWeight: '900',
-  },
-  goldTitle: {
-    color: colors.brandForeground,
-    ...typography.h3,
-    fontWeight: '900',
-  },
+  goldLogoText: { color: '#D4AF6A', ...typography.small, fontWeight: '900' },
+  goldTitle: { color: colors.brandForeground, ...typography.h3, fontWeight: '900' },
   salonLine: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: spacing.sm },
   goldSalon: { color: 'rgba(255,255,255,0.70)', ...typography.small, fontWeight: '600' },
 
@@ -892,18 +766,12 @@ const styles = StyleSheet.create({
   programSalon: { color: 'rgba(58,58,58,0.60)', ...typography.small, fontWeight: '600' },
 
   // Code / value box
-  codeBox: {
-    backgroundColor: '#FAF7F2',
-    borderRadius: radius.lg,
-    padding: spacing.md,
-    marginBottom: spacing.md,
-  },
+  codeBox: { backgroundColor: '#FAF7F2', borderRadius: radius.lg, padding: spacing.md, marginBottom: spacing.md },
   codeTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   codeLabel: { color: 'rgba(58,58,58,0.70)', ...typography.small, fontWeight: '700' },
   codeCopy: { color: colors.brand, ...typography.small, fontWeight: '900' },
   codeValue: { marginTop: 8, color: colors.brand, ...typography.h2, fontWeight: '900', letterSpacing: 1 },
 
-  // Referral benefits
   benefitRow: { flexDirection: 'row', gap: spacing.sm, alignItems: 'flex-start' },
   benefitIcon: {
     width: 22,
@@ -953,12 +821,7 @@ const styles = StyleSheet.create({
 
   // Cashback
   cashValue: { marginTop: 6, color: colors.brand, ...typography.h2, fontWeight: '900' },
-  useButton: {
-    backgroundColor: colors.brand,
-    borderRadius: radius.full,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-  },
+  useButton: { backgroundColor: colors.brand, borderRadius: radius.full, paddingHorizontal: 16, paddingVertical: 10 },
   useButtonText: { color: colors.brandForeground, ...typography.small, fontWeight: '900' },
 
   metricRow: {

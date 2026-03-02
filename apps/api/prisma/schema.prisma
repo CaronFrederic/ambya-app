@@ -45,6 +45,11 @@ model User {
   // Client appointments
   appointments Appointment[] @relation("AppointmentClient")
 
+  clientProfile  ClientProfile?
+  paymentMethods PaymentMethod[]
+  loyaltyAccount LoyaltyAccount?
+  paymentIntents PaymentIntent[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -65,9 +70,10 @@ model Salon {
   ownerId String
   owner   User   @relation("SalonOwner", fields: [ownerId], references: [id], onDelete: Cascade)
 
-  employees    Employee[]
-  services     Service[]
-  appointments Appointment[]
+  employees      Employee[]
+  services       Service[]
+  appointments   Appointment[]
+  paymentIntents PaymentIntent[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -133,6 +139,8 @@ model Appointment {
   serviceId String
   service   Service @relation(fields: [serviceId], references: [id], onDelete: Restrict)
 
+  paymentIntents PaymentIntent[]
+
   employeeId String?
   employee   Employee? @relation(fields: [employeeId], references: [id], onDelete: SetNull)
 
@@ -151,13 +159,169 @@ model Appointment {
 }
 
 model Country {
-  code     String @id          // "GA", "CD"...
+  code     String  @id // "GA", "CD"...
   name     String
-  currency String              // "FCFA", "$"...
+  currency String // "FCFA", "$"...
   isActive Boolean @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([isActive])
+}
+
+model ClientProfile {
+  id String @id @default(cuid())
+
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Profil “général” (step 1)
+  nickname String
+  gender   String
+  ageRange String
+  city     String
+  country  String
+
+  // Step 8
+  allergies String? // "yes" | "no"
+  comments  String?
+
+  // ✅ Tout le questionnaire multi-steps (hair/nails/face/body/fitness/practical)
+  questionnaire Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([city])
+  @@index([country])
+}
+
+enum PaymentType {
+  MOMO
+  CARD
+  CASH
+}
+
+enum LoyaltyTier {
+  BRONZE
+  SILVER
+  GOLD
+  PLATINUM
+}
+
+enum LoyaltyReason {
+  WELCOME
+  BOOKING
+  REVIEW
+  REFERRAL
+  ADJUSTMENT
+}
+
+model PaymentMethod {
+  id String @id @default(cuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  type         PaymentType
+  provider     String? // MTN, Visa, Orange...
+  providerRef  String? // ID technique PSP
+  providerData Json?
+  label        String?
+  phone        String?
+  last4        String?
+  isDefault    Boolean     @default(false)
+  isActive     Boolean     @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+  @@index([userId, isDefault])
+}
+
+model LoyaltyAccount {
+  id String @id @default(cuid())
+
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  tier           LoyaltyTier @default(BRONZE)
+  currentPoints  Int         @default(0)
+  lifetimePoints Int         @default(0)
+
+  transactions LoyaltyTransaction[]
+
+  pendingDiscountAmount Int      @default(0) // réduction fixe en attente
+  pendingDiscountTier   LoyaltyTier?
+  pendingDiscountIssuedAt DateTime?
+  pendingDiscountConsumedAt DateTime?
+  pendingDiscountConsumedIntentId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model LoyaltyTransaction {
+  id String @id @default(cuid())
+
+  loyaltyAccountId String
+  loyaltyAccount   LoyaltyAccount @relation(fields: [loyaltyAccountId], references: [id], onDelete: Cascade)
+
+  deltaPoints Int
+  reason      LoyaltyReason
+  meta        Json?
+  createdAt   DateTime      @default(now())
+
+  @@index([loyaltyAccountId, createdAt])
+}
+
+enum PaymentStatus {
+  CREATED
+  PENDING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+  REFUNDED
+}
+
+model PaymentIntent {
+  id String @id @default(cuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  salonId String?
+  salon   Salon?  @relation(fields: [salonId], references: [id], onDelete: SetNull)
+
+  appointmentId String?
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+
+  // Money
+  amount   Int
+  discountAmount Int @default(0)
+  payableAmount  Int @default(0)
+  appliedDiscountTier LoyaltyTier?
+  currency String // "XAF", "USD" ...
+
+  status PaymentStatus @default(CREATED)
+
+  // Provider info
+  provider     String? // ex: "MTN", "ORANGE", "STRIPE"
+  providerRef  String? // id technique du PSP (transaction/payment intent id)
+  providerData Json? // payload utile (channel momo, etc.)
+
+  // Commission ready (même si pas prélevée en bêta)
+  platformFeeAmount Int @default(0)
+  providerFeeAmount Int @default(0)
+  netAmount         Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, createdAt])
+  @@index([salonId, createdAt])
+  @@index([appointmentId])
+  @@index([status])
 }

@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { PrismaClient, UserRole, AppointmentStatus } from '@prisma/client'
 import { PrismaPg } from '@prisma/adapter-pg'
 import { Pool } from 'pg'
@@ -20,7 +21,7 @@ const prisma = new PrismaClient({
 async function main() {
   console.log('🌱 Seeding database...')
 
-  /*const hashedPassword = await bcrypt.hash('password123', 10)
+  const hashedPassword = await bcrypt.hash('password123', 10)
 
   const professional = await prisma.user.create({
     data: {
@@ -82,7 +83,7 @@ async function main() {
       startAt: new Date(),
       endAt: new Date(Date.now() + 30 * 60000),
     },
-  })*/
+  })
 
   await prisma.country.upsert({
   where: { code: 'GA' },

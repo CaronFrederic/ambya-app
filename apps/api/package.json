@@ -24,7 +24,8 @@
     "check:appointments:cache": "ts-node scripts/check-appointments-cache.ts",
     "check:appointments:create": "ts-node scripts/check-appointments-create.ts",
     "check:appointments:assign": "ts-node scripts/check-appointments-assign.ts",
-    "check:config:countries": "ts-node scripts/check-config-countries.ts"
+    "check:config:countries": "ts-node scripts/check-config-countries.ts",
+    "seed": "ts-node -r dotenv/config prisma/seed.ts"
   },
   "dependencies": {
     "@ambya/shared": "workspace:*",
