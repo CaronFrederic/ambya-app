@@ -52,7 +52,9 @@ export class RegisterDto {
   @MinLength(6)
   password!: string
 
+  // ✅ Option B: profile devient optionnel
+  @IsOptional()
   @ValidateNested()
   @Type(() => ClientProfileDto)
-  profile!: ClientProfileDto
+  profile?: ClientProfileDto
 }

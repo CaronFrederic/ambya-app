@@ -1,8 +1,9 @@
 // app/(tabs)/profile/notifications.tsx
-import React, { useMemo, useState } from 'react'
+import React, { useMemo } from 'react'
 import { View, Text, StyleSheet, Pressable, ActivityIndicator, Alert } from 'react-native'
 import { router } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
+import { useQueryClient } from '@tanstack/react-query'
 
 import { Screen } from '../../../src/components/Screen'
 import { colors, overlays } from '../../../src/theme/colors'
@@ -10,50 +11,71 @@ import { spacing } from '../../../src/theme/spacing'
 import { radius } from '../../../src/theme/radius'
 import { typography } from '../../../src/theme/typography'
 
-import { useMeSummary } from '../../../src/api/me'
-import { useUpdateMeProfile } from '../../../src/api/me'
+import { useMeSummary, useUpdateMeProfile, MeSummary } from '../../../src/api/me'
 
-type NotifValue = 'push' | 'email'
+type NotifValue = 'push' | 'email' | 'sms'
 
 const OPTIONS: { label: string; value: NotifValue; icon: any; sub: string }[] = [
   { label: 'Push', value: 'push', icon: 'notifications-outline', sub: 'Notifications sur votre téléphone' },
   { label: 'Email', value: 'email', icon: 'mail-outline', sub: 'Recevoir un email' },
+  { label: 'SMS', value: 'sms', icon: 'chatbubble-ellipses-outline', sub: 'Recevoir un SMS' },
 ]
 
 export default function NotificationsScreen() {
+  const qc = useQueryClient()
   const { data: summary, isLoading, isRefetching } = useMeSummary(true)
   const update = useUpdateMeProfile()
 
-  const current = useMemo(() => {
+  const selected = useMemo(() => {
     const q = (summary?.profile?.questionnaire ?? {}) as any
     const prefs = (q?.practical?.notifPrefs ?? []) as string[]
-    return new Set(prefs.filter((x) => x === 'push' || x === 'email') as NotifValue[])
+    return new Set(prefs.filter((x) => x === 'push' || x === 'email' || x === 'sms') as NotifValue[])
   }, [summary])
-
-  // état local pour feedback instantané
-  const [local, setLocal] = useState<Set<NotifValue> | null>(null)
-  const selected = local ?? current
 
   const saving = update.isPending
 
   const commit = async (next: Set<NotifValue>) => {
-    setLocal(new Set(next)) // optimiste
+    const nextArr = Array.from(next)
+
+    // ✅ Optimistic UI : on pousse directement dans la cache source-of-truth
+    qc.setQueryData<MeSummary>(['me', 'summary'], (old) => {
+      if (!old?.profile) return old as any
+
+      const prevQ = (old.profile.questionnaire ?? {}) as any
+      return {
+        ...old,
+        profile: {
+          ...old.profile,
+          questionnaire: {
+            ...prevQ,
+            practical: {
+              ...(prevQ.practical ?? {}),
+              notifPrefs: nextArr,
+            },
+          },
+        },
+      }
+    })
+
     try {
       await update.mutateAsync({
         questionnaire: {
           practical: {
-            notifPrefs: Array.from(next),
+            notifPrefs: nextArr,
           },
         },
       })
-      setLocal(null) // on laisse le refetch confirmer
+      // update hook invalide déjà, mais on peut forcer si tu veux :
+      // await qc.invalidateQueries({ queryKey: ['me', 'summary'] })
     } catch (e: any) {
-      setLocal(null)
-      Alert.alert('Erreur', e?.message ?? "Impossible de mettre à jour les notifications.")
+      // rollback : refetch vérité serveur
+      await qc.invalidateQueries({ queryKey: ['me', 'summary'] })
+      Alert.alert('Erreur', e?.message ?? 'Impossible de mettre à jour les notifications.')
     }
   }
 
   const toggle = (v: NotifValue) => {
+    if (saving || isLoading) return
     const next = new Set(selected)
     if (next.has(v)) next.delete(v)
     else next.add(v)

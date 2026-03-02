@@ -24,16 +24,32 @@ import { spacing } from '../../src/theme/spacing'
 import { radius } from '../../src/theme/radius'
 import { typography } from '../../src/theme/typography'
 
-/**
- * ✅ Objectif :
- * - 100% dynamique (source = /me/summary)
- * - toutes les sections manquantes (nails, faceSkin, wellness, fitness, practical)
- * - choix multiples en chips, LIMITÉ À 3 (max=3 pour tous les multi)
- *
- * ⚠️ IMPORTANT :
- * - Adapte API_URL + endpoint PATCH si ton backend a une route différente.
- *   Ici on suppose : PATCH /me/profile
- */
+// ✅ labels + helpers
+import {
+  type LabelMap,
+  MAP_GENDER,
+  MAP_AGE,
+  MAP_ALLERGIES,
+  MAP_HAIR_TYPES,
+  MAP_HAIR_TEXTURE,
+  MAP_HAIR_LENGTH,
+  MAP_HAIR_CONCERNS,
+  MAP_NAIL_TYPE,
+  MAP_NAIL_STATE,
+  MAP_NAIL_CONCERNS,
+  MAP_FACE_SKIN,
+  MAP_FACE_CONCERNS,
+  MAP_BODY_SKIN,
+  MAP_ZONES,
+  MAP_WELLBEING,
+  MAP_ACTIVITY,
+  MAP_FITNESS_GOALS,
+  MAP_FITNESS_CONCERNS,
+  MAP_PAYMENT_PREFS,
+  MAP_NOTIF_PREFS,
+  labelOf,
+  labelsOf,
+} from '../../src/constants/questionnaireLabels'
 
 type SectionKey =
   | 'general'
@@ -50,194 +66,6 @@ type Chip = { label: string; value: string }
 
 const MAX_MULTI = 3
 
-// ---------- OPTIONS (copiées de l’inscription) ----------
-const GENDER_OPTIONS: Option[] = [
-  { label: 'Femme', value: 'female' },
-  { label: 'Homme', value: 'male' },
-  { label: 'Autre', value: 'other' },
-  { label: 'Préfère ne pas dire', value: 'na' },
-]
-
-const AGE_OPTIONS: Option[] = [
-  { label: '18–24 ans', value: '18-24' },
-  { label: '25–34 ans', value: '25-34' },
-  { label: '35–44 ans', value: '35-44' },
-  { label: '45–54 ans', value: '45-54' },
-  { label: '55 ans et plus', value: '55+' },
-]
-
-const HAIR_TYPES: Chip[] = [
-  { label: 'Raides', value: 'straight' },
-  { label: 'Ondulés', value: 'wavy' },
-  { label: 'Bouclés', value: 'curly' },
-  { label: 'Crépus', value: 'coily' },
-  { label: 'Locks', value: 'locks' },
-  { label: 'Extensions', value: 'extensions' },
-  { label: 'Autres', value: 'other' },
-]
-
-const HAIR_TEXTURE_OPTIONS: Option[] = [
-  { label: 'Fins', value: 'thin' },
-  { label: 'Moyens', value: 'medium' },
-  { label: 'Épais', value: 'thick' },
-  { label: 'Très épais', value: 'very_thick' },
-  { label: 'Je ne sais pas', value: 'na' },
-]
-
-const HAIR_LENGTH_OPTIONS: Option[] = [
-  { label: 'Très courts', value: 'very_short' },
-  { label: 'Courts', value: 'short' },
-  { label: 'Mi-longs', value: 'medium' },
-  { label: 'Longs', value: 'long' },
-  { label: 'Je ne sais pas', value: 'na' },
-]
-
-const HAIR_CONCERNS: Chip[] = [
-  { label: 'Chute', value: 'fall' },
-  { label: 'Sécheresse', value: 'dry' },
-  { label: 'Casse', value: 'break' },
-  { label: 'Frisottis', value: 'frizz' },
-  { label: 'Pellicules', value: 'dandruff' },
-  { label: 'Croissance', value: 'growth' },
-  { label: 'Manque de volume', value: 'volume' },
-  { label: 'Sensibilité du cuir chevelu', value: 'scalp_sensitive' },
-  { label: 'Je ne sais pas', value: 'na' },
-]
-
-const NAIL_TYPE_MAX2: Chip[] = [
-  { label: 'Lisses', value: 'smooth' },
-  { label: 'Striés', value: 'ridged' },
-  { label: 'Délicats', value: 'delicate' },
-  { label: 'Irréguliers', value: 'irregular' },
-  { label: 'Dur', value: 'hard' },
-  { label: 'Fragiles', value: 'fragile' },
-  { label: 'Je ne sais pas', value: 'na' },
-]
-
-const NAIL_STATE_MAX2: Chip[] = [
-  { label: 'Cassants', value: 'brittle' },
-  { label: 'Mou', value: 'soft' },
-  { label: 'Ongles qui se dédoublent', value: 'split' },
-  { label: 'Irrités', value: 'irritated' },
-  { label: 'Ongles normaux', value: 'normal' },
-  { label: 'Je ne sais pas', value: 'na' },
-]
-
-const NAIL_CONCERNS_MAX3: Chip[] = [
-  { label: 'Cuticules', value: 'cuticles' },
-  { label: 'Déshydratation', value: 'dehydration' },
-  { label: 'Lourdeur', value: 'heaviness' },
-  { label: 'Ongles courts', value: 'short' },
-  { label: 'Ongles rongés', value: 'bitten' },
-  { label: 'Allergies produits', value: 'product_allergy' },
-  { label: 'Je ne sais pas', value: 'na' },
-]
-
-const FACE_SKIN_OPTIONS: Option[] = [
-  { label: 'Sèche', value: 'dry' },
-  { label: 'Mixte', value: 'combo' },
-  { label: 'Grasse', value: 'oily' },
-  { label: 'Sensible', value: 'sensitive' },
-  { label: 'Normale', value: 'normal' },
-  { label: 'Je ne sais pas', value: 'na' },
-]
-
-const FACE_CONCERNS_MAX3: Chip[] = [
-  { label: 'Acné', value: 'acne' },
-  { label: 'Rougeurs', value: 'redness' },
-  { label: 'Taches', value: 'spots' },
-  { label: 'Sensibilité', value: 'sensitivity' },
-  { label: 'Déshydratation', value: 'dehydration' },
-  { label: 'Rides & vieillissement', value: 'aging' },
-  { label: 'Texture', value: 'texture' },
-  { label: "Manque d'éclat", value: 'dull' },
-  { label: 'Je ne sais pas', value: 'na' },
-]
-
-const BODY_SKIN_OPTIONS: Option[] = [
-  { label: 'Normale', value: 'normal' },
-  { label: 'Sèche', value: 'dry' },
-  { label: 'Sensible', value: 'sensitive' },
-  { label: 'Je ne sais pas', value: 'na' },
-]
-
-const TENSION_ZONES_MAX3: Chip[] = [
-  { label: 'Nuque', value: 'neck' },
-  { label: 'Épaules', value: 'shoulders' },
-  { label: 'Dos', value: 'back' },
-  { label: 'Lombaires', value: 'lower_back' },
-  { label: 'Bras', value: 'arms' },
-  { label: 'Jambes', value: 'legs' },
-  { label: 'Pieds', value: 'feet' },
-  { label: 'Je ne sais pas', value: 'na' },
-]
-
-const WELLBEING_CONCERNS_MAX3: Chip[] = [
-  { label: 'Stress', value: 'stress' },
-  { label: 'Douleurs musculaires', value: 'muscle_pain' },
-  { label: 'Circulation', value: 'circulation' },
-  { label: 'Détox', value: 'detox' },
-  { label: "Rétention d'eau", value: 'water_retention' },
-  { label: 'Relaxation', value: 'relax' },
-  { label: 'Je ne sais pas', value: 'na' },
-]
-
-const MASSAGE_SENSITIVE_ZONES_OPTIONAL: Chip[] = [
-  { label: 'Nuque', value: 'neck' },
-  { label: 'Épaules', value: 'shoulders' },
-  { label: 'Dos', value: 'back' },
-  { label: 'Lombaires', value: 'lower_back' },
-  { label: 'Bras', value: 'arms' },
-  { label: 'Jambes', value: 'legs' },
-  { label: 'Pieds', value: 'feet' },
-]
-
-const ACTIVITY_LEVEL_OPTIONS: Option[] = [
-  { label: 'Sédentaire', value: 'sedentary' },
-  { label: 'Occasionnel', value: 'occasional' },
-  { label: 'Régulier', value: 'regular' },
-  { label: 'Sportif', value: 'sporty' },
-  { label: 'Je ne sais pas', value: 'na' },
-]
-
-const FITNESS_GOALS_MAX2: Chip[] = [
-  { label: 'Prise de muscle', value: 'muscle' },
-  { label: 'Perte de poids', value: 'weight_loss' },
-  { label: 'Endurance', value: 'endurance' },
-  { label: 'Condition générale', value: 'fitness' },
-  { label: 'Remise en forme', value: 'back_in_shape' },
-  { label: 'Je ne sais pas', value: 'na' },
-]
-
-const FITNESS_CONCERNS_MAX3: Chip[] = [
-  { label: 'Douleurs articulaires', value: 'joint_pain' },
-  { label: 'Cardio faible', value: 'low_cardio' },
-  { label: 'Essoufflement', value: 'breath' },
-  { label: 'Récupération lente', value: 'slow_recovery' },
-  { label: 'Fatigue', value: 'fatigue' },
-  { label: 'Posture / mobilité', value: 'posture' },
-  { label: 'Je ne sais pas', value: 'na' },
-]
-
-const PAYMENT_MAX2: Chip[] = [
-  { label: 'Mobile Money', value: 'momo' },
-  { label: 'Carte bancaire', value: 'card' },
-  { label: 'Cash', value: 'cash' },
-  { label: 'Mixte', value: 'mixed' },
-]
-
-const NOTIF_MAX2: Chip[] = [
-  { label: 'Push', value: 'push' },
-  { label: 'Email', value: 'email' },
-  { label: 'SMS', value: 'sms' },
-  { label: 'Aucun', value: 'none' },
-]
-
-const ALLERGIES_OPTIONS: Option[] = [
-  { label: 'Oui', value: 'yes' },
-  { label: 'Non', value: 'no' },
-]
-
 // ---------- Helpers ----------
 function clampSelect(list: string[], value: string, max: number) {
   const exists = list.includes(value)
@@ -246,17 +74,21 @@ function clampSelect(list: string[], value: string, max: number) {
   return [...list, value]
 }
 
-function toUpperCurrencyOrNull(v: string | null | undefined) {
-  const s = (v ?? '').trim()
-  return s ? s.toUpperCase() : null
+function mapToOptions(map: LabelMap): Option[] {
+  return Object.entries(map).map(([value, label]) => ({ value, label }))
+}
+
+function mapToChips(map: LabelMap, opts?: { exclude?: string[] }): Chip[] {
+  const exclude = new Set(opts?.exclude ?? [])
+  return Object.entries(map)
+    .filter(([value]) => !exclude.has(value))
+    .map(([value, label]) => ({ value, label }))
 }
 
 // ---------- API ----------
 async function patchMeProfile(token: string, body: any) {
   const api = process.env.EXPO_PUBLIC_API_URL
-  if (!api) {
-    throw new Error('EXPO_PUBLIC_API_URL missing')
-  }
+  if (!api) throw new Error('EXPO_PUBLIC_API_URL missing')
 
   const res = await fetch(`${api}/me/profile`, {
     method: 'PATCH',
@@ -292,45 +124,69 @@ export default function EditSectionScreen() {
   const user = summary?.user
   const q = (profile?.questionnaire ?? {}) as any
 
-  // ---- local form state (dynamique) ----
-  // general
+  // ✅ options/chips depuis les maps (source unique)
+  const GENDER_OPTIONS = useMemo(() => mapToOptions(MAP_GENDER), [])
+  const AGE_OPTIONS = useMemo(() => mapToOptions(MAP_AGE), [])
+  const ALLERGIES_OPTIONS = useMemo(() => mapToOptions(MAP_ALLERGIES), [])
+
+  const HAIR_TYPES = useMemo(() => mapToChips(MAP_HAIR_TYPES), [])
+  const HAIR_TEXTURE_OPTIONS = useMemo(() => mapToOptions(MAP_HAIR_TEXTURE), [])
+  const HAIR_LENGTH_OPTIONS = useMemo(() => mapToOptions(MAP_HAIR_LENGTH), [])
+  const HAIR_CONCERNS = useMemo(() => mapToChips(MAP_HAIR_CONCERNS), [])
+
+  const NAIL_TYPE = useMemo(() => mapToChips(MAP_NAIL_TYPE), [])
+  const NAIL_STATE = useMemo(() => mapToChips(MAP_NAIL_STATE), [])
+  const NAIL_CONCERNS = useMemo(() => mapToChips(MAP_NAIL_CONCERNS), [])
+
+  const FACE_SKIN_OPTIONS = useMemo(() => mapToOptions(MAP_FACE_SKIN), [])
+  const FACE_CONCERNS = useMemo(() => mapToChips(MAP_FACE_CONCERNS), [])
+
+  const BODY_SKIN_OPTIONS = useMemo(() => mapToOptions(MAP_BODY_SKIN), [])
+
+  // ⚠️ Pour zones, on garde "na" utile en "tension zones", mais pas pour "massage zones"
+  const ZONES_WITH_NA = useMemo(() => mapToChips(MAP_ZONES), [])
+  const ZONES_NO_NA = useMemo(() => mapToChips(MAP_ZONES, { exclude: ['na'] }), [])
+
+  const WELLBEING_CONCERNS = useMemo(() => mapToChips(MAP_WELLBEING), [])
+
+  const ACTIVITY_LEVEL_OPTIONS = useMemo(() => mapToOptions(MAP_ACTIVITY), [])
+  const FITNESS_GOALS = useMemo(() => mapToChips(MAP_FITNESS_GOALS), [])
+  const FITNESS_CONCERNS = useMemo(() => mapToChips(MAP_FITNESS_CONCERNS), [])
+
+  const PAYMENT_PREFS = useMemo(() => mapToChips(MAP_PAYMENT_PREFS), [])
+  const NOTIF_PREFS = useMemo(() => mapToChips(MAP_NOTIF_PREFS), [])
+
+  // ---- local form state ----
   const [nickname, setNickname] = useState('')
   const [gender, setGender] = useState<string | null>(null)
   const [ageRange, setAgeRange] = useState<string | null>(null)
   const [city, setCity] = useState('')
   const [country, setCountry] = useState('')
 
-  // hair
   const [hairTypes, setHairTypes] = useState<string[]>([])
   const [hairTexture, setHairTexture] = useState<string | null>(null)
   const [hairLength, setHairLength] = useState<string | null>(null)
   const [hairConcerns, setHairConcerns] = useState<string[]>([])
 
-  // nails
   const [nailTypes, setNailTypes] = useState<string[]>([])
   const [nailStates, setNailStates] = useState<string[]>([])
   const [nailConcerns, setNailConcerns] = useState<string[]>([])
 
-  // face
   const [faceSkin, setFaceSkin] = useState<string | null>(null)
   const [faceConcerns, setFaceConcerns] = useState<string[]>([])
 
-  // wellness
   const [bodySkin, setBodySkin] = useState<string | null>(null)
   const [tensionZones, setTensionZones] = useState<string[]>([])
   const [wellbeingConcerns, setWellbeingConcerns] = useState<string[]>([])
   const [massageSensitiveZones, setMassageSensitiveZones] = useState<string[]>([])
 
-  // fitness
   const [activityLevel, setActivityLevel] = useState<string | null>(null)
   const [fitnessGoals, setFitnessGoals] = useState<string[]>([])
   const [fitnessConcerns, setFitnessConcerns] = useState<string[]>([])
 
-  // practical
   const [paymentPrefs, setPaymentPrefs] = useState<string[]>([])
   const [notifPrefs, setNotifPrefs] = useState<string[]>([])
 
-  // important
   const [allergies, setAllergies] = useState<string | null>(null)
   const [comments, setComments] = useState('')
 
@@ -338,54 +194,43 @@ export default function EditSectionScreen() {
   useEffect(() => {
     if (!profile) return
 
-    // general
     setNickname(profile.nickname ?? '')
     setGender(profile.gender ?? null)
     setAgeRange(profile.ageRange ?? null)
     setCity(profile.city ?? '')
     setCountry(profile.country ?? '')
 
-    // hair
     setHairTypes(q?.hair?.hairTypes ?? [])
     setHairTexture(q?.hair?.hairTexture ?? null)
     setHairLength(q?.hair?.hairLength ?? null)
     setHairConcerns(q?.hair?.hairConcerns ?? [])
 
-    // nails
     setNailTypes(q?.nails?.nailTypes ?? [])
     setNailStates(q?.nails?.nailStates ?? [])
     setNailConcerns(q?.nails?.nailConcerns ?? [])
 
-    // face
     setFaceSkin(q?.face?.faceSkin ?? null)
     setFaceConcerns(q?.face?.faceConcerns ?? [])
 
-    // wellness
     setBodySkin(q?.body?.bodySkin ?? null)
     setTensionZones(q?.body?.tensionZones ?? [])
     setWellbeingConcerns(q?.body?.wellbeingConcerns ?? [])
     setMassageSensitiveZones(q?.body?.massageSensitiveZones ?? [])
 
-    // fitness
     setActivityLevel(q?.fitness?.activityLevel ?? null)
     setFitnessGoals(q?.fitness?.fitnessGoals ?? [])
     setFitnessConcerns(q?.fitness?.fitnessConcerns ?? [])
 
-    // practical
     setPaymentPrefs(q?.practical?.paymentPrefs ?? [])
     setNotifPrefs(q?.practical?.notifPrefs ?? [])
 
-    // important
     setAllergies(profile.allergies ?? null)
     setComments(profile.comments ?? '')
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profile?.id]) // init once per profile
+  }, [profile?.id])
 
   const userInfo = useMemo(() => {
-    return {
-      email: user?.email ?? null,
-      phone: user?.phone ?? null,
-    }
+    return { email: user?.email ?? null, phone: user?.phone ?? null }
   }, [user?.email, user?.phone])
 
   const canSave = !!token && !saving
@@ -393,7 +238,6 @@ export default function EditSectionScreen() {
   async function onSave() {
     if (!token) return
 
-    // validations légères
     if (section === 'general') {
       if (!nickname.trim()) return Alert.alert('Champ requis', 'Indique ton prénom ou surnom.')
       if (!gender) return Alert.alert('Champ requis', 'Sélectionne ton genre.')
@@ -406,31 +250,18 @@ export default function EditSectionScreen() {
       if (!allergies) return Alert.alert('Champ requis', 'Indique si tu as des allergies.')
     }
 
-    // build payload
     const baseQ = (profile?.questionnaire ?? {}) as any
     let payload: any = {}
 
     if (section === 'general') {
-      payload = {
-        nickname: nickname.trim(),
-        gender,
-        ageRange,
-        city: city.trim(),
-        country: country.trim(),
-      }
+      payload = { nickname: nickname.trim(), gender, ageRange, city: city.trim(), country: country.trim() }
     }
 
     if (section === 'hair') {
       payload = {
         questionnaire: {
           ...baseQ,
-          hair: {
-            ...(baseQ?.hair ?? {}),
-            hairTypes,
-            hairTexture,
-            hairLength,
-            hairConcerns,
-          },
+          hair: { ...(baseQ?.hair ?? {}), hairTypes, hairTexture, hairLength, hairConcerns },
         },
       }
     }
@@ -439,12 +270,7 @@ export default function EditSectionScreen() {
       payload = {
         questionnaire: {
           ...baseQ,
-          nails: {
-            ...(baseQ?.nails ?? {}),
-            nailTypes,
-            nailStates,
-            nailConcerns,
-          },
+          nails: { ...(baseQ?.nails ?? {}), nailTypes, nailStates, nailConcerns },
         },
       }
     }
@@ -453,11 +279,7 @@ export default function EditSectionScreen() {
       payload = {
         questionnaire: {
           ...baseQ,
-          face: {
-            ...(baseQ?.face ?? {}),
-            faceSkin,
-            faceConcerns,
-          },
+          face: { ...(baseQ?.face ?? {}), faceSkin, faceConcerns },
         },
       }
     }
@@ -481,12 +303,7 @@ export default function EditSectionScreen() {
       payload = {
         questionnaire: {
           ...baseQ,
-          fitness: {
-            ...(baseQ?.fitness ?? {}),
-            activityLevel,
-            fitnessGoals,
-            fitnessConcerns,
-          },
+          fitness: { ...(baseQ?.fitness ?? {}), activityLevel, fitnessGoals, fitnessConcerns },
         },
       }
     }
@@ -495,27 +312,19 @@ export default function EditSectionScreen() {
       payload = {
         questionnaire: {
           ...baseQ,
-          practical: {
-            ...(baseQ?.practical ?? {}),
-            paymentPrefs,
-            notifPrefs,
-          },
+          practical: { ...(baseQ?.practical ?? {}), paymentPrefs, notifPrefs },
         },
       }
     }
 
     if (section === 'important') {
-      payload = {
-        allergies,
-        comments: comments?.trim() ? comments.trim() : null,
-      }
+      payload = { allergies, comments: comments?.trim() ? comments.trim() : null }
     }
 
     try {
       setSaving(true)
       await patchMeProfile(token, payload)
 
-      // ✅ refresh UI
       await qc.invalidateQueries({ queryKey: ['me', 'summary'] })
       await refetch()
 
@@ -530,7 +339,6 @@ export default function EditSectionScreen() {
 
   return (
     <Screen noPadding style={{ backgroundColor: colors.background }}>
-      {/* Header */}
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} style={styles.headerBack} hitSlop={10}>
           <Ionicons name="arrow-back" size={22} color={colors.brandForeground} />
@@ -546,7 +354,6 @@ export default function EditSectionScreen() {
         </View>
       ) : (
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-          {/* ---- GENERAL ---- */}
           {section === 'general' && (
             <View style={{ gap: spacing.lg }}>
               <FieldLabel text="Surnom*" />
@@ -569,18 +376,10 @@ export default function EditSectionScreen() {
               </View>
 
               <FieldLabel text="Genre*" />
-              <SelectList
-                options={GENDER_OPTIONS}
-                value={gender}
-                onChange={setGender}
-              />
+              <SelectList options={GENDER_OPTIONS} value={gender} onChange={setGender} />
 
               <FieldLabel text="Tranche d'âge*" />
-              <SelectList
-                options={AGE_OPTIONS}
-                value={ageRange}
-                onChange={setAgeRange}
-              />
+              <SelectList options={AGE_OPTIONS} value={ageRange} onChange={setAgeRange} />
 
               <FieldLabel text="Ville*" />
               <TextInput
@@ -602,7 +401,6 @@ export default function EditSectionScreen() {
             </View>
           )}
 
-          {/* ---- HAIR ---- */}
           {section === 'hair' && (
             <View style={{ gap: spacing.lg }}>
               <FieldLabel text={`Type de cheveux (max ${MAX_MULTI})`} />
@@ -629,12 +427,11 @@ export default function EditSectionScreen() {
             </View>
           )}
 
-          {/* ---- NAILS ---- */}
           {section === 'nails' && (
             <View style={{ gap: spacing.lg }}>
               <FieldLabel text={`Type ongles (max ${MAX_MULTI})`} />
               <ChipGroup
-                chips={NAIL_TYPE_MAX2}
+                chips={NAIL_TYPE}
                 selected={nailTypes}
                 max={MAX_MULTI}
                 onToggle={(v) => setNailTypes((prev) => clampSelect(prev, v, MAX_MULTI))}
@@ -642,7 +439,7 @@ export default function EditSectionScreen() {
 
               <FieldLabel text={`État des ongles (max ${MAX_MULTI})`} />
               <ChipGroup
-                chips={NAIL_STATE_MAX2}
+                chips={NAIL_STATE}
                 selected={nailStates}
                 max={MAX_MULTI}
                 onToggle={(v) => setNailStates((prev) => clampSelect(prev, v, MAX_MULTI))}
@@ -650,7 +447,7 @@ export default function EditSectionScreen() {
 
               <FieldLabel text={`Préoccupations (max ${MAX_MULTI})`} />
               <ChipGroup
-                chips={NAIL_CONCERNS_MAX3}
+                chips={NAIL_CONCERNS}
                 selected={nailConcerns}
                 max={MAX_MULTI}
                 onToggle={(v) => setNailConcerns((prev) => clampSelect(prev, v, MAX_MULTI))}
@@ -658,7 +455,6 @@ export default function EditSectionScreen() {
             </View>
           )}
 
-          {/* ---- FACE ---- */}
           {section === 'faceSkin' && (
             <View style={{ gap: spacing.lg }}>
               <FieldLabel text="Type de peau (visage)" />
@@ -666,7 +462,7 @@ export default function EditSectionScreen() {
 
               <FieldLabel text={`Préoccupations visage (max ${MAX_MULTI})`} />
               <ChipGroup
-                chips={FACE_CONCERNS_MAX3}
+                chips={FACE_CONCERNS}
                 selected={faceConcerns}
                 max={MAX_MULTI}
                 onToggle={(v) => setFaceConcerns((prev) => clampSelect(prev, v, MAX_MULTI))}
@@ -674,15 +470,14 @@ export default function EditSectionScreen() {
             </View>
           )}
 
-          {/* ---- WELLNESS ---- */}
           {section === 'wellness' && (
             <View style={{ gap: spacing.lg }}>
               <FieldLabel text="Type de peau (corps)" />
-              <SelectList options={BODY_SKIN_OPTIONS} value={bodySkin} onChange={setBodySkin} />
+              <SelectList options={MAP_BODY_SKIN ? mapToOptions(MAP_BODY_SKIN) : []} value={bodySkin} onChange={setBodySkin} />
 
               <FieldLabel text={`Zones de tension / douleur (max ${MAX_MULTI})`} />
               <ChipGroup
-                chips={TENSION_ZONES_MAX3}
+                chips={ZONES_WITH_NA}
                 selected={tensionZones}
                 max={MAX_MULTI}
                 onToggle={(v) => setTensionZones((prev) => clampSelect(prev, v, MAX_MULTI))}
@@ -690,7 +485,7 @@ export default function EditSectionScreen() {
 
               <FieldLabel text={`Préoccupations bien-être (max ${MAX_MULTI})`} />
               <ChipGroup
-                chips={WELLBEING_CONCERNS_MAX3}
+                chips={WELLBEING_CONCERNS}
                 selected={wellbeingConcerns}
                 max={MAX_MULTI}
                 onToggle={(v) => setWellbeingConcerns((prev) => clampSelect(prev, v, MAX_MULTI))}
@@ -698,7 +493,7 @@ export default function EditSectionScreen() {
 
               <FieldLabel text={`Zones sensibles massage (max ${MAX_MULTI})`} hint="optionnel" />
               <ChipGroup
-                chips={MASSAGE_SENSITIVE_ZONES_OPTIONAL}
+                chips={ZONES_NO_NA}
                 selected={massageSensitiveZones}
                 max={MAX_MULTI}
                 onToggle={(v) => setMassageSensitiveZones((prev) => clampSelect(prev, v, MAX_MULTI))}
@@ -706,7 +501,6 @@ export default function EditSectionScreen() {
             </View>
           )}
 
-          {/* ---- FITNESS ---- */}
           {section === 'fitness' && (
             <View style={{ gap: spacing.lg }}>
               <FieldLabel text="Niveau d'activité" />
@@ -714,7 +508,7 @@ export default function EditSectionScreen() {
 
               <FieldLabel text={`Objectifs fitness (max ${MAX_MULTI})`} />
               <ChipGroup
-                chips={FITNESS_GOALS_MAX2}
+                chips={FITNESS_GOALS}
                 selected={fitnessGoals}
                 max={MAX_MULTI}
                 onToggle={(v) => setFitnessGoals((prev) => clampSelect(prev, v, MAX_MULTI))}
@@ -722,7 +516,7 @@ export default function EditSectionScreen() {
 
               <FieldLabel text={`Préoccupations fitness / santé (max ${MAX_MULTI})`} />
               <ChipGroup
-                chips={FITNESS_CONCERNS_MAX3}
+                chips={FITNESS_CONCERNS}
                 selected={fitnessConcerns}
                 max={MAX_MULTI}
                 onToggle={(v) => setFitnessConcerns((prev) => clampSelect(prev, v, MAX_MULTI))}
@@ -730,12 +524,11 @@ export default function EditSectionScreen() {
             </View>
           )}
 
-          {/* ---- PRACTICAL ---- */}
           {section === 'practical' && (
             <View style={{ gap: spacing.lg }}>
               <FieldLabel text={`Modes de paiement préférés (max ${MAX_MULTI})`} />
               <ChipGroup
-                chips={PAYMENT_MAX2}
+                chips={PAYMENT_PREFS}
                 selected={paymentPrefs}
                 max={MAX_MULTI}
                 onToggle={(v) => setPaymentPrefs((prev) => clampSelect(prev, v, MAX_MULTI))}
@@ -743,7 +536,7 @@ export default function EditSectionScreen() {
 
               <FieldLabel text={`Notifications (max ${MAX_MULTI})`} />
               <ChipGroup
-                chips={NOTIF_MAX2}
+                chips={NOTIF_PREFS}
                 selected={notifPrefs}
                 max={MAX_MULTI}
                 onToggle={(v) => setNotifPrefs((prev) => clampSelect(prev, v, MAX_MULTI))}
@@ -751,7 +544,6 @@ export default function EditSectionScreen() {
             </View>
           )}
 
-          {/* ---- IMPORTANT ---- */}
           {section === 'important' && (
             <View style={{ gap: spacing.lg }}>
               <FieldLabel text="Allergies / sensibilités*" />
@@ -773,11 +565,7 @@ export default function EditSectionScreen() {
 
           <View style={{ height: 18 }} />
 
-          <Button
-            title={saving ? 'Enregistrement…' : 'Enregistrer'}
-            onPress={onSave}
-            disabled={!canSave}
-          />
+          <Button title={saving ? 'Enregistrement…' : 'Enregistrer'} onPress={onSave} disabled={!canSave} />
 
           <View style={{ height: 28 }} />
         </ScrollView>
@@ -787,13 +575,7 @@ export default function EditSectionScreen() {
 }
 
 // ---------- UI components ----------
-function FieldLabel({
-  text,
-  hint,
-}: {
-  text: string
-  hint?: string
-}) {
+function FieldLabel({ text, hint }: { text: string; hint?: string }) {
   return (
     <View style={{ gap: spacing.xs }}>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs }}>
@@ -853,15 +635,9 @@ function ChipGroup({
             key={c.value}
             onPress={() => onToggle(c.value)}
             disabled={disabled}
-            style={[
-              styles.chip,
-              isOn && styles.chipOn,
-              disabled && styles.chipDisabled,
-            ]}
+            style={[styles.chip, isOn && styles.chipOn, disabled && styles.chipDisabled]}
           >
-            <Text style={[styles.chipText, isOn && styles.chipTextOn]}>
-              {c.label}
-            </Text>
+            <Text style={[styles.chipText, isOn && styles.chipTextOn]}>{c.label}</Text>
           </Pressable>
         )
       })}
@@ -891,18 +667,10 @@ const styles = StyleSheet.create({
   headerTitle: { color: colors.brandForeground, ...typography.h1, fontWeight: '800' },
   headerSubtitle: { marginTop: 6, color: 'rgba(255,255,255,0.85)', ...typography.small },
 
-  loadingWrap: {
-    padding: spacing.xl,
-    alignItems: 'center',
-    gap: spacing.md,
-  },
+  loadingWrap: { padding: spacing.xl, alignItems: 'center', gap: spacing.md },
   loadingText: { color: colors.textMuted, ...typography.body, fontWeight: '600' },
 
-  content: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
-    paddingBottom: 80,
-  },
+  content: { paddingHorizontal: spacing.lg, paddingTop: spacing.lg, paddingBottom: 80 },
 
   label: { color: colors.text, ...typography.small, fontWeight: '800' },
   labelHint: { color: colors.textMuted, ...typography.small, fontWeight: '600' },
@@ -942,22 +710,10 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: spacing.md,
   },
-  selectRowSelected: {
-    borderColor: overlays.brand20,
-    backgroundColor: colors.card,
-  },
-  selectRowText: {
-    color: colors.text,
-    ...typography.body,
-    fontWeight: '700',
-    flex: 1,
-  },
+  selectRowSelected: { borderColor: overlays.brand20, backgroundColor: colors.card },
+  selectRowText: { color: colors.text, ...typography.body, fontWeight: '700', flex: 1 },
 
-  chipWrap: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-  },
+  chipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   chip: {
     backgroundColor: colors.card,
     borderRadius: 999,
@@ -966,13 +722,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
-  chipOn: {
-    borderColor: overlays.brand20,
-    backgroundColor: colors.card,
-  },
-  chipDisabled: {
-    opacity: 0.5,
-  },
+  chipOn: { borderColor: overlays.brand20, backgroundColor: colors.card },
+  chipDisabled: { opacity: 0.5 },
   chipText: { color: colors.text, ...typography.small, fontWeight: '700' },
   chipTextOn: { color: colors.brand },
 

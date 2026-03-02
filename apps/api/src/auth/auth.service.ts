@@ -52,20 +52,22 @@ export class AuthService {
         select: { id: true, email: true, phone: true, role: true, isActive: true, createdAt: true },
       })
 
-      await tx.clientProfile.create({
-        data: {
-          userId: user.id,
-          nickname: dto.profile.nickname,
-          gender: dto.profile.gender,
-          ageRange: dto.profile.ageRange,
-          city: dto.profile.city,
-          country: dto.profile.country,
-          allergies: dto.profile.allergies ?? null,
-          comments: dto.profile.comments ?? null,
-          questionnaire: dto.profile.questionnaire ?? Prisma.DbNull,
-        },
-        select: { id: true },
-      })
+      if (dto.profile) {
+        await tx.clientProfile.create({
+          data: {
+            userId: user.id,
+            nickname: dto.profile.nickname,
+            gender: dto.profile.gender,
+            ageRange: dto.profile.ageRange,
+            city: dto.profile.city,
+            country: dto.profile.country,
+            allergies: dto.profile.allergies ?? null,
+            comments: dto.profile.comments ?? null,
+            questionnaire: dto.profile.questionnaire ?? Prisma.DbNull,
+          },
+          select: { id: true },
+        })
+      }
 
       const loyalty = await tx.loyaltyAccount.create({
         data: {

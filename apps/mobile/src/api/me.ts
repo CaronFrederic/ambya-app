@@ -1,7 +1,7 @@
-import { useQuery } from '@tanstack/react-query'
+// src/api/me.ts
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from './client'
 import * as SecureStore from 'expo-secure-store'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL
 
@@ -97,7 +97,6 @@ export async function fetchMeLoyalty() {
 }
 
 // ---- React Query hooks ----
-// enabled: false tant que pas de token (sinon 401)
 export function useMeSummary(enabled: boolean) {
   return useQuery({
     queryKey: ['me', 'summary'],
@@ -126,6 +125,7 @@ async function authFetch(path: string, init?: RequestInit) {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
   })
+
   if (!res.ok) {
     const text = await res.text()
     throw new Error(text || `HTTP ${res.status}`)
@@ -133,16 +133,70 @@ async function authFetch(path: string, init?: RequestInit) {
   return res.json()
 }
 
+/**
+ * ✅ PATCH /me/profile
+ * - Optimistic update sur ['me','summary'] pour feedback immédiat
+ * - Invalidate la bonne clé à la fin
+ */
 export function useUpdateMeProfile() {
   const qc = useQueryClient()
+
   return useMutation({
     mutationFn: (payload: any) =>
       authFetch('/me/profile', {
         method: 'PATCH',
         body: JSON.stringify(payload),
       }),
-    onSuccess: async () => {
-      await qc.invalidateQueries({ queryKey: ['me-summary'] })
+
+    // ✅ Optimistic update (facultatif mais recommandé)
+    onMutate: async (payload: any) => {
+      await qc.cancelQueries({ queryKey: ['me', 'summary'] })
+
+      const previous = qc.getQueryData<MeSummary>(['me', 'summary'])
+
+      if (previous?.profile && payload) {
+        const prevQ = (previous.profile.questionnaire ?? {}) as any
+        const patchQ = (payload?.questionnaire ?? {}) as any
+
+        // merge simple : patch gagne
+        const nextQ = deepMerge(prevQ, patchQ)
+
+        qc.setQueryData<MeSummary>(['me', 'summary'], {
+          ...previous,
+          profile: {
+            ...previous.profile,
+            ...payload, // nickname/gender/etc si présents
+            questionnaire: nextQ,
+          },
+        })
+      }
+
+      return { previous }
+    },
+
+    onError: (_err, _payload, ctx) => {
+      if (ctx?.previous) qc.setQueryData(['me', 'summary'], ctx.previous)
+    },
+
+    onSettled: async () => {
+      // ✅ FIX : invalider la BONNE queryKey
+      await qc.invalidateQueries({ queryKey: ['me', 'summary'] })
     },
   })
+}
+
+// util merge
+function deepMerge(target: any, source: any) {
+  const t = (target && typeof target === 'object') ? target : {}
+  const s = (source && typeof source === 'object') ? source : {}
+  const out: any = Array.isArray(t) ? [...t] : { ...t }
+
+  for (const [k, v] of Object.entries(s)) {
+    if (v && typeof v === 'object' && !Array.isArray(v)) {
+      out[k] = deepMerge(out[k], v)
+    } else {
+      out[k] = v
+    }
+  }
+  return out
 }

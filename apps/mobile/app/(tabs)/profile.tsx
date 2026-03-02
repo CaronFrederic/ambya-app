@@ -23,6 +23,31 @@ import { typography } from '../../src/theme/typography'
 import { useAuthRefresh } from '../../src/providers/AuthRefreshProvider'
 import { useMeSummary } from '../../src/api/me'
 
+import {
+  MAP_GENDER,
+  MAP_AGE,
+  MAP_HAIR_TYPES,
+  MAP_HAIR_TEXTURE,
+  MAP_HAIR_LENGTH,
+  MAP_HAIR_CONCERNS,
+  MAP_NAIL_TYPE,
+  MAP_NAIL_STATE,
+  MAP_NAIL_CONCERNS,
+  MAP_FACE_SKIN,
+  MAP_FACE_CONCERNS,
+  MAP_BODY_SKIN,
+  MAP_ZONES,
+  MAP_WELLBEING,
+  MAP_ACTIVITY,
+  MAP_FITNESS_GOALS,
+  MAP_FITNESS_CONCERNS,
+  MAP_PAYMENT_PREFS,
+  MAP_NOTIF_PREFS,
+  MAP_ALLERGIES,
+  labelOf,
+  labelsOf,
+} from '../../src/constants/questionnaireLabels'
+
 type TabKey = 'infos' | 'fidelity' | 'settings'
 
 const SECTIONS = [
@@ -128,49 +153,63 @@ export default function ProfileScreen() {
   }, [profile, user, q])
 
   const rows = useMemo(() => {
+    const safe = (v: string | null | undefined) => (v && String(v).trim() ? String(v) : null)
+    const display = (v: string | null | undefined) => safe(v) ?? 'Non renseigné'
+    const displayList = (arr: string[]) => (arr.length ? arr.join(', ') : 'Non renseigné')
+
     return {
       general: [
-        { label: 'Surnom', value: data.general.nickname ?? 'Non renseigné' },
-        { label: 'Email', value: data.general.email ?? 'Non renseigné' },
-        { label: 'Téléphone', value: data.general.phone ?? 'Non renseigné' },
-        { label: 'Genre', value: data.general.gender ?? 'Non renseigné' },
-        { label: 'Âge', value: data.general.ageRange ?? 'Non renseigné' },
-        { label: 'Ville', value: data.general.city ?? 'Non renseigné' },
-        { label: 'Pays', value: data.general.country ?? 'Non renseigné' },
+        { label: 'Surnom', value: display(data.general.nickname ?? null) },
+        { label: 'Email', value: display(data.general.email ?? null) },
+        { label: 'Téléphone', value: display(data.general.phone ?? null) },
+        { label: 'Genre', value: display(labelOf(data.general.gender, MAP_GENDER)) },
+        { label: 'Âge', value: display(labelOf(data.general.ageRange, MAP_AGE)) },
+        { label: 'Ville', value: display(data.general.city ?? null) },
+        { label: 'Pays', value: display(data.general.country ?? null) },
       ],
+
       hair: [
-        { label: 'Type de cheveux', value: (data.hair.hairType ?? []).join(', ') || 'Non renseigné' },
-        { label: 'Texture', value: data.hair.texture ?? 'Non renseigné' },
-        { label: 'Longueur', value: data.hair.length ?? 'Non renseigné' },
-        { label: 'Préoccupations', value: (data.hair.concerns ?? []).join(', ') || 'Non renseigné' },
+        { label: 'Type de cheveux', value: displayList(labelsOf(data.hair.hairType ?? [], MAP_HAIR_TYPES)) },
+        { label: 'Texture', value: display(labelOf(data.hair.texture, MAP_HAIR_TEXTURE)) },
+        { label: 'Longueur', value: display(labelOf(data.hair.length, MAP_HAIR_LENGTH)) },
+        { label: 'Préoccupations', value: displayList(labelsOf(data.hair.concerns ?? [], MAP_HAIR_CONCERNS)) },
       ],
+
       nails: [
-        { label: 'Type', value: (data.nails.type ?? []).join(', ') || 'Non renseigné' },
-        { label: 'État', value: (data.nails.state ?? []).join(', ') || 'Non renseigné' },
-        { label: 'Préoccupations', value: (data.nails.concerns ?? []).join(', ') || 'Non renseigné' },
+        { label: 'Type', value: displayList(labelsOf(data.nails.type ?? [], MAP_NAIL_TYPE)) },
+        { label: 'État', value: displayList(labelsOf(data.nails.state ?? [], MAP_NAIL_STATE)) },
+        { label: 'Préoccupations', value: displayList(labelsOf(data.nails.concerns ?? [], MAP_NAIL_CONCERNS)) },
       ],
+
       faceSkin: [
-        { label: 'Type de peau', value: data.faceSkin.skinType ?? 'Non renseigné' },
-        { label: 'Préoccupations', value: (data.faceSkin.concerns ?? []).join(', ') || 'Non renseigné' },
+        { label: 'Type de peau', value: display(labelOf(data.faceSkin.skinType, MAP_FACE_SKIN)) },
+        { label: 'Préoccupations', value: displayList(labelsOf(data.faceSkin.concerns ?? [], MAP_FACE_CONCERNS)) },
       ],
+
       wellness: [
-        { label: 'Type de peau (corps)', value: data.wellness.bodySkinType ?? 'Non renseigné' },
-        { label: 'Zones de tension', value: (data.wellness.tensionZones ?? []).join(', ') || 'Non renseigné' },
-        { label: 'Préoccupations', value: (data.wellness.concerns ?? []).join(', ') || 'Non renseigné' },
-        { label: 'Zones sensibles massage', value: data.wellness.sensitiveMassageZones || 'Non renseigné' },
+        { label: 'Type de peau (corps)', value: display(labelOf(data.wellness.bodySkinType, MAP_BODY_SKIN)) },
+        { label: 'Zones de tension', value: displayList(labelsOf(data.wellness.tensionZones ?? [], MAP_ZONES)) },
+        { label: 'Préoccupations', value: displayList(labelsOf(data.wellness.concerns ?? [], MAP_WELLBEING)) },
+        {
+          label: 'Zones sensibles massage',
+          value: displayList(labelsOf(data.wellness.sensitiveMassageZones ?? [], MAP_ZONES)),
+        },
       ],
+
       fitness: [
-        { label: "Niveau d'activité", value: data.fitness.activityLevel ?? 'Non renseigné' },
-        { label: 'Objectifs', value: (data.fitness.goals ?? []).join(', ') || 'Non renseigné' },
-        { label: 'Préoccupations', value: (data.fitness.concerns ?? []).join(', ') || 'Non renseigné' },
+        { label: "Niveau d'activité", value: display(labelOf(data.fitness.activityLevel, MAP_ACTIVITY)) },
+        { label: 'Objectifs', value: displayList(labelsOf(data.fitness.goals ?? [], MAP_FITNESS_GOALS)) },
+        { label: 'Préoccupations', value: displayList(labelsOf(data.fitness.concerns ?? [], MAP_FITNESS_CONCERNS)) },
       ],
+
       practical: [
-        { label: 'Modes de paiement', value: (data.practical.paymentModes ?? []).join(', ') || 'Non renseigné' },
-        { label: 'Notifications', value: (data.practical.notifications ?? []).join(', ') || 'Non renseigné' },
+        { label: 'Modes de paiement', value: displayList(labelsOf(data.practical.paymentModes ?? [], MAP_PAYMENT_PREFS)) },
+        { label: 'Notifications', value: displayList(labelsOf(data.practical.notifications ?? [], MAP_NOTIF_PREFS)) },
       ],
+
       important: [
-        { label: 'Allergies', value: data.important.allergies ?? 'Non renseigné' },
-        { label: 'Besoins spécifiques', value: data.important.notes?.trim() ? data.important.notes : 'Non renseigné' },
+        { label: 'Allergies', value: display(labelOf(data.important.allergies, MAP_ALLERGIES)) },
+        { label: 'Besoins spécifiques', value: display(data.important.notes?.trim() ? data.important.notes : null) },
       ],
     } as Record<string, { label: string; value: string }[]>
   }, [data])
