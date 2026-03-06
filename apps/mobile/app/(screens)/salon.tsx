@@ -1,601 +1,558 @@
-// app/(tabs)/salon.tsx
-import React, { useMemo, useState } from 'react'
-import { View, Text, StyleSheet, ScrollView, Pressable, Image } from 'react-native'
-import { router } from 'expo-router'
-import { Ionicons } from '@expo/vector-icons'
-import { LinearGradient } from 'expo-linear-gradient'
+import React, { useMemo, useState } from "react";
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  Pressable,
+  Image,
+  Linking,
+} from "react-native";
+import { router, useLocalSearchParams } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 
-import { Screen, TabPill, IconBubble, ReviewCard } from '../../src/components'
-import { colors, overlays } from '../../src/theme/colors'
-import { spacing } from '../../src/theme/spacing'
-import { radius } from '../../src/theme/radius'
-import { typography } from '../../src/theme/typography'
-import { useBooking } from '../../src/providers/BookingProvider'
+import { Screen, TabPill, ReviewCard } from "../../src/components";
+import { colors, overlays } from "../../src/theme/colors";
+import { spacing } from "../../src/theme/spacing";
+import { radius } from "../../src/theme/radius";
+import { typography } from "../../src/theme/typography";
+import { useBooking } from "../../src/providers/BookingProvider";
+import { useSalonDetails } from "../../src/api/discovery";
 
-type TabKey = 'about' | 'services' | 'reviews'
-type Service = { id: string; name: string; price: number; duration: number }
-type CartItem = { id: string; name: string; price: number; duration?: number; quantity: number }
+type TabKey = "about" | "services" | "reviews";
+type CartItem = {
+  id: string;
+  name: string;
+  price: number;
+  duration?: number;
+  quantity: number;
+};
+
+function formatFCFA(v: number) {
+  return `${v.toLocaleString("fr-FR")} FCFA`;
+}
 
 export default function SalonDetailScreen() {
-  const [currentPhotoIndex, setCurrentPhotoIndex] = useState(4)
-  const [activeTab, setActiveTab] = useState<TabKey>('about')
-  const [expandedCategory, setExpandedCategory] = useState<string | null>(null)
-  const [cart, setCart] = useState<CartItem[]>([])
-  const { setCart: setBookingCart, patch } = useBooking()
+  const params = useLocalSearchParams<{
+    salonId?: string;
+    offerServiceId?: string;
+    offerPrice?: string;
+  }>();
+  const salonId = params.salonId;
+  const offerServiceId = params.offerServiceId;
+  const offerPrice = params.offerPrice ? Number(params.offerPrice) : undefined;
+  const { data, isLoading } = useSalonDetails(salonId);
 
-  const galleryPhotos = useMemo(
-    () => [
-      {
-        url: 'https://images.unsplash.com/photo-1681965823525-b684fb97e9fe?auto=format&fit=crop&w=1080&q=80',
-        caption: 'Intérieur du salon',
-      },
-      {
-        url: 'https://images.unsplash.com/photo-1560066984-138dadb4c035?auto=format&fit=crop&w=1080&q=80',
-        caption: 'Coupe & Brushing',
-      },
-      {
-        url: 'https://images.unsplash.com/photo-1712213396688-c6f2d536671f?auto=format&fit=crop&w=1080&q=80',
-        caption: 'Coloration professionnelle',
-      },
-      {
-        url: 'https://images.unsplash.com/photo-1659036354224-48dd0a9a6b86?auto=format&fit=crop&w=1080&q=80',
-        caption: 'Coupe précise',
-      },
-      {
-        url: 'https://images.unsplash.com/photo-1711274094763-ff442e4719ef?auto=format&fit=crop&w=1080&q=80',
-        caption: 'Manucure & Beauté des mains',
-      },
-    ],
-    []
-  )
+  const [activeTab, setActiveTab] = useState<TabKey>("about");
+  const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const [cart, setCart] = useState<CartItem[]>([]);
+  const { setCart: setBookingCart, patch } = useBooking();
 
-  const servicesByCategory: Record<string, Service[]> = useMemo(
-    () => ({
-      Manucure: [
-        { id: '1', name: 'Manucure simple', price: 8000, duration: 30 },
-        { id: '2', name: 'Manucure + vernis semi-permanent', price: 12000, duration: 45 },
-        { id: '3', name: 'Extension ongles', price: 18000, duration: 90 },
-      ],
-      Pédicure: [
-        { id: '4', name: 'Pédicure simple', price: 10000, duration: 40 },
-        { id: '5', name: 'Pédicure spa', price: 15000, duration: 60 },
-      ],
-      Massage: [
-        { id: '6', name: 'Massage relaxant', price: 25000, duration: 60 },
-        { id: '7', name: 'Massage deep tissue', price: 35000, duration: 90 },
-      ],
-      'Soin du visage': [
-        { id: '8', name: 'Nettoyage de peau', price: 20000, duration: 45 },
-        { id: '9', name: 'Soin anti-âge', price: 30000, duration: 60 },
-      ],
-    }),
-    []
-  )
+  const servicesByCategory = data?.servicesByCategory ?? {};
+  const gallery = data?.galleryImageUrls ?? [];
+  const currentImage = gallery[activeImageIndex] ?? data?.coverImageUrl;
 
-  const schedule = useMemo(
-    () => [
-      { day: 'Lundi', hours: '08:00 - 18:00' },
-      { day: 'Mardi', hours: '08:00 - 18:00' },
-      { day: 'Mercredi', hours: '08:00 - 18:00' },
-      { day: 'Jeudi', hours: '08:00 - 18:00' },
-      { day: 'Vendredi', hours: '08:00 - 19:00' },
-      { day: 'Samedi', hours: '09:00 - 17:00' },
-      { day: 'Dimanche', hours: 'Fermé' },
-    ],
-    []
-  )
+  const openLink = (url?: string) => {
+    if (!url) return;
+    Linking.openURL(url);
+  };
 
-  const photo = galleryPhotos[currentPhotoIndex]
+  const moveImage = (delta: number) => {
+    if (!gallery.length) return;
+    setActiveImageIndex(
+      (prev) => (prev + delta + gallery.length) % gallery.length,
+    );
+  };
 
-  const nextPhoto = () => setCurrentPhotoIndex((p) => (p + 1) % galleryPhotos.length)
-  const prevPhoto = () => setCurrentPhotoIndex((p) => (p - 1 + galleryPhotos.length) % galleryPhotos.length)
+  const getEffectivePrice = (serviceId: string, originalPrice: number) => {
+    if (
+      offerServiceId &&
+      offerPrice &&
+      offerPrice > 0 &&
+      serviceId === offerServiceId
+    ) {
+      return offerPrice;
+    }
+    return originalPrice;
+  };
 
-  const addToCart = (service: Service) => {
+  const addToCart = (service: {
+    id: string;
+    name: string;
+    price: number;
+    durationMin: number;
+  }) => {
     setCart((prev) => {
-      const found = prev.find((x) => x.id === service.id)
-      if (!found) {
+      const found = prev.find((x) => x.id === service.id);
+      if (!found)
         return [
           ...prev,
           {
             id: service.id,
             name: service.name,
-            price: service.price,
-            duration: service.duration,
+            price: getEffectivePrice(service.id, service.price),
+            originalPrice:
+              offerServiceId === service.id && offerPrice ? service.price : undefined,
+            duration: service.durationMin,
             quantity: 1,
           },
-        ]
-      }
-      return prev.map((x) => (x.id === service.id ? { ...x, quantity: x.quantity + 1 } : x))
-    })
-  }
+        ];
+      return prev.map((x) =>
+        x.id === service.id ? { ...x, quantity: x.quantity + 1 } : x,
+      );
+    });
+  };
 
   const removeFromCart = (serviceId: string) => {
     setCart((prev) => {
-      const found = prev.find((x) => x.id === serviceId)
-      if (!found) return prev
-      if (found.quantity <= 1) return prev.filter((x) => x.id !== serviceId)
-      return prev.map((x) => (x.id === serviceId ? { ...x, quantity: x.quantity - 1 } : x))
-    })
-  }
+      const found = prev.find((x) => x.id === serviceId);
+      if (!found) return prev;
+      if (found.quantity <= 1) return prev.filter((x) => x.id !== serviceId);
+      return prev.map((x) =>
+        x.id === serviceId ? { ...x, quantity: x.quantity - 1 } : x,
+      );
+    });
+  };
 
-  const totalItems = cart.reduce((sum, x) => sum + x.quantity, 0)
-  const totalPrice = cart.reduce((sum, x) => sum + x.price * x.quantity, 0)
+  const totalItems = useMemo(
+    () => cart.reduce((sum, x) => sum + x.quantity, 0),
+    [cart],
+  );
+  const totalPrice = useMemo(
+    () => cart.reduce((sum, x) => sum + x.price * x.quantity, 0),
+    [cart],
+  );
 
   return (
     <Screen noPadding style={styles.screen}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 120 }}>
-        {/* GALLERY */}
-        <View style={styles.galleryWrap}>
-          <Image source={{ uri: photo.url }} style={styles.heroImage} />
+      <ScrollView contentContainerStyle={styles.content}>
+        {currentImage ? (
+          <View style={styles.heroWrap}>
+            <Image source={{ uri: currentImage }} style={styles.heroImage} />
 
-          {/* Open badge */}
-          <View style={styles.openBadge}>
-            <Text style={styles.openBadgeText}>Ouvert</Text>
+            <View style={styles.heroTopRow}>
+              <View style={styles.openPill}>
+                <Text style={styles.openPillText}>Ouvert</Text>
+              </View>
+              <Pressable style={styles.iconCircle}>
+                <Ionicons
+                  name="camera-outline"
+                  size={18}
+                  color={colors.brand}
+                />
+              </Pressable>
+            </View>
+
+            <Pressable
+              style={[styles.iconCircle, styles.backBtn]}
+              onPress={() => router.back()}
+            >
+              <Ionicons name="arrow-back" size={18} color={colors.brand} />
+            </Pressable>
+            <Pressable
+              style={[styles.iconCircle, styles.prevBtn]}
+              onPress={() => moveImage(-1)}
+            >
+              <Ionicons name="chevron-back" size={18} color={colors.brand} />
+            </Pressable>
+            <Pressable
+              style={[styles.iconCircle, styles.nextBtn]}
+              onPress={() => moveImage(1)}
+            >
+              <Ionicons name="chevron-forward" size={18} color={colors.brand} />
+            </Pressable>
+
+            <View style={styles.heroBottomRow}>
+              <Text style={styles.heroLabel}>Intérieur du salon</Text>
+              <Text style={styles.heroCount}>
+                {Math.min(activeImageIndex + 1, Math.max(gallery.length, 1))} /{" "}
+                {Math.max(gallery.length, 1)}
+              </Text>
+            </View>
           </View>
+        ) : null}
 
-          {/* Back */}
-          <Pressable onPress={() => router.back()} style={styles.heroBtnLeft}>
-            <Ionicons name="arrow-back" size={18} color={colors.brand} />
-          </Pressable>
-
-          {/* Camera */}
-          <Pressable onPress={() => {}} style={styles.heroBtnRight}>
-            <Ionicons name="camera-outline" size={18} color={colors.brand} />
-          </Pressable>
-
-          {/* arrows */}
-          <Pressable onPress={prevPhoto} style={styles.heroArrowLeft}>
-            <Ionicons name="chevron-back" size={18} color={colors.brand} />
-          </Pressable>
-          <Pressable onPress={nextPhoto} style={styles.heroArrowRight}>
-            <Ionicons name="chevron-forward" size={18} color={colors.brand} />
-          </Pressable>
-
-          {/* caption + counter */}
-          <LinearGradient
-            colors={['rgba(0,0,0,0.70)', 'rgba(0,0,0,0)']}
-            start={{ x: 0, y: 1 }}
-            end={{ x: 0, y: 0 }}
-            style={styles.heroCaption}
+        {gallery.length > 0 && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.galleryRow}
           >
-            <Text style={styles.captionText} numberOfLines={1}>
-              {photo.caption}
-            </Text>
-            <Text style={styles.counterText}>
-              {currentPhotoIndex + 1} / {galleryPhotos.length}
-            </Text>
-          </LinearGradient>
-        </View>
-
-        {/* THUMBNAILS */}
-        <View style={styles.thumbBar}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.thumbRow}>
-            {galleryPhotos.map((p, idx) => {
-              const active = idx === currentPhotoIndex
-              return (
-                <Pressable
-                  key={idx}
-                  onPress={() => setCurrentPhotoIndex(idx)}
-                  style={[styles.thumb, active ? styles.thumbOn : styles.thumbOff]}
-                >
-                  <Image source={{ uri: p.url }} style={styles.thumbImg} />
-                </Pressable>
-              )
-            })}
+            {gallery.map((url, index) => (
+              <Pressable
+                key={`${url}-${index}`}
+                onPress={() => setActiveImageIndex(index)}
+                style={[
+                  styles.thumbWrap,
+                  activeImageIndex === index
+                    ? styles.thumbWrapActive
+                    : undefined,
+                ]}
+              >
+                <Image source={{ uri: url }} style={styles.thumbImage} />
+              </Pressable>
+            ))}
           </ScrollView>
-        </View>
+        )}
 
-        {/* SALON INFO */}
+        {isLoading ? <Text style={styles.loading}>Chargement...</Text> : null}
+
         <View style={styles.infoCard}>
-          <Text style={styles.salonTitle}>Salon Élégance</Text>
+          <Text style={styles.salonTitle}>{data?.name ?? "-"}</Text>
 
-          <View style={styles.ratingRow}>
-            <View style={styles.ratingLeft}>
-              <Ionicons name="star" size={14} color={colors.premium} />
-              <Text style={styles.ratingText}>4.8 (120+)</Text>
-            </View>
-
-            <View style={styles.socialRow}>
-              <IconBubble name="logo-instagram" onPress={() => {}} />
-              <IconBubble name="logo-facebook" onPress={() => {}} />
-              <IconBubble name="logo-tiktok" onPress={() => {}} />
-              <IconBubble name="globe-outline" onPress={() => {}} />
-            </View>
-          </View>
-
-          <View style={styles.addressRow}>
-            <Ionicons name="location-outline" size={16} color={colors.premium} />
-            <Text style={styles.addressText} numberOfLines={2}>
-              123 Boulevard de l&apos;Indépendance, Libreville
+          <View style={styles.metaSocialRow}>
+            <Text style={styles.metaText}>
+              ⭐ {data?.rating?.toFixed(1) ?? "4.5"} ({data?.reviewCount ?? 0}+)
             </Text>
-          </View>
-        </View>
-
-        {/* TABS PILLS */}
-        <View style={styles.tabsWrap}>
-          <View style={styles.tabsRow}>
-            <TabPill label="À propos" active={activeTab === 'about'} onPress={() => setActiveTab('about')} />
-            <TabPill label="Services" active={activeTab === 'services'} onPress={() => setActiveTab('services')} />
-            <TabPill label="Avis clients" active={activeTab === 'reviews'} onPress={() => setActiveTab('reviews')} />
-          </View>
-        </View>
-
-        {/* CONTENT */}
-        <View style={styles.body}>
-          {activeTab === 'about' && (
-            <View style={{ gap: spacing.lg }}>
-              <View>
-                <Text style={styles.blockTitle}>Description du salon</Text>
-                <Text style={styles.paragraph}>
-                  Salon premium spécialisé en coiffure afro et européenne. Notre équipe de professionnels qualifiés vous accueille dans un cadre élégant et chaleureux.
-                </Text>
-              </View>
-
-              <View>
-                <Text style={styles.blockTitle}>Horaires d'ouverture</Text>
-                <View style={styles.whiteBox}>
-                  {schedule.map((d, idx) => (
-                    <View key={idx} style={styles.scheduleRow}>
-                      <Text style={styles.scheduleDay}>{d.day}</Text>
-                      <Text style={[styles.scheduleHours, d.hours === 'Fermé' && styles.scheduleClosed]}>
-                        {d.hours}
-                      </Text>
-                    </View>
-                  ))}
-                </View>
-              </View>
-
-              <View>
-                <Text style={styles.blockTitle}>Conditions</Text>
-                <View style={styles.whiteBox}>
-                  <Text style={styles.bullet}>• Paiement : Espèces, Mobile Money, Carte bancaire</Text>
-                  <Text style={styles.bullet}>• Annulation gratuite jusqu’à 24h avant</Text>
-                  <Text style={styles.bullet}>• Retard de plus de 15 min = annulation automatique</Text>
-                </View>
-              </View>
+            <View style={styles.socialRow}>
+              <Pressable
+                style={styles.socialBtn}
+                onPress={() => openLink(data?.socialLinks?.instagram)}
+              >
+                <Ionicons
+                  name="logo-instagram"
+                  size={16}
+                  color={colors.brand}
+                />
+              </Pressable>
+              <Pressable
+                style={styles.socialBtn}
+                onPress={() => openLink(data?.socialLinks?.facebook)}
+              >
+                <Ionicons name="logo-facebook" size={16} color={colors.brand} />
+              </Pressable>
+              <Pressable
+                style={styles.socialBtn}
+                onPress={() => openLink(data?.socialLinks?.tiktok)}
+              >
+                <Ionicons name="logo-tiktok" size={16} color={colors.brand} />
+              </Pressable>
+              <Pressable
+                style={styles.socialBtn}
+                onPress={() => openLink(data?.socialLinks?.website)}
+              >
+                <Ionicons name="globe-outline" size={16} color={colors.brand} />
+              </Pressable>
             </View>
-          )}
+          </View>
 
-          {activeTab === 'services' && (
-            <View style={{ gap: spacing.md }}>
-              {Object.entries(servicesByCategory).map(([category, services]) => {
-                const expanded = expandedCategory === category
-                return (
-                  <View key={category} style={styles.accordion}>
-                    <Pressable
-                      onPress={() => setExpandedCategory(expanded ? null : category)}
-                      style={styles.accordionHeader}
-                    >
-                      <Text style={styles.accordionTitle}>{category}</Text>
-                      <Ionicons
-                        name="chevron-forward"
-                        size={18}
-                        color={colors.brand}
-                        style={{ transform: [{ rotate: expanded ? '90deg' : '0deg' }] }}
-                      />
-                    </Pressable>
+          <Text style={styles.metaText}>
+            {[data?.address, data?.city, data?.country]
+              .filter(Boolean)
+              .join(", ")}
+          </Text>
+        </View>
 
-                    {expanded && (
-                      <View style={styles.accordionBody}>
-                        {services.map((s) => {
-                          const qty = cart.find((x) => x.id === s.id)?.quantity ?? 0
-                          return (
-                            <View key={s.id} style={styles.serviceRow}>
-                              <View style={{ flex: 1, minWidth: 0 }}>
-                                <Text style={styles.serviceName} numberOfLines={2}>
-                                  {s.name}
+        <View style={styles.tabsRow}>
+          <TabPill
+            label="À propos"
+            active={activeTab === "about"}
+            onPress={() => setActiveTab("about")}
+          />
+          <TabPill
+            label="Services"
+            active={activeTab === "services"}
+            onPress={() => setActiveTab("services")}
+          />
+          <TabPill
+            label="Avis clients"
+            active={activeTab === "reviews"}
+            onPress={() => setActiveTab("reviews")}
+          />
+        </View>
+
+        {activeTab === "about" && (
+          <View style={styles.block}>
+            <Text style={styles.blockTitle}>Description du salon</Text>
+            <Text style={styles.paragraph}>
+              {data?.description || "Description indisponible pour le moment."}
+            </Text>
+
+            <Text style={styles.blockTitle}>Équipe</Text>
+            {(data?.employees ?? []).map((employee) => (
+              <Text key={employee.id} style={styles.paragraph}>
+                • {employee.displayName}
+              </Text>
+            ))}
+          </View>
+        )}
+
+        {activeTab === "services" && (
+          <View style={{ gap: spacing.md }}>
+            {Object.entries(servicesByCategory).map(([category, services]) => {
+              const expanded = expandedCategory === category;
+              return (
+                <View key={category} style={styles.accordion}>
+                  <Pressable
+                    onPress={() =>
+                      setExpandedCategory(expanded ? null : category)
+                    }
+                    style={styles.accordionHeader}
+                  >
+                    <Text style={styles.accordionTitle}>{category}</Text>
+                    <Ionicons
+                      name="chevron-down"
+                      size={18}
+                      color={colors.brand}
+                    />
+                  </Pressable>
+                  {expanded && (
+                    <View style={{ gap: spacing.sm }}>
+                      {services.map((service) => {
+                        const qty =
+                          cart.find((x) => x.id === service.id)?.quantity ?? 0;
+                        return (
+                          <View key={service.id} style={styles.serviceRow}>
+                            <View style={{ flex: 1 }}>
+                              <Text style={styles.serviceName}>
+                                {service.name}
+                              </Text>
+                              <Text style={styles.serviceMeta}>
+                                Durée: {service.durationMin} min
+                              </Text>
+                              {offerServiceId === service.id && offerPrice ? (
+                                <View style={styles.offerPriceRow}>
+                                  <Text style={styles.servicePriceOld}>
+                                    {formatFCFA(service.price)}
+                                  </Text>
+                                  <Text style={styles.servicePrice}>
+                                    {formatFCFA(offerPrice)}
+                                  </Text>
+                                </View>
+                              ) : (
+                                <Text style={styles.servicePrice}>
+                                  {formatFCFA(service.price)}
                                 </Text>
-                                <Text style={styles.serviceMeta}>Durée : {s.duration} min</Text>
-                                <Text style={styles.servicePrice}>{formatFCFA(s.price)}</Text>
-                              </View>
-
-                              <View style={styles.qtyWrap}>
-                                {qty > 0 && (
-                                  <>
-                                    <Pressable onPress={() => removeFromCart(s.id)} style={styles.qtyBtnGhost}>
-                                      <Text style={styles.qtyBtnGhostText}>−</Text>
-                                    </Pressable>
-                                    <Text style={styles.qtyText}>{qty}</Text>
-                                  </>
-                                )}
-
-                                <Pressable onPress={() => addToCart(s)} style={styles.qtyBtn}>
-                                  <Ionicons name="add" size={16} color={colors.brandForeground} />
-                                </Pressable>
-                              </View>
+                              )}
                             </View>
-                          )
-                        })}
-                      </View>
-                    )}
-                  </View>
-                )
-              })}
-            </View>
-          )}
+                            <View style={styles.qtyWrap}>
+                              {qty > 0 ? (
+                                <Pressable
+                                  onPress={() => removeFromCart(service.id)}
+                                  style={styles.qtyBtnGhost}
+                                >
+                                  <Text>−</Text>
+                                </Pressable>
+                              ) : null}
+                              {qty > 0 ? <Text>{qty}</Text> : null}
+                              <Pressable
+                                onPress={() => addToCart(service)}
+                                style={styles.qtyBtn}
+                              >
+                                <Text style={{ color: "#fff" }}>+</Text>
+                              </Pressable>
+                            </View>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  )}
+                </View>
+              );
+            })}
+          </View>
+        )}
 
-          {activeTab === 'reviews' && (
-            <View style={{ gap: spacing.md }}>
-              <ReviewCard name="Marie K." stars={4} text="Très beau salon, ambiance agréable." />
-              <ReviewCard name="Sarah M." stars={5} text="Excellent service ! L'équipe est très professionnelle." />
-              <ReviewCard name="Julie D." stars={5} text="Accueil chaleureux, services de qualité. Je recommande !" />
-            </View>
-          )}
-        </View>
+        {activeTab === "reviews" && (
+          <View style={{ gap: spacing.md }}>
+            {(data?.reviews ?? []).length === 0 ? (
+              <Text>Aucun avis pour le moment.</Text>
+            ) : null}
+            {(data?.reviews ?? []).map((review) => (
+              <ReviewCard
+                key={review.id}
+                name={review.author}
+                stars={review.rating}
+                text={review.comment}
+              />
+            ))}
+          </View>
+        )}
       </ScrollView>
 
-      {/* CART BAR */}
       {totalItems > 0 && (
         <View style={styles.cartBar}>
           <View>
-            <Text style={styles.cartSmall}>
-              {totalItems} service{totalItems > 1 ? 's' : ''}
-            </Text>
+            <Text style={styles.cartSmall}>{totalItems} service(s)</Text>
             <Text style={styles.cartTotal}>{formatFCFA(totalPrice)}</Text>
           </View>
-
           <Pressable
             onPress={() => {
-              setBookingCart(cart)
-              patch({ salonId: 'salon-elegance', salonName: 'Salon Élégance' })
-              router.push('/(screens)/recap')
+              setBookingCart(cart);
+              patch({ salonId: data?.id, salonName: data?.name });
+              router.push("/(screens)/recap");
             }}
             style={styles.cartCta}
           >
             <Text style={styles.cartCtaText}>Voir le récap</Text>
           </Pressable>
-
         </View>
       )}
     </Screen>
-  )
-}
-
-function formatFCFA(v: number) {
-  return `${v.toLocaleString('fr-FR')} FCFA`
+  );
 }
 
 const styles = StyleSheet.create({
   screen: { backgroundColor: colors.background },
-
-  galleryWrap: {
-    height: 260,
-    backgroundColor: '#000',
-  },
-  heroImage: { width: '100%', height: '100%' },
-
-  openBadge: {
-    position: 'absolute',
+  content: { gap: spacing.md, paddingBottom: 120 },
+  heroWrap: { position: "relative" },
+  heroImage: { width: "100%", height: 250 },
+  heroTopRow: {
+    position: "absolute",
     top: spacing.md,
     left: spacing.md,
-    backgroundColor: '#22C55E',
+    right: spacing.md,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  openPill: {
+    backgroundColor: "#21B35A",
+    borderRadius: radius.full,
     paddingHorizontal: spacing.md,
     paddingVertical: 6,
-    borderRadius: radius.full,
   },
-  openBadgeText: { color: '#fff', ...typography.small, fontWeight: '600' },
-
-  heroBtnLeft: {
-    position: 'absolute',
-    top: spacing.xl,
-    left: spacing.md,
+  openPillText: { color: "#fff", fontWeight: "700" },
+  iconCircle: {
     width: 40,
     height: 40,
-    borderRadius: radius.full,
-    backgroundColor: 'rgba(255,255,255,0.90)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderRadius: 20,
+    backgroundColor: "#fff",
+    alignItems: "center",
+    justifyContent: "center",
   },
-  heroBtnRight: {
-    position: 'absolute',
-    top: spacing.xl,
-    right: spacing.md,
-    width: 40,
-    height: 40,
-    borderRadius: radius.full,
-    backgroundColor: 'rgba(255,255,255,0.90)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  heroArrowLeft: {
-    position: 'absolute',
-    left: 10,
-    top: '50%',
-    marginTop: -16,
-    width: 32,
-    height: 32,
-    borderRadius: radius.full,
-    backgroundColor: 'rgba(255,255,255,0.80)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  heroArrowRight: {
-    position: 'absolute',
-    right: 10,
-    top: '50%',
-    marginTop: -16,
-    width: 32,
-    height: 32,
-    borderRadius: radius.full,
-    backgroundColor: 'rgba(255,255,255,0.80)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  heroCaption: {
-    position: 'absolute',
+  backBtn: { position: "absolute", left: spacing.md, top: 58 },
+  prevBtn: { position: "absolute", left: spacing.md, top: 122 },
+  nextBtn: { position: "absolute", right: spacing.md, top: 122 },
+  heroBottomRow: {
+    position: "absolute",
+    bottom: 0,
     left: 0,
     right: 0,
-    bottom: 0,
+    backgroundColor: "rgba(0,0,0,0.65)",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  heroLabel: { color: "#fff", fontWeight: "700" },
+  heroCount: { color: "#fff", fontWeight: "700" },
+  galleryRow: { gap: spacing.sm, paddingHorizontal: spacing.md },
+  thumbWrap: {
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: "transparent",
+    padding: 2,
+  },
+  thumbWrapActive: { borderColor: colors.brand },
+  thumbImage: { width: 58, height: 58, borderRadius: radius.md },
+  loading: {
+    color: colors.textMuted,
+    ...typography.small,
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    justifyContent: 'space-between',
   },
-  captionText: { color: '#fff', ...typography.small, fontWeight: '600', flex: 1, marginRight: spacing.md },
-  counterText: { color: 'rgba(255,255,255,0.80)', ...typography.small },
-
-  thumbBar: {
-    backgroundColor: colors.card,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  thumbRow: { gap: spacing.sm },
-  thumb: {
-    width: 60,
-    height: 60,
-    borderRadius: radius.lg,
-    overflow: 'hidden',
-    borderWidth: 2,
-  },
-  thumbOn: { borderColor: colors.brand },
-  thumbOff: { borderColor: 'rgba(58,58,58,0.10)', opacity: 0.65 },
-  thumbImg: { width: '100%', height: '100%' },
-
-  infoCard: {
-    backgroundColor: colors.card,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
-    paddingBottom: spacing.md,
-  },
-  salonTitle: { color: colors.text, ...typography.h2, marginBottom: spacing.sm },
-
-  ratingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.md,
-    marginBottom: spacing.sm,
-  },
-  ratingLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-  ratingText: { color: colors.text, ...typography.small, fontWeight: '500' },
-
-  socialRow: { flexDirection: 'row', gap: spacing.sm },
-
-  addressRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  addressText: { color: colors.text, ...typography.small, flex: 1 },
-
-  tabsWrap: {
-    backgroundColor: colors.card,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(107,39,55,0.10)',
-  },
-  tabsRow: { flexDirection: 'row', gap: spacing.sm },
-
-  body: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.lg,
-    gap: spacing.md,
-  },
-
-  blockTitle: { color: colors.text, ...typography.h3, marginBottom: spacing.sm },
-  paragraph: { color: 'rgba(58,58,58,0.80)', ...typography.body, lineHeight: 20 },
-
-  whiteBox: {
-    backgroundColor: colors.card,
-    borderRadius: radius.xl,
-    padding: spacing.lg,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 1,
+  infoCard: { paddingHorizontal: spacing.lg, gap: spacing.xs },
+  salonTitle: { color: colors.text, ...typography.h2 },
+  metaSocialRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     gap: spacing.sm,
   },
-
-  scheduleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  scheduleDay: { color: colors.text, ...typography.small },
-  scheduleHours: { color: colors.brand, ...typography.small, fontWeight: '600' },
-  scheduleClosed: { color: '#DC2626' },
-
-  bullet: { color: 'rgba(58,58,58,0.80)', ...typography.small, lineHeight: 18 },
-
+  socialRow: { flexDirection: "row", gap: spacing.xs },
+  socialBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: overlays.brand20,
+    backgroundColor: colors.card,
+  },
+  metaText: { color: colors.textMuted },
+  tabsRow: {
+    flexDirection: "row",
+    gap: spacing.sm,
+    paddingHorizontal: spacing.lg,
+  },
+  block: { paddingHorizontal: spacing.lg, gap: spacing.sm },
+  blockTitle: { color: colors.text, ...typography.body, fontWeight: "700" },
+  paragraph: { color: colors.textMuted, ...typography.small },
   accordion: {
     backgroundColor: colors.card,
     borderRadius: radius.xl,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 1,
+    padding: spacing.md,
+    borderWidth: 1,
+    borderColor: overlays.brand20,
+    marginHorizontal: spacing.lg,
   },
   accordionHeader: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
   },
-  accordionTitle: { color: colors.text, ...typography.body, fontWeight: '600' },
-
-  accordionBody: {
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(107,39,55,0.10)',
-    paddingHorizontal: spacing.lg,
-    paddingBottom: spacing.md,
-  },
-
+  accordionTitle: { color: colors.text, fontWeight: "700" },
   serviceRow: {
-    paddingTop: spacing.md,
-    flexDirection: 'row',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     gap: spacing.md,
-    alignItems: 'flex-start',
+    marginTop: spacing.md,
   },
-  serviceName: { color: colors.text, ...typography.small, fontWeight: '600' },
-  serviceMeta: { color: colors.textMuted, ...typography.small, marginTop: 2 },
-  servicePrice: { color: colors.brand, ...typography.small, fontWeight: '700', marginTop: 6 },
-
-  qtyWrap: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  qtyBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: radius.full,
-    backgroundColor: colors.brand,
-    alignItems: 'center',
-    justifyContent: 'center',
+  serviceName: { color: colors.text, fontWeight: "600" },
+  serviceMeta: { color: colors.textMuted, fontSize: 12 },
+  offerPriceRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    marginTop: 4,
   },
+  servicePriceOld: {
+    color: colors.textMuted,
+    textDecorationLine: "line-through",
+    ...typography.small,
+  },
+  servicePrice: { color: colors.brand, fontWeight: "700", marginTop: 4 },
+  qtyWrap: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   qtyBtnGhost: {
-    width: 34,
-    height: 34,
-    borderRadius: radius.full,
-    backgroundColor: colors.background,
-    borderWidth: 2,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: colors.card,
+    borderWidth: 1,
     borderColor: overlays.brand20,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
   },
-  qtyBtnGhostText: { color: colors.brand, fontSize: 18, fontWeight: '800', marginTop: -1 },
-  qtyText: { width: 22, textAlign: 'center', color: colors.text, ...typography.small, fontWeight: '700' },
-
-  cartBar: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
+  qtyBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     backgroundColor: colors.brand,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: spacing.md,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  cartSmall: { color: 'rgba(255,255,255,0.80)', ...typography.small },
-  cartTotal: { color: colors.brandForeground, ...typography.h3, fontWeight: '800' },
-
+  cartBar: {
+    position: "absolute",
+    left: spacing.lg,
+    right: spacing.lg,
+    bottom: spacing.lg,
+    backgroundColor: colors.brand,
+    borderRadius: radius.xl,
+    padding: spacing.md,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  cartSmall: { color: "rgba(255,255,255,0.85)" },
+  cartTotal: { color: colors.brandForeground, ...typography.h3 },
   cartCta: {
-    backgroundColor: colors.premium,
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.md,
+    backgroundColor: colors.brandForeground,
     borderRadius: radius.full,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
   },
-  cartCtaText: { color: colors.brand, ...typography.small, fontWeight: '800' },
-})
+  cartCtaText: { color: colors.brand, fontWeight: "700" },
+});

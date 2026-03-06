@@ -1,35 +1,35 @@
-import React, { useMemo } from 'react'
-import { View, Text, StyleSheet, ScrollView } from 'react-native'
-import { router } from 'expo-router'
-import { Ionicons } from '@expo/vector-icons'
+import React, { useMemo } from "react";
+import { View, Text, StyleSheet, ScrollView } from "react-native";
+import { router } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 
-import { Screen } from '../../src/components/Screen'
-import { Button } from '../../src/components/Button'
-import { useBooking } from '../../src/providers/BookingProvider'
+import { Screen } from "../../src/components/Screen";
+import { Button } from "../../src/components/Button";
+import { useBooking } from "../../src/providers/BookingProvider";
 
-import { colors, overlays } from '../../src/theme/colors'
-import { spacing } from '../../src/theme/spacing'
-import { radius } from '../../src/theme/radius'
-import { typography } from '../../src/theme/typography'
+import { colors, overlays } from "../../src/theme/colors";
+import { spacing } from "../../src/theme/spacing";
+import { radius } from "../../src/theme/radius";
+import { typography } from "../../src/theme/typography";
 
 function formatFCFA(v: number) {
-  return `${v.toLocaleString('fr-FR')} FCFA`
+  return `${v.toLocaleString("fr-FR")} FCFA`;
 }
 
 export default function RecapScreen() {
-  const { draft } = useBooking()
+  const { draft } = useBooking();
 
   const { totalPrice, totalDuration } = useMemo(() => {
     const totalPrice = draft.cart.reduce(
       (sum, item) => sum + item.price * (item.quantity || 1),
-      0
-    )
+      0,
+    );
     const totalDuration = draft.cart.reduce(
       (sum, item) => sum + (item.duration || 30) * (item.quantity || 1),
-      0
-    )
-    return { totalPrice, totalDuration }
-  }, [draft.cart])
+      0,
+    );
+    return { totalPrice, totalDuration };
+  }, [draft.cart]);
 
   return (
     <Screen noPadding style={styles.screen}>
@@ -46,7 +46,10 @@ export default function RecapScreen() {
         <Text style={styles.headerTitle}>Récap prestations</Text>
       </View>
 
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.summaryCard}>
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>Durée totale estimée</Text>
@@ -76,13 +79,26 @@ export default function RecapScreen() {
 
               <View style={styles.itemMetaRow}>
                 <View style={styles.metaLeft}>
-                  <Ionicons name="time-outline" size={14} color={colors.textMuted} />
+                  <Ionicons
+                    name="time-outline"
+                    size={14}
+                    color={colors.textMuted}
+                  />
                   <Text style={styles.metaText}>{item.duration || 30} min</Text>
                 </View>
 
                 <Text style={styles.dot}>•</Text>
 
-                <Text style={styles.itemPrice}>{formatFCFA(item.price)}</Text>
+                <View style={styles.priceWrap}>
+                  {item.originalPrice && item.originalPrice > item.price ? (
+                    <Text style={styles.itemOldPrice}>
+                      {formatFCFA(item.originalPrice * (item.quantity || 1))}
+                    </Text>
+                  ) : null}
+                  <Text style={styles.itemPrice}>
+                    {formatFCFA(item.price * (item.quantity || 1))}
+                  </Text>
+                </View>
               </View>
             </View>
           ))}
@@ -99,12 +115,12 @@ export default function RecapScreen() {
         />
         <Button
           title="Choisir un créneau"
-          onPress={() => router.push('/(screens)/schedule')}
+          onPress={() => router.push("/(screens)/schedule")}
           style={{ flex: 1 }}
         />
       </View>
     </Screen>
-  )
+  );
 }
 
 const styles = StyleSheet.create({
@@ -133,13 +149,13 @@ const styles = StyleSheet.create({
     marginBottom: spacing.lg,
   },
   summaryRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: spacing.sm,
   },
   summaryLabel: { color: colors.textMuted, ...typography.small },
-  summaryValue: { color: colors.brand, ...typography.body, fontWeight: '600' },
+  summaryValue: { color: colors.brand, ...typography.body, fontWeight: "600" },
   summaryPrice: { color: colors.brand, ...typography.h3 },
 
   sectionTitle: {
@@ -154,34 +170,49 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     borderWidth: 1,
     borderColor: colors.border,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOpacity: 0.05,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 4 },
     elevation: 1,
   },
-  itemTop: { flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm },
-  itemName: { flex: 1, color: colors.text, ...typography.body, fontWeight: '600' },
+  itemTop: { flexDirection: "row", alignItems: "flex-start", gap: spacing.sm },
+  itemName: {
+    flex: 1,
+    color: colors.text,
+    ...typography.body,
+    fontWeight: "600",
+  },
   qtyPill: {
     backgroundColor: overlays.brand10,
     borderRadius: radius.full,
     paddingHorizontal: spacing.sm,
     paddingVertical: 6,
   },
-  qtyText: { color: colors.brand, ...typography.small, fontWeight: '600' },
+  qtyText: { color: colors.brand, ...typography.small, fontWeight: "600" },
 
-  itemMetaRow: { flexDirection: 'row', alignItems: 'center', marginTop: spacing.sm },
-  metaLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  itemMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: spacing.sm,
+  },
+  metaLeft: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
   metaText: { color: colors.textMuted, ...typography.small },
   dot: { color: colors.textMuted, marginHorizontal: spacing.sm },
-  itemPrice: { color: colors.brand, ...typography.body, fontWeight: '700' },
+  priceWrap: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  itemOldPrice: {
+    color: colors.textMuted,
+    ...typography.small,
+    textDecorationLine: "line-through",
+  },
+  itemPrice: { color: colors.brand, ...typography.body, fontWeight: "700" },
 
   bottomBar: {
-    position: 'absolute',
+    position: "absolute",
     left: spacing.lg,
     right: spacing.lg,
     bottom: spacing.lg,
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: spacing.md,
   },
-})
+});
