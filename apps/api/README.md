@@ -96,3 +96,39 @@ Nest is an MIT-licensed open source project. It can grow thanks to the sponsors 
 ## License
 
 Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+
+## Fake data seeding (discovery + avis clients)
+
+Le script `seed:fake` permet de générer des données de démo pour le parcours discovery/booking.
+
+```bash
+# depuis la racine du monorepo
+pnpm --filter api run seed:fake
+```
+
+Variables utiles:
+
+- `FAKE_SALONS_COUNT` (défaut: `8`)
+- `FAKE_EMPLOYEES_PER_SALON` (défaut: `4`)
+- `FAKE_SERVICES_PER_SALON` (défaut: `8`)
+- `FAKE_APPOINTMENTS_PER_SALON` (défaut: `10`)
+- `FAKE_REVIEWS_PER_SALON` (défaut: `5`)
+
+Exemple:
+
+```bash
+FAKE_SALONS_COUNT=12 \
+FAKE_EMPLOYEES_PER_SALON=5 \
+FAKE_SERVICES_PER_SALON=10 \
+FAKE_APPOINTMENTS_PER_SALON=14 \
+FAKE_REVIEWS_PER_SALON=6 \
+pnpm --filter api run seed:fake
+```
+
+Le script:
+
+- crée des salons/services/employés/rendez-vous,
+- crée des clients de test pour les avis,
+- crée des `SalonReview` (avis clients),
+- renseigne images (`coverImageUrl`, `galleryImageUrls`) et réseaux sociaux (`socialLinks`),
+- backfill aussi les salons actifs existants s'ils n'ont pas encore ces données.
