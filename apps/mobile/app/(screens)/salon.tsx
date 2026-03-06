@@ -92,6 +92,8 @@ export default function SalonDetailScreen() {
             id: service.id,
             name: service.name,
             price: getEffectivePrice(service.id, service.price),
+            originalPrice:
+              offerServiceId === service.id && offerPrice ? service.price : undefined,
             duration: service.durationMin,
             quantity: 1,
           },

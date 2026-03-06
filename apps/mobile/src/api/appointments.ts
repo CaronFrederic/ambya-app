@@ -1,54 +1,83 @@
-import { useQuery } from '@tanstack/react-query'
-import { api } from './client'
+import { useQuery } from "@tanstack/react-query";
+import { api } from "./client";
 
 export type AppointmentListResponse = {
   items: Array<{
-    id: string
-    status: string
-    startAt: string
-    endAt: string
-    salon: { id: string; name: string }
-    service: { id: string; name: string; durationMin: number; price: number }
-    employee?: { id: string; displayName: string } | null
-  }>
-  total: number
-}
+    id: string;
+    status: string;
+    startAt: string;
+    endAt: string;
+    note?: string | null;
+    salon: { id: string; name: string };
+    service: { id: string; name: string; durationMin: number; price: number };
+    employee?: { id: string; displayName: string } | null;
+    paymentIntents?: Array<{
+      id: string;
+      status: string;
+      amount: number;
+      payableAmount?: number | null;
+      currency: string;
+      createdAt: string;
+    }>;
+  }>;
+  total: number;
+};
 
 export type CreateAppointmentPayload = {
-  salonId: string
-  serviceId: string
-  startAt: string
-  employeeId?: string
-  note?: string
-}
+  salonId: string;
+  serviceId: string;
+  startAt: string;
+  employeeId?: string;
+  note?: string;
+};
 
 export async function fetchAppointments() {
-  const res = await api.get<AppointmentListResponse>('/appointments')
-  return res.data
+  const res = await api.get<AppointmentListResponse>("/appointments");
+  return res.data;
 }
 
 export function useAppointments() {
   return useQuery({
-    queryKey: ['appointments'],
+    queryKey: ["appointments"],
     queryFn: fetchAppointments,
 
-    // ✅ "Affichage RDV avec cache"
-    staleTime: 60_000,       // 1 min fresh (pas de refetch inutile)
-    gcTime: 10 * 60_000,     // 10 min en cache
+    staleTime: 60_000,
+    gcTime: 10 * 60_000,
     refetchOnMount: false,
     refetchOnReconnect: true,
     refetchOnWindowFocus: true,
-  })
+  });
 }
 
 export async function createAppointment(payload: CreateAppointmentPayload) {
-  const res = await api.post('/appointments', payload)
-  return res.data
+  const res = await api.post("/appointments", payload);
+  return res.data;
 }
 
-export async function assignEmployee(appointmentId: string, employeeId?: string) {
-  const res = await api.patch(`/appointments/${appointmentId}/assign-employee`, { employeeId })
-  return res.data
+export async function assignEmployee(
+  appointmentId: string,
+  employeeId?: string,
+) {
+  const res = await api.patch(
+    `/appointments/${appointmentId}/assign-employee`,
+    { employeeId },
+  );
+  return res.data;
+}
+
+export type CreateAppointmentsFromCartPayload = {
+  salonId: string;
+  startAt: string;
+  employeeId?: string;
+  note?: string;
+  items: Array<{ serviceId: string; quantity: number }>;
+};
+
+export async function createAppointmentsFromCart(
+  payload: CreateAppointmentsFromCartPayload,
+) {
+  const res = await api.post("/appointments/from-cart", payload);
+  return res.data;
 }
 
 
