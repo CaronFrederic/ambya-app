@@ -197,318 +197,192 @@ export class AppointmentsService {
   }
 
   async createFromCart(
-    user: { userId: string; role: UserRole },
-    dto: CreateAppointmentsFromCartDto,
-  ) {
-    if (user.role !== 'CLIENT') {
-      throw new BadRequestException('Only CLIENT can create appointments');
-    }
+  user: { userId: string; role: UserRole },
+  dto: CreateAppointmentsFromCartDto,
+) {
+  if (user.role !== 'CLIENT') {
+    throw new BadRequestException('Only CLIENT can create appointments');
+  }
 
-    const startAt = new Date(dto.startAt);
-    if (Number.isNaN(startAt.getTime())) {
-      throw new BadRequestException('Invalid startAt');
-    }
+  const startAt = new Date(dto.startAt);
+  if (Number.isNaN(startAt.getTime())) {
+    throw new BadRequestException('Invalid startAt');
+  }
 
-    const expandedServiceIds = dto.items.flatMap((item) =>
-      Array.from({ length: item.quantity }, () => item.serviceId),
-    );
+  const expandedServiceIds = dto.items.flatMap((item) =>
+    Array.from({ length: item.quantity }, () => item.serviceId),
+  );
 
-    const services = await this.prisma.service.findMany({
-      where: {
-        id: { in: Array.from(new Set(expandedServiceIds)) },
-        salonId: dto.salonId,
-        isActive: true,
-      },
-      select: { id: true, name: true, durationMin: true, price: true },
-    });
+  const services = await this.prisma.service.findMany({
+    where: {
+      id: { in: Array.from(new Set(expandedServiceIds)) },
+      salonId: dto.salonId,
+      isActive: true,
+    },
+    select: { id: true, name: true, durationMin: true, price: true },
+  });
 
-    if (services.length === 0) {
-      throw new BadRequestException('No valid services found for this salon');
-    }
+  if (services.length === 0) {
+    throw new BadRequestException('No valid services found for this salon');
+  }
 
-    const byId = new Map(services.map((service) => [service.id, service]));
-    for (const serviceId of expandedServiceIds) {
-      if (!byId.has(serviceId)) {
-        throw new BadRequestException(
-          `Service not found for this salon: ${serviceId}`,
-        );
-      }
-    }
+  const byId = new Map(services.map((service) => [service.id, service]));
 
-    const employees = await this.prisma.employee.findMany({
-      where: { salonId: dto.salonId, isActive: true },
-      select: { id: true, displayName: true },
-    });
-
-    if (employees.length === 0) {
+  for (const serviceId of expandedServiceIds) {
+    if (!byId.has(serviceId)) {
       throw new BadRequestException(
-        'No active employee available for this salon',
+        `Service not found for this salon: ${serviceId}`,
       );
     }
-
-    if (
-      dto.employeeId &&
-      !employees.some((employee) => employee.id === dto.employeeId)
-    ) {
-      throw new BadRequestException('Employee not found for this salon');
-    }
-
-    const bookingGroupId = `cart-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-
-    const appointments = await this.prisma.$transaction(async (tx) => {
-      const created: any[] = [];
-      let cursorStart = startAt;
-
-      for (const serviceId of expandedServiceIds) {
-        const service = byId.get(serviceId)!;
-        const endAt = new Date(
-          cursorStart.getTime() + service.durationMin * 60_000,
-        );
-
-        const overlaps = await tx.appointment.findMany({
-          where: {
-            salonId: dto.salonId,
-            status: {
-              in: [AppointmentStatus.PENDING, AppointmentStatus.CONFIRMED],
-            },
-            startAt: { lt: endAt },
-            endAt: { gt: cursorStart },
-          },
-          select: { employeeId: true },
-        });
-
-        const busyEmployeeIds = new Set(
-          overlaps
-            .map((appointment) => appointment.employeeId)
-            .filter((employeeId): employeeId is string => Boolean(employeeId)),
-        );
-
-        let assignedEmployeeId: string | null = null;
-
-        if (dto.employeeId) {
-          if (busyEmployeeIds.has(dto.employeeId)) {
-            throw new BadRequestException(
-              'Selected employee is not available at this time',
-            );
-          }
-          assignedEmployeeId = dto.employeeId;
-        } else {
-          const availableEmployee = employees.find(
-            (employee) => !busyEmployeeIds.has(employee.id),
-          );
-          if (!availableEmployee) {
-            throw new BadRequestException(
-              'No employee available at the selected time',
-            );
-          }
-          assignedEmployeeId = availableEmployee.id;
-        }
-
-        const noteWithGroup = dto.note
-          ? `[BOOKING_GROUP:${bookingGroupId}] ${dto.note}`
-          : `[BOOKING_GROUP:${bookingGroupId}]`;
-
-        const appointment = await tx.appointment.create({
-          data: {
-            salonId: dto.salonId,
-            serviceId,
-            clientId: user.userId,
-            employeeId: assignedEmployeeId,
-            note: noteWithGroup,
-            startAt: cursorStart,
-            endAt,
-            status: AppointmentStatus.PENDING,
-          },
-          include: {
-            salon: { select: { id: true, name: true } },
-            service: {
-              select: { id: true, name: true, durationMin: true, price: true },
-            },
-            employee: { select: { id: true, displayName: true } },
-          },
-        });
-
-        await tx.paymentIntent.create({
-          data: {
-            userId: user.userId,
-            salonId: dto.salonId,
-            appointmentId: appointment.id,
-            amount: service.price,
-            discountAmount: 0,
-            payableAmount: service.price,
-            currency: 'XAF',
-            status: PaymentStatus.CREATED,
-            provider: null,
-            providerRef: null,
-            providerData: Prisma.DbNull,
-            platformFeeAmount: 0,
-            providerFeeAmount: 0,
-            netAmount: service.price,
-          },
-        });
-
-        created.push(appointment);
-        cursorStart = endAt;
-      }
-
-      return created;
-    });
-
-    return {
-      items: appointments,
-      total: appointments.length,
-      totalDurationMin: appointments.reduce(
-        (sum, appointment) => sum + appointment.service.durationMin,
-        0,
-      ),
-      totalAmount: appointments.reduce(
-        (sum, appointment) => sum + appointment.service.price,
-        0,
-      ),
-    };
   }
 
+  const employees = await this.prisma.employee.findMany({
+    where: { salonId: dto.salonId, isActive: true },
+    select: { id: true, displayName: true },
+  });
 
-  async createFromCart(
-    user: { userId: string; role: UserRole },
-    dto: CreateAppointmentsFromCartDto,
+  if (employees.length === 0) {
+    throw new BadRequestException(
+      'No active employee available for this salon',
+    );
+  }
+
+  if (
+    dto.employeeId &&
+    !employees.some((employee) => employee.id === dto.employeeId)
   ) {
-    if (user.role !== 'CLIENT') {
-      throw new BadRequestException('Only CLIENT can create appointments')
-    }
+    throw new BadRequestException('Employee not found for this salon');
+  }
 
-    const startAt = new Date(dto.startAt)
-    if (Number.isNaN(startAt.getTime())) {
-      throw new BadRequestException('Invalid startAt')
-    }
+  const bookingGroupId = `cart-${Date.now()}-${Math.random()
+    .toString(36)
+    .slice(2, 8)}`;
 
-    const expandedServiceIds = dto.items.flatMap((item) =>
-      Array.from({ length: item.quantity }, () => item.serviceId),
-    )
+  const appointments = await this.prisma.$transaction(async (tx) => {
+    const created: Prisma.AppointmentGetPayload<{
+      include: {
+        salon: { select: { id: true; name: true } };
+        service: { select: { id: true; name: true; durationMin: true; price: true } };
+        employee: { select: { id: true; displayName: true } };
+      };
+    }>[] = [];
 
-    const services = await this.prisma.service.findMany({
-      where: {
-        id: { in: Array.from(new Set(expandedServiceIds)) },
-        salonId: dto.salonId,
-        isActive: true,
-      },
-      select: { id: true, name: true, durationMin: true, price: true },
-    })
+    let cursorStart = startAt;
 
-    if (services.length === 0) {
-      throw new BadRequestException('No valid services found for this salon')
-    }
-
-    const byId = new Map(services.map((service) => [service.id, service]))
     for (const serviceId of expandedServiceIds) {
-      if (!byId.has(serviceId)) {
-        throw new BadRequestException(`Service not found for this salon: ${serviceId}`)
-      }
-    }
+      const service = byId.get(serviceId)!;
 
-    const employees = await this.prisma.employee.findMany({
-      where: { salonId: dto.salonId, isActive: true },
-      select: { id: true, displayName: true },
-    })
+      const endAt = new Date(
+        cursorStart.getTime() + service.durationMin * 60_000,
+      );
 
-    if (employees.length === 0) {
-      throw new BadRequestException('No active employee available for this salon')
-    }
-
-    if (dto.employeeId && !employees.some((employee) => employee.id === dto.employeeId)) {
-      throw new BadRequestException('Employee not found for this salon')
-    }
-
-    const appointments = await this.prisma.$transaction(async (tx) => {
-      const created: any[] = []
-      let cursorStart = startAt
-
-      for (const serviceId of expandedServiceIds) {
-        const service = byId.get(serviceId)!
-        const endAt = new Date(cursorStart.getTime() + service.durationMin * 60_000)
-
-        const overlaps = await tx.appointment.findMany({
-          where: {
-            salonId: dto.salonId,
-            status: { in: [AppointmentStatus.PENDING, AppointmentStatus.CONFIRMED] },
-            startAt: { lt: endAt },
-            endAt: { gt: cursorStart },
+      const overlaps = await tx.appointment.findMany({
+        where: {
+          salonId: dto.salonId,
+          status: {
+            in: [AppointmentStatus.PENDING, AppointmentStatus.CONFIRMED],
           },
-          select: { employeeId: true },
-        })
+          startAt: { lt: endAt },
+          endAt: { gt: cursorStart },
+        },
+        select: { employeeId: true },
+      });
 
-        const busyEmployeeIds = new Set(
-          overlaps
-            .map((appointment) => appointment.employeeId)
-            .filter((employeeId): employeeId is string => Boolean(employeeId)),
-        )
+      const busyEmployeeIds = new Set(
+        overlaps
+          .map((appointment) => appointment.employeeId)
+          .filter((employeeId): employeeId is string => Boolean(employeeId)),
+      );
 
-        let assignedEmployeeId: string | null = null
+      let assignedEmployeeId: string;
 
-        if (dto.employeeId) {
-          if (busyEmployeeIds.has(dto.employeeId)) {
-            throw new BadRequestException('Selected employee is not available at this time')
-          }
-          assignedEmployeeId = dto.employeeId
-        } else {
-          const availableEmployee = employees.find((employee) => !busyEmployeeIds.has(employee.id))
-          if (!availableEmployee) {
-            throw new BadRequestException('No employee available at the selected time')
-          }
-          assignedEmployeeId = availableEmployee.id
+      if (dto.employeeId) {
+        if (busyEmployeeIds.has(dto.employeeId)) {
+          throw new BadRequestException(
+            'Selected employee is not available at this time',
+          );
         }
 
-        const appointment = await tx.appointment.create({
-          data: {
-            salonId: dto.salonId,
-            serviceId,
-            clientId: user.userId,
-            employeeId: assignedEmployeeId,
-            note: dto.note ?? null,
-            startAt: cursorStart,
-            endAt,
-            status: AppointmentStatus.PENDING,
-          },
-          include: {
-            salon: { select: { id: true, name: true } },
-            service: { select: { id: true, name: true, durationMin: true, price: true } },
-            employee: { select: { id: true, displayName: true } },
-          },
-        })
+        assignedEmployeeId = dto.employeeId;
+      } else {
+        const availableEmployee = employees.find(
+          (employee) => !busyEmployeeIds.has(employee.id),
+        );
 
-        await tx.paymentIntent.create({
-          data: {
-            userId: user.userId,
-            salonId: dto.salonId,
-            appointmentId: appointment.id,
-            amount: service.price,
-            discountAmount: 0,
-            payableAmount: service.price,
-            currency: 'XAF',
-            status: PaymentStatus.CREATED,
-            provider: null,
-            providerRef: null,
-            providerData: Prisma.DbNull,
-            platformFeeAmount: 0,
-            providerFeeAmount: 0,
-            netAmount: service.price,
-          },
-        })
+        if (!availableEmployee) {
+          throw new BadRequestException(
+            'No employee available at the selected time',
+          );
+        }
 
-        created.push(appointment)
-        cursorStart = endAt
+        assignedEmployeeId = availableEmployee.id;
       }
 
-      return created
-    })
+      const noteWithGroup = dto.note
+        ? `[BOOKING_GROUP:${bookingGroupId}] ${dto.note}`
+        : `[BOOKING_GROUP:${bookingGroupId}]`;
 
-    return {
-      items: appointments,
-      total: appointments.length,
-      totalDurationMin: appointments.reduce((sum, appointment) => sum + appointment.service.durationMin, 0),
-      totalAmount: appointments.reduce((sum, appointment) => sum + appointment.service.price, 0),
+      const appointment = await tx.appointment.create({
+        data: {
+          salonId: dto.salonId,
+          serviceId,
+          clientId: user.userId,
+          employeeId: assignedEmployeeId,
+          note: noteWithGroup,
+          startAt: cursorStart,
+          endAt,
+          status: AppointmentStatus.PENDING,
+        },
+        include: {
+          salon: { select: { id: true, name: true } },
+          service: {
+            select: { id: true, name: true, durationMin: true, price: true },
+          },
+          employee: { select: { id: true, displayName: true } },
+        },
+      });
+
+      await tx.paymentIntent.create({
+        data: {
+          userId: user.userId,
+          salonId: dto.salonId,
+          appointmentId: appointment.id,
+          amount: service.price,
+          discountAmount: 0,
+          payableAmount: service.price,
+          currency: 'XAF',
+          status: PaymentStatus.CREATED,
+          provider: null,
+          providerRef: null,
+          providerData: Prisma.DbNull,
+          platformFeeAmount: 0,
+          providerFeeAmount: 0,
+          netAmount: service.price,
+        },
+      });
+
+      created.push(appointment);
+
+      cursorStart = endAt;
     }
-  }
+
+    return created;
+  });
+
+  return {
+    bookingGroupId,
+    items: appointments,
+    total: appointments.length,
+    totalDurationMin: appointments.reduce(
+      (sum, appointment) => sum + appointment.service.durationMin,
+      0,
+    ),
+    totalAmount: appointments.reduce(
+      (sum, appointment) => sum + appointment.service.price,
+      0,
+    ),
+  };
+}
 
   async assignEmployee(
     user: { userId: string; role: UserRole },
