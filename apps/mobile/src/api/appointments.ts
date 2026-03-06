@@ -50,3 +50,17 @@ export async function assignEmployee(appointmentId: string, employeeId?: string)
   const res = await api.patch(`/appointments/${appointmentId}/assign-employee`, { employeeId })
   return res.data
 }
+
+
+export type CreateAppointmentsFromCartPayload = {
+  salonId: string
+  startAt: string
+  employeeId?: string
+  note?: string
+  items: Array<{ serviceId: string; quantity: number }>
+}
+
+export async function createAppointmentsFromCart(payload: CreateAppointmentsFromCartPayload) {
+  const res = await api.post('/appointments/from-cart', payload)
+  return res.data
+}
