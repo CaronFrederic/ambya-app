@@ -216,6 +216,9 @@ export class DiscoveryService {
       city: salon.city,
       country: salon.country,
       phone: salon.phone,
+      coverImageUrl: this.defaultGallery()[0],
+      galleryImageUrls: this.defaultGallery(),
+      socialLinks: this.defaultSocialLinks(salon.name),
       employees: salon.employees,
       servicesByCategory,
       rating: this.estimateRating(salon.appointments.length),
@@ -317,6 +320,26 @@ export class DiscoveryService {
 
   private overlaps(aStart: Date, aEnd: Date, bStart: Date, bEnd: Date) {
     return aStart < bEnd && bStart < aEnd
+  }
+
+  private defaultGallery() {
+    return [
+      'https://images.unsplash.com/photo-1560066984-138dadb4c035?auto=format&fit=crop&w=1200&q=80',
+      'https://images.unsplash.com/photo-1521590832167-7bcbfaa6381f?auto=format&fit=crop&w=700&q=80',
+      'https://images.unsplash.com/photo-1487412947147-5cebf100ffc2?auto=format&fit=crop&w=700&q=80',
+      'https://images.unsplash.com/photo-1522337660859-02fbefca4702?auto=format&fit=crop&w=700&q=80',
+      'https://images.unsplash.com/photo-1519014816548-bf5fe059798b?auto=format&fit=crop&w=700&q=80',
+    ]
+  }
+
+  private defaultSocialLinks(salonName: string) {
+    const slug = salonName.toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 20) || 'salon'
+    return {
+      instagram: `https://instagram.com/${slug}`,
+      facebook: `https://facebook.com/${slug}`,
+      tiktok: `https://tiktok.com/@${slug}`,
+      website: `https://ambya.app/salons/${slug}`,
+    }
   }
 
   private estimateRating(completedCount: number) {
