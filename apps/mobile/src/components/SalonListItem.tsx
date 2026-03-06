@@ -1,24 +1,28 @@
-import React from 'react'
-import { View, Text, Pressable, StyleSheet } from 'react-native'
-import { Ionicons } from '@expo/vector-icons'
-import { LinearGradient } from 'expo-linear-gradient'
+import React from "react";
+import { View, Text, Pressable, StyleSheet } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 
-import { colors, overlays } from '../theme/colors'
-import { spacing } from '../theme/spacing'
-import { radius } from '../theme/radius'
-import { typography } from '../theme/typography'
+import { colors, overlays } from "../theme/colors";
+import { spacing } from "../theme/spacing";
+import { radius } from "../theme/radius";
+import { typography } from "../theme/typography";
 
 type Props = {
-  name: string
-  rating: number
-  duration: string
-  distance?: string
-  showDistance?: boolean
-  onPress?: () => void
-}
+  name: string;
+  city?: string | null;
+  country?: string | null;
+  rating: number;
+  duration: string;
+  distance?: string;
+  showDistance?: boolean;
+  onPress?: () => void;
+};
 
 export function SalonListItem({
   name,
+  city,
+  country,
   rating,
   duration,
   distance,
@@ -53,8 +57,25 @@ export function SalonListItem({
             <Text style={styles.metaText}>{rating.toFixed(1)}</Text>
           </View>
 
+          {city || country ? (
+            <View style={styles.metaRow}>
+              <Ionicons
+                name="location-outline"
+                size={14}
+                color="rgba(107,39,55,0.60)"
+              />
+              <Text style={styles.durationText}>
+                {[city, country].filter(Boolean).join(", ")}
+              </Text>
+            </View>
+          ) : null}
+
           <View style={styles.metaRow}>
-            <Ionicons name="time-outline" size={14} color="rgba(107,39,55,0.60)" />
+            <Ionicons
+              name="time-outline"
+              size={14}
+              color="rgba(107,39,55,0.60)"
+            />
             <Text style={styles.durationText}>{duration}</Text>
           </View>
         </View>
@@ -62,7 +83,7 @@ export function SalonListItem({
 
       <Ionicons name="chevron-forward" size={18} color="rgba(107,39,55,0.40)" />
     </Pressable>
-  )
+  );
 }
 
 const styles = StyleSheet.create({
@@ -70,10 +91,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     borderRadius: radius.xl,
     padding: spacing.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    shadowColor: '#000',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    shadowColor: "#000",
     shadowOpacity: 0.06,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 4 },
@@ -81,7 +102,7 @@ const styles = StyleSheet.create({
   },
 
   left: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: spacing.md,
     flex: 1,
     minWidth: 0,
@@ -101,8 +122,8 @@ const styles = StyleSheet.create({
   },
 
   nameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: spacing.sm,
     marginBottom: spacing.xs,
   },
@@ -110,7 +131,7 @@ const styles = StyleSheet.create({
   name: {
     color: colors.text,
     ...typography.small,
-    fontWeight: '600',
+    fontWeight: "600",
     flex: 1,
   },
 
@@ -124,12 +145,12 @@ const styles = StyleSheet.create({
   distanceText: {
     color: colors.brand,
     ...typography.small,
-    fontWeight: '500',
+    fontWeight: "500",
   },
 
   metaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: spacing.xs,
     marginBottom: spacing.xs,
   },
@@ -137,12 +158,12 @@ const styles = StyleSheet.create({
   metaText: {
     color: colors.text,
     ...typography.small,
-    fontWeight: '500',
+    fontWeight: "500",
   },
 
   durationText: {
-    color: 'rgba(107,39,55,0.60)',
+    color: "rgba(107,39,55,0.60)",
     ...typography.small,
-    fontWeight: '500',
+    fontWeight: "500",
   },
-})
+});

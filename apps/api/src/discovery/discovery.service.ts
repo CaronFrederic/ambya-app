@@ -81,6 +81,7 @@ export class DiscoveryService {
         return {
           salonId: salon.id,
           salonName: salon.name,
+          serviceId: service.id,
           serviceName: service.name,
           discountPercent: discount,
           originalPrice: service.price,

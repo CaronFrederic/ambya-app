@@ -33,8 +33,14 @@ function formatFCFA(v: number) {
 }
 
 export default function SalonDetailScreen() {
-  const params = useLocalSearchParams<{ salonId?: string }>();
+  const params = useLocalSearchParams<{
+    salonId?: string;
+    offerServiceId?: string;
+    offerPrice?: string;
+  }>();
   const salonId = params.salonId;
+  const offerServiceId = params.offerServiceId;
+  const offerPrice = params.offerPrice ? Number(params.offerPrice) : undefined;
   const { data, isLoading } = useSalonDetails(salonId);
 
   const [activeTab, setActiveTab] = useState<TabKey>("about");
@@ -59,6 +65,18 @@ export default function SalonDetailScreen() {
     );
   };
 
+  const getEffectivePrice = (serviceId: string, originalPrice: number) => {
+    if (
+      offerServiceId &&
+      offerPrice &&
+      offerPrice > 0 &&
+      serviceId === offerServiceId
+    ) {
+      return offerPrice;
+    }
+    return originalPrice;
+  };
+
   const addToCart = (service: {
     id: string;
     name: string;
@@ -73,7 +91,7 @@ export default function SalonDetailScreen() {
           {
             id: service.id,
             name: service.name,
-            price: service.price,
+            price: getEffectivePrice(service.id, service.price),
             duration: service.durationMin,
             quantity: 1,
           },
@@ -291,9 +309,20 @@ export default function SalonDetailScreen() {
                               <Text style={styles.serviceMeta}>
                                 Durée: {service.durationMin} min
                               </Text>
-                              <Text style={styles.servicePrice}>
-                                {formatFCFA(service.price)}
-                              </Text>
+                              {offerServiceId === service.id && offerPrice ? (
+                                <View style={styles.offerPriceRow}>
+                                  <Text style={styles.servicePriceOld}>
+                                    {formatFCFA(service.price)}
+                                  </Text>
+                                  <Text style={styles.servicePrice}>
+                                    {formatFCFA(offerPrice)}
+                                  </Text>
+                                </View>
+                              ) : (
+                                <Text style={styles.servicePrice}>
+                                  {formatFCFA(service.price)}
+                                </Text>
+                              )}
                             </View>
                             <View style={styles.qtyWrap}>
                               {qty > 0 ? (
@@ -472,6 +501,17 @@ const styles = StyleSheet.create({
   },
   serviceName: { color: colors.text, fontWeight: "600" },
   serviceMeta: { color: colors.textMuted, fontSize: 12 },
+  offerPriceRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    marginTop: 4,
+  },
+  servicePriceOld: {
+    color: colors.textMuted,
+    textDecorationLine: "line-through",
+    ...typography.small,
+  },
   servicePrice: { color: colors.brand, fontWeight: "700", marginTop: 4 },
   qtyWrap: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   qtyBtnGhost: {

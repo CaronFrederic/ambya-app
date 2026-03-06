@@ -6,6 +6,7 @@ export type HomePayload = {
   offers: Array<{
     salonId: string;
     salonName: string;
+    serviceId: string;
     serviceName: string;
     discountPercent: number;
     originalPrice: number;
