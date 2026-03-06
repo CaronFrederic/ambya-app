@@ -44,6 +44,7 @@ model User {
 
   // Client appointments
   appointments Appointment[] @relation("AppointmentClient")
+  reviews      SalonReview[]
 
   clientProfile  ClientProfile?
   paymentMethods PaymentMethod[]
@@ -58,14 +59,17 @@ model User {
 }
 
 model Salon {
-  id          String  @id @default(cuid())
-  name        String
-  description String?
-  address     String?
-  city        String?
-  country     String?
-  phone       String?
-  isActive    Boolean @default(true)
+  id               String  @id @default(cuid())
+  name             String
+  description      String?
+  address          String?
+  city             String?
+  country          String?
+  phone            String?
+  coverImageUrl    String?
+  galleryImageUrls Json?
+  socialLinks      Json?
+  isActive         Boolean @default(true)
 
   ownerId String
   owner   User   @relation("SalonOwner", fields: [ownerId], references: [id], onDelete: Cascade)
@@ -73,6 +77,7 @@ model Salon {
   employees      Employee[]
   services       Service[]
   appointments   Appointment[]
+  reviews        SalonReview[]
   paymentIntents PaymentIntent[]
 
   createdAt DateTime @default(now())
@@ -156,6 +161,25 @@ model Appointment {
   @@index([clientId, startAt])
   @@index([employeeId, startAt])
   @@index([status])
+}
+
+model SalonReview {
+  id String @id @default(cuid())
+
+  salonId String
+  salon   Salon  @relation(fields: [salonId], references: [id], onDelete: Cascade)
+
+  clientId String
+  client   User   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  rating  Int
+  comment String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([salonId, createdAt])
+  @@index([clientId, createdAt])
 }
 
 model Country {
@@ -253,10 +277,10 @@ model LoyaltyAccount {
 
   transactions LoyaltyTransaction[]
 
-  pendingDiscountAmount Int      @default(0) // réduction fixe en attente
-  pendingDiscountTier   LoyaltyTier?
-  pendingDiscountIssuedAt DateTime?
-  pendingDiscountConsumedAt DateTime?
+  pendingDiscountAmount           Int          @default(0) // réduction fixe en attente
+  pendingDiscountTier             LoyaltyTier?
+  pendingDiscountIssuedAt         DateTime?
+  pendingDiscountConsumedAt       DateTime?
   pendingDiscountConsumedIntentId String?
 
   createdAt DateTime @default(now())
@@ -299,11 +323,11 @@ model PaymentIntent {
   appointment   Appointment? @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
 
   // Money
-  amount   Int
-  discountAmount Int @default(0)
-  payableAmount  Int @default(0)
+  amount              Int
+  discountAmount      Int          @default(0)
+  payableAmount       Int          @default(0)
   appliedDiscountTier LoyaltyTier?
-  currency String // "XAF", "USD" ...
+  currency            String // "XAF", "USD" ...
 
   status PaymentStatus @default(CREATED)
 
