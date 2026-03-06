@@ -7,6 +7,7 @@ import { AssignEmployeeDto } from './dto/assign-employee.dto'
 import { CurrentUser } from '../auth/decorators/current-user.decorator'
 import type { JwtUser } from '../auth/decorators/current-user.decorator'
 import { CancelAppointmentDto } from './dto/cancel-appointment.dto'
+import { CreateAppointmentsFromCartDto } from './dto/create-appointments-from-cart.dto'
 
 @Controller('appointments')
 @UseGuards(JwtAuthGuard)
@@ -21,6 +22,11 @@ export class AppointmentsController {
   @Post()
   create(@Req() req: any, @Body() body: CreateAppointmentDto) {
     return this.service.createForClient(req.user, body)
+  }
+
+  @Post('from-cart')
+  createFromCart(@CurrentUser() user: JwtUser, @Body() body: CreateAppointmentsFromCartDto) {
+    return this.service.createFromCart(user, body)
   }
 
   @Patch(':id/assign-employee')

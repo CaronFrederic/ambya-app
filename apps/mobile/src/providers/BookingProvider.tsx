@@ -18,6 +18,9 @@ export type BookingDraft = {
   time?: string
   professionalName?: string // “Pas de préférence” possible
 
+  selectedDateIso?: string // YYYY-MM-DD
+  selectedEmployeeId?: string
+
   // payment
   depositEnabled?: boolean
   depositPercentage?: number

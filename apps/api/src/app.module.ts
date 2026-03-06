@@ -10,10 +10,11 @@ import { ConfigModule as AppConfigModule } from './config/config.module';
 import { MeModule } from './me/me.module';
 import { PaymentMethodsModule } from './payment-methods/payment-methods.module';
 import { PaymentsModule } from './payments/payments.module';
+import { DiscoveryModule } from './discovery/discovery.module';
 
 @Module({
   imports: [AppConfigModule, AppointmentsModule, 
-    AuthModule, MeModule, PaymentMethodsModule, PaymentsModule,
+    AuthModule, MeModule, PaymentMethodsModule, PaymentsModule, DiscoveryModule,
     ConfigModule.forRoot({ isGlobal: true }), HealthModule, PrismaModule],
   controllers: [AppController],
   providers: [AppService],

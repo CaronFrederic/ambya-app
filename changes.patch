@@ -1,0 +1,3551 @@
+ (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
+diff --git a/apps/api/package.json b/apps/api/package.json
+index bedecc14833491a44a4e6d175ea3bffe11f01842..59664fceb3ea7905329a221fd5324841a389df6e 100644
+--- a/apps/api/package.json
++++ b/apps/api/package.json
+@@ -3,51 +3,52 @@
+   "version": "0.0.1",
+   "description": "",
+   "author": "",
+   "private": true,
+   "license": "UNLICENSED",
+   "scripts": {
+     "build": "nest build",
+     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
+     "start": "nest start",
+     "start:dev": "nest start --watch",
+     "start:debug": "nest start --debug --watch",
+     "start:prod": "node dist/main",
+     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
+     "test": "jest",
+     "test:watch": "jest --watch",
+     "test:cov": "jest --coverage",
+     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
+     "test:e2e": "jest --config ./test/jest-e2e.json",
+     "dev": "nest start --watch",
+     "check:auth": "ts-node scripts/check-auth.ts",
+     "check:appointments:api": "ts-node scripts/check-appointments-api.ts",
+     "check:appointments:cache": "ts-node scripts/check-appointments-cache.ts",
+     "check:appointments:create": "ts-node scripts/check-appointments-create.ts",
+     "check:appointments:assign": "ts-node scripts/check-appointments-assign.ts",
+     "check:config:countries": "ts-node scripts/check-config-countries.ts",
+-    "seed": "ts-node -r dotenv/config prisma/seed.ts"
++    "seed": "ts-node -r dotenv/config prisma/seed.ts",
++    "seed:fake": "ts-node -r dotenv/config scripts/seed-fake-data.ts"
+   },
+   "dependencies": {
+     "@ambya/shared": "workspace:*",
+     "@nestjs/common": "^11.0.1",
+     "@nestjs/config": "^4.0.3",
+     "@nestjs/core": "^11.0.1",
+     "@nestjs/jwt": "^11.0.2",
+     "@nestjs/passport": "^11.0.5",
+     "@nestjs/platform-express": "^11.0.1",
+     "@prisma/adapter-pg": "^7.4.0",
+     "@prisma/client": "^7.4.0",
+     "bcryptjs": "^3.0.3",
+     "class-transformer": "^0.5.1",
+     "class-validator": "^0.14.3",
+     "dotenv": "^17.3.1",
+     "node-fetch": "^2.7.0",
+     "passport": "^0.7.0",
+     "passport-jwt": "^4.0.1",
+     "pg": "^8.18.0",
+     "reflect-metadata": "^0.2.2",
+     "rxjs": "^7.8.1"
+   },
+   "devDependencies": {
+     "@eslint/eslintrc": "^3.2.0",
+     "@eslint/js": "^9.18.0",
+diff --git a/apps/api/scripts/seed-fake-data.ts b/apps/api/scripts/seed-fake-data.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..aae313e720ff4f6dd6fad773bca57b1a6dd0e90d
+--- /dev/null
++++ b/apps/api/scripts/seed-fake-data.ts
+@@ -0,0 +1,196 @@
++import 'dotenv/config'
++import { PrismaClient, AppointmentStatus, UserRole, Employee, Service } from '@prisma/client'
++import { PrismaPg } from '@prisma/adapter-pg'
++import { Pool } from 'pg'
++import * as bcrypt from 'bcryptjs'
++
++if (!process.env.DATABASE_URL) {
++  throw new Error('DATABASE_URL is missing')
++}
++
++const SALON_COUNT = Number(process.env.FAKE_SALONS_COUNT ?? 8)
++const EMPLOYEES_PER_SALON = Number(process.env.FAKE_EMPLOYEES_PER_SALON ?? 4)
++const SERVICES_PER_SALON = Number(process.env.FAKE_SERVICES_PER_SALON ?? 8)
++const APPOINTMENTS_PER_SALON = Number(process.env.FAKE_APPOINTMENTS_PER_SALON ?? 10)
++
++const pool = new Pool({
++  connectionString: process.env.DATABASE_URL,
++})
++
++const prisma = new PrismaClient({
++  adapter: new PrismaPg(pool),
++})
++
++const cities = ['Libreville', 'Port-Gentil', 'Franceville', 'Owendo', 'Lambaréné']
++const salonPrefixes = ['Élégance', 'Belleza', 'Glow', 'Prestige', 'Zen', 'Nubia', 'Aura', 'Velvet']
++const serviceCatalog = [
++  { name: 'Coupe Femme', basePrice: 12000, durationMin: 45 },
++  { name: 'Brushing', basePrice: 10000, durationMin: 40 },
++  { name: 'Coloration', basePrice: 25000, durationMin: 90 },
++  { name: 'Massage Relaxant', basePrice: 20000, durationMin: 60 },
++  { name: 'Massage Deep Tissue', basePrice: 28000, durationMin: 90 },
++  { name: 'Manucure', basePrice: 9000, durationMin: 35 },
++  { name: 'Pédicure', basePrice: 11000, durationMin: 45 },
++  { name: 'Soin du visage', basePrice: 18000, durationMin: 60 },
++  { name: 'Maquillage Soirée', basePrice: 22000, durationMin: 70 },
++  { name: 'Lissage', basePrice: 30000, durationMin: 120 },
++]
++
++function pick<T>(arr: T[]) {
++  return arr[Math.floor(Math.random() * arr.length)]
++}
++
++function jitterPrice(price: number) {
++  const factor = 0.85 + Math.random() * 0.4
++  return Math.max(3000, Math.round(price * factor))
++}
++
++function randomPastDate(daysBackMax: number) {
++  const now = Date.now()
++  const backMs = Math.floor(Math.random() * daysBackMax * 24 * 60 * 60 * 1000)
++  return new Date(now - backMs)
++}
++
++function randomFutureDate(daysAheadMax: number) {
++  const now = Date.now()
++  const aheadMs = Math.floor(Math.random() * daysAheadMax * 24 * 60 * 60 * 1000)
++  return new Date(now + aheadMs)
++}
++
++async function ensureReferenceCountries() {
++  await prisma.country.upsert({
++    where: { code: 'GA' },
++    update: { name: 'Gabon', currency: 'FCFA', isActive: true },
++    create: { code: 'GA', name: 'Gabon', currency: 'FCFA', isActive: true },
++  })
++
++  await prisma.country.upsert({
++    where: { code: 'CD' },
++    update: { name: 'RDC', currency: '$', isActive: true },
++    create: { code: 'CD', name: 'RDC', currency: '$', isActive: true },
++  })
++}
++
++async function main() {
++  console.log('🌱 Generating fake salons/services/employees ...')
++  console.log(`- salons: ${SALON_COUNT}`)
++  console.log(`- employees/salon: ${EMPLOYEES_PER_SALON}`)
++  console.log(`- services/salon: ${SERVICES_PER_SALON}`)
++  console.log(`- appointments/salon: ${APPOINTMENTS_PER_SALON}`)
++
++  await ensureReferenceCountries()
++
++  const passwordHash = await bcrypt.hash('password123', 10)
++  const runTag = Date.now()
++
++  const demoClient = await prisma.user.upsert({
++    where: { email: 'client+fake@ambya.com' },
++    update: { password: passwordHash, role: UserRole.CLIENT, isActive: true },
++    create: {
++      email: 'client+fake@ambya.com',
++      password: passwordHash,
++      role: UserRole.CLIENT,
++    },
++  })
++
++  for (let i = 0; i < SALON_COUNT; i++) {
++    const ownerEmail = `pro+fake-${runTag}-${i}@ambya.com`
++    const owner = await prisma.user.create({
++      data: {
++        email: ownerEmail,
++        password: passwordHash,
++        role: UserRole.PROFESSIONAL,
++        isActive: true,
++      },
++    })
++
++    const city = pick(cities)
++    const salon = await prisma.salon.create({
++      data: {
++        name: `${pick(salonPrefixes)} Beauty #${i + 1}`,
++        description: `Salon test #${i + 1} pour navigation discovery et prise de rendez-vous.`,
++        address: `${10 + i} Boulevard Demo`,
++        city,
++        country: 'Gabon',
++        phone: `+241 77 00 ${String(10 + i).padStart(2, '0')}`,
++        ownerId: owner.id,
++      },
++    })
++
++    const employees: Employee[] = []
++    for (let e = 0; e < EMPLOYEES_PER_SALON; e++) {
++      const employeeUser = await prisma.user.create({
++        data: {
++          email: `employee+fake-${runTag}-${i}-${e}@ambya.com`,
++          password: passwordHash,
++          role: UserRole.EMPLOYEE,
++          isActive: true,
++        },
++      })
++
++      const employee = await prisma.employee.create({
++        data: {
++          salonId: salon.id,
++          userId: employeeUser.id,
++          displayName: `Employé ${i + 1}-${e + 1}`,
++          isActive: true,
++        },
++      })
++      employees.push(employee)
++    }
++
++    const chosenServices = [...serviceCatalog]
++      .sort(() => Math.random() - 0.5)
++      .slice(0, Math.min(SERVICES_PER_SALON, serviceCatalog.length))
++
++    const services: Service[] = []
++    for (const svc of chosenServices) {
++      const service = await prisma.service.create({
++        data: {
++          salonId: salon.id,
++          name: svc.name,
++          description: `${svc.name} - service de démonstration`,
++          price: jitterPrice(svc.basePrice),
++          durationMin: svc.durationMin,
++          isActive: true,
++        },
++      })
++      services.push(service)
++    }
++
++    for (let a = 0; a < APPOINTMENTS_PER_SALON; a++) {
++      const employee = pick(employees)
++      const service = pick(services)
++      const isPast = a < Math.floor(APPOINTMENTS_PER_SALON * 0.6)
++      const startAt = isPast ? randomPastDate(60) : randomFutureDate(14)
++      const endAt = new Date(startAt.getTime() + service.durationMin * 60_000)
++
++      await prisma.appointment.create({
++        data: {
++          salonId: salon.id,
++          clientId: demoClient.id,
++          serviceId: service.id,
++          employeeId: employee.id,
++          status: isPast ? AppointmentStatus.COMPLETED : AppointmentStatus.PENDING,
++          startAt,
++          endAt,
++          note: 'RDV généré automatiquement (seed fake)',
++        },
++      })
++    }
++  }
++
++  console.log('✅ Fake data generation done')
++  console.log(`Comptes pro créés: email pattern pro+fake-${runTag}-<index>@ambya.com`) 
++  console.log('Mot de passe de test: password123')
++}
++
++main()
++  .catch((error) => {
++    console.error('❌ Fake data generation failed', error)
++    process.exitCode = 1
++  })
++  .finally(async () => {
++    await prisma.$disconnect()
++    await pool.end()
++  })
+diff --git a/apps/api/src/app.module.ts b/apps/api/src/app.module.ts
+index e69a17c915c534c44d4cd2439174ee6fe6669d7d..fd0078935ee011eae6f933c836e51f3632f7a5dc 100644
+--- a/apps/api/src/app.module.ts
++++ b/apps/api/src/app.module.ts
+@@ -1,21 +1,22 @@
+ import { Module } from '@nestjs/common';
+ import { ConfigModule } from "@nestjs/config";
+ import { PrismaModule } from "./prisma/prisma.module";
+ import { AppController } from './app.controller';
+ import { AppService } from './app.service';
+ import { HealthModule } from './health/health.module';
+ import { AuthModule } from './auth/auth.module'
+ import { AppointmentsModule } from './appointments/appointments.module';
+ import { ConfigModule as AppConfigModule } from './config/config.module';
+ import { MeModule } from './me/me.module';
+ import { PaymentMethodsModule } from './payment-methods/payment-methods.module';
+ import { PaymentsModule } from './payments/payments.module';
++import { DiscoveryModule } from './discovery/discovery.module';
+ 
+ @Module({
+   imports: [AppConfigModule, AppointmentsModule, 
+-    AuthModule, MeModule, PaymentMethodsModule, PaymentsModule,
++    AuthModule, MeModule, PaymentMethodsModule, PaymentsModule, DiscoveryModule,
+     ConfigModule.forRoot({ isGlobal: true }), HealthModule, PrismaModule],
+   controllers: [AppController],
+   providers: [AppService],
+ })
+ export class AppModule {}
+diff --git a/apps/api/src/appointments/appointments.controller.ts b/apps/api/src/appointments/appointments.controller.ts
+index d5ba5801bd901a8f8170fe588dad9e1f21031917..4a19a9514e95d32a9bb4ccc7831afef87e1f59f6 100644
+--- a/apps/api/src/appointments/appointments.controller.ts
++++ b/apps/api/src/appointments/appointments.controller.ts
+@@ -1,40 +1,46 @@
+ import { Param, Patch, Body, Post, Controller, Get, Query, Req, UseGuards } from '@nestjs/common'
+ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
+ import { AppointmentsService } from './appointments.service'
+ import { ListAppointmentsDto } from './dto/list-appointments.dto'
+ import { CreateAppointmentDto } from './dto/create-appointment.dto'
+ import { AssignEmployeeDto } from './dto/assign-employee.dto'
+ import { CurrentUser } from '../auth/decorators/current-user.decorator'
+ import type { JwtUser } from '../auth/decorators/current-user.decorator'
+ import { CancelAppointmentDto } from './dto/cancel-appointment.dto'
++import { CreateAppointmentsFromCartDto } from './dto/create-appointments-from-cart.dto'
+ 
+ @Controller('appointments')
+ @UseGuards(JwtAuthGuard)
+ export class AppointmentsController {
+   constructor(private readonly service: AppointmentsService) {}
+ 
+   @Get()
+   list(@Req() req: any, @Query() query: ListAppointmentsDto) {
+     return this.service.listForUser(req.user, query)
+   }
+ 
+   @Post()
+   create(@Req() req: any, @Body() body: CreateAppointmentDto) {
+     return this.service.createForClient(req.user, body)
+   }
+ 
++  @Post('from-cart')
++  createFromCart(@CurrentUser() user: JwtUser, @Body() body: CreateAppointmentsFromCartDto) {
++    return this.service.createFromCart(user, body)
++  }
++
+   @Patch(':id/assign-employee')
+   assignEmployee(@Req() req: any, @Param('id') id: string, @Body() body: AssignEmployeeDto) {
+     return this.service.assignEmployee(req.user, id, body)
+   }
+ 
+   @Patch(':id/cancel')
+   cancel(
+     @CurrentUser() user: JwtUser,
+     @Param('id') id: string,
+     @Body() dto: CancelAppointmentDto,
+   ) {
+     return this.service.cancel(user, id, dto)
+   }
+ 
+ }
+diff --git a/apps/api/src/appointments/appointments.service.ts b/apps/api/src/appointments/appointments.service.ts
+index 06d91df9385063696d4037690f142993580a6b33..77fd815337b34e62b3c87cf500520d44f1c0e60b 100644
+--- a/apps/api/src/appointments/appointments.service.ts
++++ b/apps/api/src/appointments/appointments.service.ts
+@@ -1,35 +1,36 @@
+ import {
+   BadRequestException,
+   Injectable,
+   ForbiddenException,
+   NotFoundException,
+ } from '@nestjs/common'
+ import { PrismaService } from '../prisma/prisma.service'
+ import { ListAppointmentsDto } from './dto/list-appointments.dto'
+ import { CreateAppointmentDto } from './dto/create-appointment.dto'
+ import { AssignEmployeeDto } from './dto/assign-employee.dto'
++import { CreateAppointmentsFromCartDto } from './dto/create-appointments-from-cart.dto'
+ import { LoyaltyReason, LoyaltyTier,
+   AppointmentStatus, PaymentStatus, Prisma, UserRole } from '@prisma/client'
+ 
+ @Injectable()
+ export class AppointmentsService {
+   constructor(private prisma: PrismaService) {}
+ 
+   async listForUser(user: { userId: string; role: UserRole }, q: ListAppointmentsDto) {
+     const where: any = {}
+ 
+     if (user.role === 'CLIENT') {
+       where.clientId = user.userId
+     }
+ 
+     if (user.role === 'EMPLOYEE') {
+       const employee = await this.prisma.employee.findUnique({
+         where: { userId: user.userId },
+         select: { id: true },
+       })
+       if (!employee) throw new ForbiddenException()
+       where.employeeId = employee.id
+     }
+ 
+     if (user.role === 'PROFESSIONAL') {
+       const salons = await this.prisma.salon.findMany({
+@@ -148,50 +149,192 @@ export class AppointmentsService {
+           amount: service.price,
+           currency,
+           status: PaymentStatus.CREATED,
+ 
+           provider: null,
+           providerRef: null,
+           providerData: Prisma.DbNull,
+ 
+           platformFeeAmount,
+           providerFeeAmount,
+           netAmount,
+ 
+           // ✅ fixed discount applied (but NOT consumed yet)
+           discountAmount,
+           payableAmount,
+           appliedDiscountTier,
+         },
+       })
+ 
+       return { appointment, paymentIntent }
+     })
+ 
+     return { appointment, paymentIntent }
+   }
+ 
++
++  async createFromCart(
++    user: { userId: string; role: UserRole },
++    dto: CreateAppointmentsFromCartDto,
++  ) {
++    if (user.role !== 'CLIENT') {
++      throw new BadRequestException('Only CLIENT can create appointments')
++    }
++
++    const startAt = new Date(dto.startAt)
++    if (Number.isNaN(startAt.getTime())) {
++      throw new BadRequestException('Invalid startAt')
++    }
++
++    const expandedServiceIds = dto.items.flatMap((item) =>
++      Array.from({ length: item.quantity }, () => item.serviceId),
++    )
++
++    const services = await this.prisma.service.findMany({
++      where: {
++        id: { in: Array.from(new Set(expandedServiceIds)) },
++        salonId: dto.salonId,
++        isActive: true,
++      },
++      select: { id: true, name: true, durationMin: true, price: true },
++    })
++
++    if (services.length === 0) {
++      throw new BadRequestException('No valid services found for this salon')
++    }
++
++    const byId = new Map(services.map((service) => [service.id, service]))
++    for (const serviceId of expandedServiceIds) {
++      if (!byId.has(serviceId)) {
++        throw new BadRequestException(`Service not found for this salon: ${serviceId}`)
++      }
++    }
++
++    const employees = await this.prisma.employee.findMany({
++      where: { salonId: dto.salonId, isActive: true },
++      select: { id: true, displayName: true },
++    })
++
++    if (employees.length === 0) {
++      throw new BadRequestException('No active employee available for this salon')
++    }
++
++    if (dto.employeeId && !employees.some((employee) => employee.id === dto.employeeId)) {
++      throw new BadRequestException('Employee not found for this salon')
++    }
++
++    const appointments = await this.prisma.$transaction(async (tx) => {
++      const created: any[] = []
++      let cursorStart = startAt
++
++      for (const serviceId of expandedServiceIds) {
++        const service = byId.get(serviceId)!
++        const endAt = new Date(cursorStart.getTime() + service.durationMin * 60_000)
++
++        const overlaps = await tx.appointment.findMany({
++          where: {
++            salonId: dto.salonId,
++            status: { in: [AppointmentStatus.PENDING, AppointmentStatus.CONFIRMED] },
++            startAt: { lt: endAt },
++            endAt: { gt: cursorStart },
++          },
++          select: { employeeId: true },
++        })
++
++        const busyEmployeeIds = new Set(
++          overlaps
++            .map((appointment) => appointment.employeeId)
++            .filter((employeeId): employeeId is string => Boolean(employeeId)),
++        )
++
++        let assignedEmployeeId: string | null = null
++
++        if (dto.employeeId) {
++          if (busyEmployeeIds.has(dto.employeeId)) {
++            throw new BadRequestException('Selected employee is not available at this time')
++          }
++          assignedEmployeeId = dto.employeeId
++        } else {
++          const availableEmployee = employees.find((employee) => !busyEmployeeIds.has(employee.id))
++          if (!availableEmployee) {
++            throw new BadRequestException('No employee available at the selected time')
++          }
++          assignedEmployeeId = availableEmployee.id
++        }
++
++        const appointment = await tx.appointment.create({
++          data: {
++            salonId: dto.salonId,
++            serviceId,
++            clientId: user.userId,
++            employeeId: assignedEmployeeId,
++            note: dto.note ?? null,
++            startAt: cursorStart,
++            endAt,
++            status: AppointmentStatus.PENDING,
++          },
++          include: {
++            salon: { select: { id: true, name: true } },
++            service: { select: { id: true, name: true, durationMin: true, price: true } },
++            employee: { select: { id: true, displayName: true } },
++          },
++        })
++
++        await tx.paymentIntent.create({
++          data: {
++            userId: user.userId,
++            salonId: dto.salonId,
++            appointmentId: appointment.id,
++            amount: service.price,
++            discountAmount: 0,
++            payableAmount: service.price,
++            currency: 'XAF',
++            status: PaymentStatus.CREATED,
++            provider: null,
++            providerRef: null,
++            providerData: Prisma.DbNull,
++            platformFeeAmount: 0,
++            providerFeeAmount: 0,
++            netAmount: service.price,
++          },
++        })
++
++        created.push(appointment)
++        cursorStart = endAt
++      }
++
++      return created
++    })
++
++    return {
++      items: appointments,
++      total: appointments.length,
++      totalDurationMin: appointments.reduce((sum, appointment) => sum + appointment.service.durationMin, 0),
++      totalAmount: appointments.reduce((sum, appointment) => sum + appointment.service.price, 0),
++    }
++  }
++
+   async assignEmployee(
+     user: { userId: string; role: UserRole },
+     appointmentId: string,
+     dto: AssignEmployeeDto,
+   ) {
+     // On récupère le RDV + salon ownerId pour check permissions
+     const appt = await this.prisma.appointment.findUnique({
+       where: { id: appointmentId },
+       select: {
+         id: true,
+         salonId: true,
+         clientId: true,
+         employeeId: true,
+         salon: { select: { ownerId: true } },
+       },
+     })
+     if (!appt) throw new NotFoundException('Appointment not found')
+ 
+     const isOwner = user.role === 'PROFESSIONAL' && appt.salon.ownerId === user.userId
+     const isAdmin = user.role === 'ADMIN'
+     const isClient = user.role === 'CLIENT' && appt.clientId === user.userId
+ 
+     // MVP: autorise PRO owner + ADMIN (et optionnellement CLIENT si tu veux)
+     if (!isOwner && !isAdmin && !isClient) {
+       throw new ForbiddenException('Not allowed')
+diff --git a/apps/api/src/appointments/dto/create-appointments-from-cart.dto.ts b/apps/api/src/appointments/dto/create-appointments-from-cart.dto.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..17f16ee603f2bcf0ba993afe5c04660379aca338
+--- /dev/null
++++ b/apps/api/src/appointments/dto/create-appointments-from-cart.dto.ts
+@@ -0,0 +1,34 @@
++import { Type } from 'class-transformer'
++import { ArrayMinSize, IsArray, IsISO8601, IsInt, IsOptional, IsString, Min, ValidateNested } from 'class-validator'
++
++class CartItemDto {
++  @IsString()
++  serviceId!: string
++
++  @Type(() => Number)
++  @IsInt()
++  @Min(1)
++  quantity!: number
++}
++
++export class CreateAppointmentsFromCartDto {
++  @IsString()
++  salonId!: string
++
++  @IsISO8601()
++  startAt!: string
++
++  @IsOptional()
++  @IsString()
++  employeeId?: string
++
++  @IsOptional()
++  @IsString()
++  note?: string
++
++  @IsArray()
++  @ArrayMinSize(1)
++  @ValidateNested({ each: true })
++  @Type(() => CartItemDto)
++  items!: CartItemDto[]
++}
+diff --git a/apps/api/src/auth/strategies/jwt.strategy.ts b/apps/api/src/auth/strategies/jwt.strategy.ts
+index f6560579c54dabb1d20a0ca1ac4626b877826888..182339fd1f4a93e7fd5a5ce19789e5598233eb8f 100644
+--- a/apps/api/src/auth/strategies/jwt.strategy.ts
++++ b/apps/api/src/auth/strategies/jwt.strategy.ts
+@@ -1,19 +1,19 @@
+ import { Injectable } from '@nestjs/common'
+ import { PassportStrategy } from '@nestjs/passport'
+ import { ConfigService } from '@nestjs/config'
+ import { ExtractJwt, Strategy } from 'passport-jwt'
+-import { UserRole } from 'generated/prisma/client'
++import { UserRole } from '@prisma/client'
+ 
+ @Injectable()
+ export class JwtStrategy extends PassportStrategy(Strategy) {
+   constructor(config: ConfigService) {
+     super({
+       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+       secretOrKey: config.get<string>('JWT_SECRET') ?? 'dev-secret-change-me',
+     })
+   }
+ 
+   validate(payload: { sub: string; role: UserRole  }) {
+     return { userId: payload.sub, role: payload.role }
+   }
+ }
+diff --git a/apps/api/src/discovery/discovery.controller.ts b/apps/api/src/discovery/discovery.controller.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..824272ed2b6cb58a461ea0b2395b217eedb04b95
+--- /dev/null
++++ b/apps/api/src/discovery/discovery.controller.ts
+@@ -0,0 +1,30 @@
++import { Controller, Get, Param, Query } from '@nestjs/common'
++import { DiscoveryService } from './discovery.service'
++import { HomeQueryDto } from './dto/home-query.dto'
++import { SearchQueryDto } from './dto/search-query.dto'
++import { SalonAvailabilityQueryDto } from './dto/salon-availability-query.dto'
++
++@Controller()
++export class DiscoveryController {
++  constructor(private readonly discovery: DiscoveryService) {}
++
++  @Get('discover/home')
++  home(@Query() query: HomeQueryDto) {
++    return this.discovery.home(query)
++  }
++
++  @Get('discover/search')
++  search(@Query() query: SearchQueryDto) {
++    return this.discovery.search(query)
++  }
++
++  @Get('salons/:id')
++  salonDetails(@Param('id') id: string) {
++    return this.discovery.salonDetails(id)
++  }
++
++  @Get('salons/:id/availability')
++  salonAvailability(@Param('id') id: string, @Query() query: SalonAvailabilityQueryDto) {
++    return this.discovery.salonAvailability(id, query)
++  }
++}
+diff --git a/apps/api/src/discovery/discovery.module.ts b/apps/api/src/discovery/discovery.module.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..617fb301325acfc5f9134e76a1cbf1cae07a2c5f
+--- /dev/null
++++ b/apps/api/src/discovery/discovery.module.ts
+@@ -0,0 +1,10 @@
++import { Module } from '@nestjs/common'
++import { PrismaService } from '../prisma/prisma.service'
++import { DiscoveryController } from './discovery.controller'
++import { DiscoveryService } from './discovery.service'
++
++@Module({
++  controllers: [DiscoveryController],
++  providers: [DiscoveryService, PrismaService],
++})
++export class DiscoveryModule {}
+diff --git a/apps/api/src/discovery/discovery.service.ts b/apps/api/src/discovery/discovery.service.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..2586b8cbe9804b15eb81f60a2703ae95610b4689
+--- /dev/null
++++ b/apps/api/src/discovery/discovery.service.ts
+@@ -0,0 +1,337 @@
++import { Injectable, NotFoundException } from '@nestjs/common'
++import { PrismaService } from '../prisma/prisma.service'
++import { HomeQueryDto } from './dto/home-query.dto'
++import { SearchQueryDto } from './dto/search-query.dto'
++import { SalonAvailabilityQueryDto } from './dto/salon-availability-query.dto'
++
++type Slot = {
++  time: string
++  available: boolean
++}
++
++@Injectable()
++export class DiscoveryService {
++  constructor(private readonly prisma: PrismaService) {}
++
++  async home(query: HomeQueryDto) {
++    const where: any = { isActive: true }
++    if (query.city) where.city = { contains: query.city, mode: 'insensitive' }
++    if (query.country) where.country = { contains: query.country, mode: 'insensitive' }
++
++    const salons = await this.prisma.salon.findMany({
++      where,
++      select: {
++        id: true,
++        name: true,
++        city: true,
++        country: true,
++        services: {
++          where: { isActive: true },
++          select: { id: true, name: true, durationMin: true, price: true },
++          orderBy: { price: 'asc' },
++          take: 4,
++        },
++        appointments: {
++          where: { status: { in: ['COMPLETED', 'CONFIRMED'] } },
++          select: { id: true },
++        },
++      },
++      take: 40,
++    })
++
++    const serviceCategories = await this.prisma.service.findMany({
++      where: { isActive: true },
++      select: { name: true },
++      take: 500,
++    })
++
++    const categories = Array.from(new Set(serviceCategories.map((s) => this.toCategory(s.name))))
++
++    const filteredByCategory = query.category
++      ? salons.filter((salon) =>
++          salon.services.some((service) => this.toCategory(service.name) === query.category),
++        )
++      : salons
++
++    const topRatedSalons = filteredByCategory
++      .map((salon) => ({
++        id: salon.id,
++        name: salon.name,
++        city: salon.city,
++        country: salon.country,
++        rating: this.estimateRating(salon.appointments.length),
++        duration: salon.services[0] ? `${salon.services[0].durationMin} min` : '30 min',
++      }))
++      .sort((a, b) => b.rating - a.rating)
++      .slice(0, 12)
++
++    const offers = filteredByCategory
++      .filter((salon) => salon.services[0])
++      .slice(0, 20)
++      .map((salon, index) => {
++        const service = salon.services[0]!
++        const discount = 10 + (index % 3) * 10
++        return {
++          salonId: salon.id,
++          salonName: salon.name,
++          serviceName: service.name,
++          discountPercent: discount,
++          originalPrice: service.price,
++          discountedPrice: Math.round(service.price * (1 - discount / 100)),
++        }
++      })
++
++    return {
++      categories,
++      offers,
++      topRatedSalons,
++    }
++  }
++
++  async search(query: SearchQueryDto) {
++    const q = query.q?.trim()
++    const where: any = { isActive: true }
++
++    if (query.city) where.city = { contains: query.city, mode: 'insensitive' }
++    if (query.country) where.country = { contains: query.country, mode: 'insensitive' }
++
++    if (q) {
++      where.OR = [
++        { name: { contains: q, mode: 'insensitive' } },
++        {
++          services: {
++            some: {
++              isActive: true,
++              name: { contains: q, mode: 'insensitive' },
++            },
++          },
++        },
++      ]
++    }
++
++    const salons = await this.prisma.salon.findMany({
++      where,
++      select: {
++        id: true,
++        name: true,
++        city: true,
++        country: true,
++        services: {
++          where: { isActive: true },
++          select: { id: true, name: true, price: true, durationMin: true },
++          take: 10,
++        },
++      },
++      orderBy: { createdAt: 'desc' },
++      take: 80,
++    })
++
++    const filtered = query.category
++      ? salons.filter((salon) =>
++          salon.services.some((service) => this.toCategory(service.name) === query.category),
++        )
++      : salons
++
++    return {
++      items: filtered.map((salon) => ({
++        id: salon.id,
++        name: salon.name,
++        city: salon.city,
++        country: salon.country,
++        highlights: salon.services.map((service) => ({
++          id: service.id,
++          name: service.name,
++          price: service.price,
++          durationMin: service.durationMin,
++        })),
++      })),
++      total: filtered.length,
++    }
++  }
++
++  async salonDetails(salonId: string) {
++    const salon = await this.prisma.salon.findFirst({
++      where: { id: salonId, isActive: true },
++      select: {
++        id: true,
++        name: true,
++        description: true,
++        address: true,
++        city: true,
++        country: true,
++        phone: true,
++        services: {
++          where: { isActive: true },
++          select: { id: true, name: true, description: true, price: true, durationMin: true },
++          orderBy: { name: 'asc' },
++        },
++        employees: {
++          where: { isActive: true },
++          select: { id: true, displayName: true },
++          orderBy: { displayName: 'asc' },
++        },
++        appointments: {
++          where: { status: 'COMPLETED' },
++          select: {
++            id: true,
++            createdAt: true,
++            client: {
++              select: {
++                clientProfile: { select: { nickname: true } },
++                email: true,
++              },
++            },
++          },
++          orderBy: { createdAt: 'desc' },
++          take: 20,
++        },
++      },
++    })
++
++    if (!salon) throw new NotFoundException('Salon not found')
++
++    const servicesByCategory: Record<string, typeof salon.services> = {}
++    for (const service of salon.services) {
++      const category = this.toCategory(service.name)
++      if (!servicesByCategory[category]) servicesByCategory[category] = []
++      servicesByCategory[category].push(service)
++    }
++
++    const reviews = salon.appointments.slice(0, 8).map((appointment, index) => ({
++      id: appointment.id,
++      author:
++        appointment.client.clientProfile?.nickname ??
++        appointment.client.email?.split('@')[0] ??
++        'Client',
++      rating: 5 - (index % 2),
++      comment: 'Service apprécié, équipe professionnelle.',
++      createdAt: appointment.createdAt,
++    }))
++
++    return {
++      id: salon.id,
++      name: salon.name,
++      description: salon.description,
++      address: salon.address,
++      city: salon.city,
++      country: salon.country,
++      phone: salon.phone,
++      employees: salon.employees,
++      servicesByCategory,
++      rating: this.estimateRating(salon.appointments.length),
++      reviewCount: salon.appointments.length,
++      reviews,
++    }
++  }
++
++  async salonAvailability(salonId: string, query: SalonAvailabilityQueryDto) {
++    const salon = await this.prisma.salon.findFirst({
++      where: { id: salonId, isActive: true },
++      select: {
++        id: true,
++        employees: {
++          where: { isActive: true },
++          select: { id: true, displayName: true },
++          orderBy: { displayName: 'asc' },
++        },
++      },
++    })
++    if (!salon) throw new NotFoundException('Salon not found')
++
++    const serviceIds = (query.serviceIds ?? '')
++      .split(',')
++      .map((id) => id.trim())
++      .filter(Boolean)
++
++    const selectedServices = serviceIds.length
++      ? await this.prisma.service.findMany({
++          where: { id: { in: serviceIds }, salonId, isActive: true },
++          select: { durationMin: true },
++        })
++      : []
++
++    const totalDurationMin = selectedServices.reduce((sum, service) => sum + service.durationMin, 0) || 30
++
++    const dayStart = new Date(`${query.date}T08:00:00.000Z`)
++    const dayEnd = new Date(`${query.date}T18:00:00.000Z`)
++
++    const appointments = await this.prisma.appointment.findMany({
++      where: {
++        salonId,
++        startAt: { gte: dayStart, lt: dayEnd },
++        status: { in: ['PENDING', 'CONFIRMED'] },
++      },
++      select: {
++        employeeId: true,
++        startAt: true,
++        endAt: true,
++      },
++    })
++
++    const slots = this.generateSlots(dayStart, dayEnd, totalDurationMin)
++
++    const professionals = salon.employees.map((employee) => {
++      const employeeAppointments = appointments.filter((appointment) => appointment.employeeId === employee.id)
++      const availability = slots.map((slot) => ({
++        time: slot.time,
++        available: !employeeAppointments.some((appointment) =>
++          this.overlaps(slot.start, slot.end, appointment.startAt, appointment.endAt),
++        ),
++      }))
++
++      return {
++        id: employee.id,
++        displayName: employee.displayName,
++        slots: availability,
++      }
++    })
++
++    const globalSlots: Slot[] = slots.map((slot) => {
++      const available = professionals.some((professional) =>
++        professional.slots.some((s) => s.time === slot.time && s.available),
++      )
++      return { time: slot.time, available }
++    })
++
++    return {
++      date: query.date,
++      totalDurationMin,
++      slots: globalSlots,
++      professionals,
++    }
++  }
++
++  private generateSlots(start: Date, end: Date, durationMin: number) {
++    const slots: Array<{ time: string; start: Date; end: Date }> = []
++    const stepMs = 30 * 60_000
++
++    for (let cursor = start.getTime(); cursor + durationMin * 60_000 <= end.getTime(); cursor += stepMs) {
++      const slotStart = new Date(cursor)
++      const slotEnd = new Date(cursor + durationMin * 60_000)
++      const time = `${String(slotStart.getUTCHours()).padStart(2, '0')}:${String(slotStart.getUTCMinutes()).padStart(2, '0')}`
++      slots.push({ time, start: slotStart, end: slotEnd })
++    }
++
++    return slots
++  }
++
++  private overlaps(aStart: Date, aEnd: Date, bStart: Date, bEnd: Date) {
++    return aStart < bEnd && bStart < aEnd
++  }
++
++  private estimateRating(completedCount: number) {
++    if (completedCount >= 50) return 4.9
++    if (completedCount >= 20) return 4.8
++    if (completedCount >= 10) return 4.7
++    return 4.5
++  }
++
++  private toCategory(name: string) {
++    const n = name.toLowerCase()
++    if (n.includes('coiff') || n.includes('lissage') || n.includes('brushing')) return 'Coiffure'
++    if (n.includes('mass')) return 'Massage'
++    if (n.includes('ongl') || n.includes('manuc') || n.includes('pédic')) return 'Manucure/Pédicure'
++    if (n.includes('maquill') || n.includes('visage') || n.includes('skin')) return 'Soin du visage'
++    return 'Autres'
++  }
++}
+diff --git a/apps/api/src/discovery/dto/home-query.dto.ts b/apps/api/src/discovery/dto/home-query.dto.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..0016353918c38d48d83fd4e7fe93fa0cba7812e9
+--- /dev/null
++++ b/apps/api/src/discovery/dto/home-query.dto.ts
+@@ -0,0 +1,19 @@
++import { IsBooleanString, IsOptional, IsString } from 'class-validator'
++
++export class HomeQueryDto {
++  @IsOptional()
++  @IsString()
++  city?: string
++
++  @IsOptional()
++  @IsString()
++  country?: string
++
++  @IsOptional()
++  @IsString()
++  category?: string
++
++  @IsOptional()
++  @IsBooleanString()
++  nearMe?: string
++}
+diff --git a/apps/api/src/discovery/dto/salon-availability-query.dto.ts b/apps/api/src/discovery/dto/salon-availability-query.dto.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..acc997a45490733b1468406162a962bf27e33cc4
+--- /dev/null
++++ b/apps/api/src/discovery/dto/salon-availability-query.dto.ts
+@@ -0,0 +1,10 @@
++import { IsDateString, IsOptional, IsString } from 'class-validator'
++
++export class SalonAvailabilityQueryDto {
++  @IsDateString()
++  date!: string
++
++  @IsOptional()
++  @IsString()
++  serviceIds?: string
++}
+diff --git a/apps/api/src/discovery/dto/search-query.dto.ts b/apps/api/src/discovery/dto/search-query.dto.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..170eb8561d9177ad6b142911191628e8d906dba2
+--- /dev/null
++++ b/apps/api/src/discovery/dto/search-query.dto.ts
+@@ -0,0 +1,20 @@
++import { IsOptional, IsString, MaxLength } from 'class-validator'
++
++export class SearchQueryDto {
++  @IsOptional()
++  @IsString()
++  @MaxLength(120)
++  q?: string
++
++  @IsOptional()
++  @IsString()
++  city?: string
++
++  @IsOptional()
++  @IsString()
++  country?: string
++
++  @IsOptional()
++  @IsString()
++  category?: string
++}
+diff --git a/apps/mobile/app/(screens)/card-payment-details.tsx b/apps/mobile/app/(screens)/card-payment-details.tsx
+index 099668a2c80730a6ea279a1cb4fdaea9b1ce0e7f..407cfe68fe1e7442b132c1aa5859c65584ceed2b 100644
+--- a/apps/mobile/app/(screens)/card-payment-details.tsx
++++ b/apps/mobile/app/(screens)/card-payment-details.tsx
+@@ -1,203 +1,134 @@
+ import React, { useMemo, useState } from 'react'
+-import { View, Text, StyleSheet, Pressable, KeyboardAvoidingView, Platform, ScrollView } from 'react-native'
++import { View, Text, StyleSheet, Pressable, KeyboardAvoidingView, Platform, ScrollView, Alert } from 'react-native'
+ import { router, useLocalSearchParams } from 'expo-router'
+ import { Ionicons } from '@expo/vector-icons'
++import { useMutation, useQueryClient } from '@tanstack/react-query'
+ 
+ import { Screen, Card, Input, Button } from '../../src/components'
++import { useBooking } from '../../src/providers/BookingProvider'
++import { createAppointmentsFromCart } from '../../src/api/appointments'
+ import { colors, overlays } from '../../src/theme/colors'
+ import { spacing } from '../../src/theme/spacing'
+ import { radius } from '../../src/theme/radius'
+ import { typography } from '../../src/theme/typography'
+ 
+ function formatFCFA(v: number) {
+   return `${v.toLocaleString('fr-FR')} FCFA`
+ }
+ 
+-// Petit formatage (UI only)
+ function formatCardNumber(raw: string) {
+   const digits = raw.replace(/\D/g, '').slice(0, 16)
+   const parts = digits.match(/.{1,4}/g) ?? []
+   return parts.join(' ')
+ }
+ 
+ function formatExpiry(raw: string) {
+   const digits = raw.replace(/\D/g, '').slice(0, 4)
+   if (digits.length <= 2) return digits
+   return `${digits.slice(0, 2)}/${digits.slice(2)}`
+ }
+ 
+ export default function CardPaymentDetailsScreen() {
+-  // Optionnel: tu peux passer amount en param via route: router.push({ pathname: '/(screens)/card-payment-details', params: { amount: '15000' } })
+   const params = useLocalSearchParams<{ amount?: string }>()
++  const { draft } = useBooking()
++  const qc = useQueryClient()
++
+   const amount = useMemo(() => {
+     const n = Number(params.amount)
+     return Number.isFinite(n) && n > 0 ? n : 15000
+   }, [params.amount])
+ 
+   const [cardNumber, setCardNumber] = useState('')
+   const [expiry, setExpiry] = useState('')
+   const [cvv, setCvv] = useState('')
+ 
+-  const canPay =
+-    cardNumber.replace(/\D/g, '').length === 16 &&
+-    expiry.replace(/\D/g, '').length >= 4 &&
+-    cvv.replace(/\D/g, '').length >= 3
+-
+-  const onPay = () => {
+-    // UX: on simule un paiement réussi
+-    router.replace({ pathname: '/(screens)/payment-success', params: { amount: String(amount) } })
+-  }
++  const canPay = cardNumber.replace(/\D/g, '').length === 16 && expiry.replace(/\D/g, '').length >= 4 && cvv.replace(/\D/g, '').length >= 3
++
++  const startAtIso = useMemo(() => {
++    if (!draft.selectedDateIso || !draft.time) return null
++    return `${draft.selectedDateIso}T${draft.time}:00.000Z`
++  }, [draft.selectedDateIso, draft.time])
++
++  const mutation = useMutation({
++    mutationFn: async () => {
++      if (!draft.salonId) throw new Error('Salon non sélectionné')
++      if (!startAtIso) throw new Error('Créneau non sélectionné')
++
++      return createAppointmentsFromCart({
++        salonId: draft.salonId,
++        startAt: startAtIso,
++        employeeId: draft.selectedEmployeeId,
++        items: draft.cart.map((item) => ({ serviceId: item.id, quantity: item.quantity || 1 })),
++      })
++    },
++    onSuccess: async () => {
++      await qc.invalidateQueries({ queryKey: ['appointments'] })
++      router.replace('/(screens)/booking-success')
++    },
++    onError: (error: any) => {
++      Alert.alert('Paiement refusé', error?.message ?? 'Erreur inconnue')
++    },
++  })
++
++  const onPay = () => mutation.mutate()
+ 
+   return (
+     <Screen noPadding style={styles.screen}>
+       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+-        {/* HEADER BORDEAUX */}
+         <View style={styles.header}>
+           <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={10}>
+             <Ionicons name="arrow-back" size={22} color={colors.brandForeground} />
+           </Pressable>
+-
+           <Text style={styles.headerTitle}>Paiement par carte</Text>
+         </View>
+ 
+-        {/* BODY */}
+-        <ScrollView
+-          showsVerticalScrollIndicator={false}
+-          contentContainerStyle={styles.body}
+-          keyboardShouldPersistTaps="handled"
+-        >
++        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+           <View style={{ gap: spacing.md }}>
+-            {/* Numéro de carte */}
+             <View>
+               <Text style={styles.label}>Numéro de carte</Text>
+-              <Input
+-                placeholder="1234 5678 9012 3456"
+-                value={cardNumber}
+-                onChangeText={(t) => setCardNumber(formatCardNumber(t))}
+-                keyboardType="number-pad"
+-              />
++              <Input placeholder="1234 5678 9012 3456" value={cardNumber} onChangeText={(t) => setCardNumber(formatCardNumber(t))} keyboardType="number-pad" />
+             </View>
+ 
+-            {/* Exp + CVV */}
+             <View style={styles.row2}>
+               <View style={{ flex: 1 }}>
+                 <Text style={styles.label}>Date d&apos;expiration</Text>
+-                <Input
+-                  placeholder="MM/AA"
+-                  value={expiry}
+-                  onChangeText={(t) => setExpiry(formatExpiry(t))}
+-                  keyboardType="number-pad"
+-                />
++                <Input placeholder="MM/AA" value={expiry} onChangeText={(t) => setExpiry(formatExpiry(t))} keyboardType="number-pad" />
+               </View>
+ 
+               <View style={{ flex: 1 }}>
+                 <Text style={styles.label}>CVV</Text>
+-                <Input
+-                  placeholder="123"
+-                  value={cvv}
+-                  onChangeText={(t) => setCvv(t.replace(/\D/g, '').slice(0, 4))}
+-                  keyboardType="number-pad"
+-                  secureTextEntry
+-                />
++                <Input placeholder="123" value={cvv} onChangeText={(t) => setCvv(t.replace(/\D/g, '').slice(0, 4))} keyboardType="number-pad" secureTextEntry />
+               </View>
+             </View>
+ 
+-            {/* Montant */}
+             <Card style={styles.amountCard}>
+               <View style={styles.amountRow}>
+                 <Text style={styles.amountLabel}>Montant à payer</Text>
+                 <Text style={styles.amountValue}>{formatFCFA(amount)}</Text>
+               </View>
+             </Card>
+           </View>
+         </ScrollView>
+ 
+-        {/* CTA BOTTOM */}
+         <View style={styles.bottomCta}>
+-          <Button title={`Payer ${formatFCFA(amount)}`} onPress={onPay} disabled={!canPay} />
++          <Button title={mutation.isPending ? 'Traitement...' : `Payer ${formatFCFA(amount)}`} onPress={onPay} disabled={!canPay || mutation.isPending} />
+         </View>
+       </KeyboardAvoidingView>
+     </Screen>
+   )
+ }
+ 
+ const styles = StyleSheet.create({
+-  screen: {
+-    backgroundColor: colors.background,
+-  },
+-
+-  header: {
+-    backgroundColor: colors.brand,
+-    paddingTop: spacing.xl,
+-    paddingBottom: spacing.lg,
+-    paddingHorizontal: spacing.lg,
+-    borderBottomLeftRadius: radius.xl,
+-    borderBottomRightRadius: radius.xl,
+-  },
+-
+-  backBtn: {
+-    width: 40,
+-    height: 40,
+-    borderRadius: radius.full,
+-    alignItems: 'center',
+-    justifyContent: 'center',
+-    marginBottom: spacing.md,
+-  },
+-
+-  headerTitle: {
+-    color: colors.brandForeground,
+-    ...typography.h2,
+-  },
+-
+-  body: {
+-    paddingHorizontal: spacing.lg,
+-    paddingTop: spacing.lg,
+-    paddingBottom: 140, // laisse la place au bouton fixe
+-  },
+-
+-  label: {
+-    color: colors.text,
+-    ...typography.small,
+-    fontWeight: '600',
+-    marginBottom: spacing.sm,
+-  },
+-
+-  row2: {
+-    flexDirection: 'row',
+-    gap: spacing.md,
+-  },
+-
+-  amountCard: {
+-    padding: spacing.lg,
+-    backgroundColor: colors.card,
+-    borderRadius: radius.xl,
+-    borderWidth: 1,
+-    borderColor: overlays.brand20,
+-  },
+-
+-  amountRow: {
+-    flexDirection: 'row',
+-    alignItems: 'center',
+-    justifyContent: 'space-between',
+-    gap: spacing.md,
+-  },
+-
+-  amountLabel: {
+-    color: colors.text,
+-    ...typography.small,
+-    fontWeight: '600',
+-  },
+-
+-  amountValue: {
+-    color: colors.brand,
+-    ...typography.h3,
+-    fontWeight: '800',
+-  },
+-
+-  bottomCta: {
+-    position: 'absolute',
+-    left: spacing.lg,
+-    right: spacing.lg,
+-    bottom: spacing.lg,
+-  },
++  screen: { backgroundColor: colors.background },
++  header: { backgroundColor: colors.brand, paddingTop: spacing.xl, paddingBottom: spacing.lg, paddingHorizontal: spacing.lg, borderBottomLeftRadius: radius.xl, borderBottomRightRadius: radius.xl },
++  backBtn: { width: 40, height: 40, borderRadius: radius.full, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.md },
++  headerTitle: { color: colors.brandForeground, ...typography.h2 },
++  body: { paddingHorizontal: spacing.lg, paddingTop: spacing.lg, paddingBottom: 140 },
++  label: { color: colors.text, ...typography.small, fontWeight: '600', marginBottom: spacing.sm },
++  row2: { flexDirection: 'row', gap: spacing.md },
++  amountCard: { padding: spacing.lg, backgroundColor: colors.card, borderRadius: radius.xl, borderWidth: 1, borderColor: overlays.brand20 },
++  amountRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md },
++  amountLabel: { color: colors.text, ...typography.small, fontWeight: '600' },
++  amountValue: { color: colors.brand, ...typography.h3, fontWeight: '800' },
++  bottomCta: { position: 'absolute', left: spacing.lg, right: spacing.lg, bottom: spacing.lg },
+ })
+diff --git a/apps/mobile/app/(screens)/payment.tsx b/apps/mobile/app/(screens)/payment.tsx
+index 3e76585c62daeeb6374ac0b0faa55e47468d6b98..8c42cdfe870dae8425164c3c4bf7c47b44a0b503 100644
+--- a/apps/mobile/app/(screens)/payment.tsx
++++ b/apps/mobile/app/(screens)/payment.tsx
+@@ -1,361 +1,148 @@
+-// app/(screens)/payment.tsx
+ import React, { useMemo, useState } from 'react'
+-import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native'
++import { View, Text, StyleSheet, Pressable, ScrollView, Alert } from 'react-native'
+ import { router } from 'expo-router'
+ import { Ionicons } from '@expo/vector-icons'
++import { useMutation, useQueryClient } from '@tanstack/react-query'
+ 
+ import { Screen } from '../../src/components/Screen'
++import { Button } from '../../src/components/Button'
+ import { useBooking } from '../../src/providers/BookingProvider'
++import { createAppointmentsFromCart } from '../../src/api/appointments'
+ 
+ import { colors, overlays } from '../../src/theme/colors'
+ import { spacing } from '../../src/theme/spacing'
+ import { radius } from '../../src/theme/radius'
+ import { typography } from '../../src/theme/typography'
+ 
+ function formatFCFA(v: number) {
+   return `${v.toLocaleString('fr-FR')} FCFA`
+ }
+ 
+ export default function PaymentScreen() {
+-  const { draft, patch } = useBooking()
++  const { draft } = useBooking()
++  const qc = useQueryClient()
+ 
+-  const depositEnabled = draft.depositEnabled ?? true
+-  const depositPercentage = draft.depositPercentage ?? 30
+-
+-  const totalAmount = useMemo(() => {
+-    return draft.cart.reduce((sum, item) => sum + item.price * (item.quantity || 1), 0)
+-  }, [draft.cart])
+-
+-  const [paymentChoice, setPaymentChoice] = useState<'full' | 'deposit'>(draft.paymentChoice ?? 'full')
+-  const [operator, setOperator] = useState(draft.operator ?? '')
+   const [method, setMethod] = useState<'card' | 'mobile_money' | 'cash'>(draft.paymentMethod ?? 'card')
+ 
+-  const depositAmount = Math.round((totalAmount * depositPercentage) / 100)
+-  const remainingAmount = totalAmount - depositAmount
+-
+-  const payNowAmount = depositEnabled && paymentChoice === 'deposit' ? depositAmount : totalAmount
+-
+-  const onSelectChoice = (c: 'full' | 'deposit') => {
+-    setPaymentChoice(c)
+-    patch({ paymentChoice: c })
+-  }
+-
+-  const onSelectMethod = (m: 'card' | 'mobile_money' | 'cash') => {
+-    setMethod(m)
+-    patch({ paymentMethod: m })
+-  }
+-
+-  const onChangeOperator = (v: string) => {
+-    setOperator(v)
+-    patch({ operator: v })
+-  }
+-
+-  const onPressCard = () => {
+-    onSelectMethod('card')
++  const totalAmount = useMemo(
++    () => draft.cart.reduce((sum, item) => sum + item.price * (item.quantity || 1), 0),
++    [draft.cart],
++  )
+ 
+-    router.push({
+-      pathname: '/(screens)/card-payment-details',
+-      params: { amount: String(payNowAmount) },
+-    })
++  const startAtIso = useMemo(() => {
++    if (!draft.selectedDateIso || !draft.time) return null
++    return `${draft.selectedDateIso}T${draft.time}:00.000Z`
++  }, [draft.selectedDateIso, draft.time])
++
++  const mutation = useMutation({
++    mutationFn: async () => {
++      if (!draft.salonId) throw new Error('Salon non sélectionné')
++      if (!startAtIso) throw new Error('Créneau non sélectionné')
++
++      return createAppointmentsFromCart({
++        salonId: draft.salonId,
++        startAt: startAtIso,
++        employeeId: draft.selectedEmployeeId,
++        items: draft.cart.map((item) => ({ serviceId: item.id, quantity: item.quantity || 1 })),
++      })
++    },
++    onSuccess: async () => {
++      await qc.invalidateQueries({ queryKey: ['appointments'] })
++      router.replace('/(screens)/booking-success')
++    },
++    onError: (error: any) => {
++      Alert.alert('Impossible de réserver', error?.message ?? 'Erreur inconnue')
++    },
++  })
++
++  const onConfirm = () => {
++    if (method === 'card') {
++      router.push({ pathname: '/(screens)/card-payment-details', params: { amount: String(totalAmount) } })
++      return
++    }
++    mutation.mutate()
+   }
+ 
+   return (
+     <Screen noPadding style={styles.screen}>
+       <View style={styles.header}>
+         <View style={styles.headerRow}>
+           <Ionicons name="arrow-back" size={22} color="#fff" onPress={() => router.back()} />
+         </View>
+         <Text style={styles.headerTitle}>Mode de paiement</Text>
+       </View>
+ 
+       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+-        {depositEnabled && (
+-          <>
+-            <Text style={styles.blockTitle}>Montant à payer</Text>
+-
+-            <View style={{ gap: spacing.md, marginBottom: spacing.lg }}>
+-              <ChoiceCard
+-                active={paymentChoice === 'full'}
+-                title="Payer la totalité"
+-                subtitle={formatFCFA(totalAmount)}
+-                onPress={() => onSelectChoice('full')}
+-              />
+-
+-              <ChoiceCard
+-                active={paymentChoice === 'deposit'}
+-                title={`Payer un acompte (${depositPercentage}%)`}
+-                subtitle={`${formatFCFA(depositAmount)} maintenant`}
+-                onPress={() => onSelectChoice('deposit')}
+-              />
+-            </View>
+-          </>
+-        )}
+-
+-        <Text style={styles.blockTitle}>
+-          {depositEnabled ? 'Mode de paiement' : 'Choisissez votre mode de paiement'}
+-        </Text>
++        <Text style={styles.blockTitle}>Choisissez votre mode de paiement</Text>
+ 
+         <View style={{ gap: spacing.md, marginBottom: spacing.lg }}>
+-          <MethodRow
+-            icon="card-outline"
+-            title="Carte bancaire"
+-            subtitle="Visa, Mastercard"
+-            active={method === 'card'}
+-            onPress={onPressCard}
+-          />
+-
+-          <View style={[styles.cardBox, method === 'mobile_money' ? styles.activeBorder : styles.idleBorder]}>
+-            <Pressable onPress={() => onSelectMethod('mobile_money')} style={styles.methodTop}>
+-              <Ionicons name="phone-portrait-outline" size={22} color={colors.brand} />
+-              <View style={{ flex: 1 }}>
+-                <Text style={styles.methodTitle}>Mobile Money</Text>
+-                <Text style={styles.methodSubtitle}>Sélectionnez votre opérateur</Text>
+-              </View>
+-              <Ionicons name="chevron-forward" size={18} color={colors.placeholder} />
+-            </Pressable>
+-
+-            {method === 'mobile_money' && (
+-              <View style={{ marginTop: spacing.md, gap: spacing.sm }}>
+-                <View style={styles.operatorRow}>
+-                  {['Airtel Money', 'Mobicash', 'Moov Money'].map((op) => {
+-                    const active = operator === op
+-                    return (
+-                      <Pressable
+-                        key={op}
+-                        onPress={() => onChangeOperator(op)}
+-                        style={[styles.operatorPill, active ? styles.operatorActive : styles.operatorIdle]}
+-                      >
+-                        <Text style={[styles.operatorText, active && { color: colors.brandForeground }]}>
+-                          {op}
+-                        </Text>
+-                      </Pressable>
+-                    )
+-                  })}
+-                </View>
+-
+-                {!!operator && (
+-                  <View style={styles.hintBox}>
+-                    <Text style={styles.hintTitle}>Instructions :</Text>
+-                    <Text style={styles.hintText}>
+-                      {operator === 'Airtel Money' && 'Composez *123# puis suivez les instructions.'}
+-                      {operator === 'Mobicash' && 'Composez *889# puis suivez les instructions.'}
+-                      {operator === 'Moov Money' && 'Composez *555# puis suivez les instructions.'}
+-                    </Text>
+-                  </View>
+-                )}
+-              </View>
+-            )}
+-          </View>
+-
+-          {!depositEnabled && (
+-            <MethodRow
+-              icon="cash-outline"
+-              title="Payer sur place"
+-              subtitle="En espèces au salon"
+-              active={method === 'cash'}
+-              onPress={() => onSelectMethod('cash')}
+-            />
+-          )}
++          <MethodRow icon="card-outline" title="Carte bancaire" subtitle="Visa, Mastercard" active={method === 'card'} onPress={() => setMethod('card')} />
++          <MethodRow icon="phone-portrait-outline" title="Mobile Money" subtitle="Paiement via opérateur" active={method === 'mobile_money'} onPress={() => setMethod('mobile_money')} />
++          <MethodRow icon="cash-outline" title="Payer sur place" subtitle="En espèces au salon" active={method === 'cash'} onPress={() => setMethod('cash')} />
+         </View>
+ 
+         <View style={styles.recapBox}>
+           <Text style={styles.recapTitle}>Récapitulatif</Text>
+-
+-          {draft.cart.slice(0, 2).map((it) => (
++          {draft.cart.map((it) => (
+             <View key={it.id} style={styles.recapRow}>
+-              <Text style={styles.recapLabel} numberOfLines={1}>
+-                {it.name}
+-              </Text>
+-              <Text style={styles.recapLabel}>{formatFCFA(it.price)}</Text>
++              <Text style={styles.recapLabel} numberOfLines={1}>{it.name} x{it.quantity || 1}</Text>
++              <Text style={styles.recapLabel}>{formatFCFA(it.price * (it.quantity || 1))}</Text>
+             </View>
+           ))}
+-
+           <View style={styles.divider} />
+-
+           <View style={styles.recapRow}>
+             <Text style={styles.recapStrong}>Montant total</Text>
+             <Text style={styles.recapPrice}>{formatFCFA(totalAmount)}</Text>
+           </View>
+-
+-          {depositEnabled && paymentChoice === 'deposit' && (
+-            <>
+-              <View style={styles.recapRow}>
+-                <Text style={styles.recapSub}>Acompte payé</Text>
+-                <Text style={styles.recapSubStrong}>{formatFCFA(depositAmount)}</Text>
+-              </View>
+-              <View style={styles.recapRow}>
+-                <Text style={styles.recapSub}>Reste à régler</Text>
+-                <Text style={styles.recapSub}>{formatFCFA(remainingAmount)}</Text>
+-              </View>
+-            </>
+-          )}
+-
+-          {depositEnabled && paymentChoice === 'full' && (
+-            <View style={styles.recapRow}>
+-              <Text style={styles.recapSub}>Paiement intégral</Text>
+-              <Text style={[styles.recapSubStrong, { color: '#0F9D58' }]}>✓</Text>
+-            </View>
+-          )}
+-
+-          {!depositEnabled && (
+-            <View style={styles.recapRow}>
+-              <Text style={styles.recapSub}>Paiement sur place</Text>
+-              <Text style={styles.recapSub}>Au salon</Text>
+-            </View>
+-          )}
++          <Text style={styles.recapSub}>Créneau: {draft.selectedDateIso} {draft.time ?? '-'}</Text>
++          <Text style={styles.recapSub}>Salon: {draft.salonName ?? '-'}</Text>
+         </View>
+ 
+-        <View style={{ height: 40 }} />
++        <View style={{ height: 24 }} />
++
++        <Button
++          title={method === 'card' ? 'Continuer vers carte' : 'Confirmer la réservation'}
++          onPress={onConfirm}
++          disabled={mutation.isPending || !draft.salonId || !startAtIso || draft.cart.length === 0}
++        />
+       </ScrollView>
+     </Screen>
+   )
+ }
+ 
+-function ChoiceCard({
+-  active,
+-  title,
+-  subtitle,
+-  onPress,
+-}: {
+-  active: boolean
+-  title: string
+-  subtitle: string
+-  onPress: () => void
+-}) {
+-  return (
+-    <Pressable onPress={onPress} style={[styles.choiceCard, active ? styles.activeBorder : styles.idleBorder]}>
+-      <View style={styles.choiceRow}>
+-        <View style={[styles.radio, active ? styles.radioActive : styles.radioIdle]}>{active && <View style={styles.radioDot} />}</View>
+-        <View style={{ flex: 1 }}>
+-          <Text style={styles.choiceTitle}>{title}</Text>
+-          <Text style={styles.choiceSubtitle}>{subtitle}</Text>
+-        </View>
+-      </View>
+-    </Pressable>
+-  )
+-}
+-
+-function MethodRow({
+-  icon,
+-  title,
+-  subtitle,
+-  active,
+-  onPress,
+-}: {
+-  icon: any
+-  title: string
+-  subtitle: string
+-  active: boolean
+-  onPress: () => void
+-}) {
++function MethodRow({ icon, title, subtitle, active, onPress }: { icon: any; title: string; subtitle: string; active: boolean; onPress: () => void }) {
+   return (
+     <Pressable onPress={onPress} style={[styles.cardBox, active ? styles.activeBorder : styles.idleBorder]}>
+       <View style={styles.methodTop}>
+         <Ionicons name={icon} size={22} color={colors.brand} />
+         <View style={{ flex: 1 }}>
+           <Text style={styles.methodTitle}>{title}</Text>
+           <Text style={styles.methodSubtitle}>{subtitle}</Text>
+         </View>
+-        <Ionicons name="chevron-forward" size={18} color={colors.placeholder} />
+       </View>
+     </Pressable>
+   )
+ }
+ 
+ const styles = StyleSheet.create({
+   screen: { backgroundColor: colors.background },
+-
+-  header: {
+-    backgroundColor: colors.brand,
+-    paddingTop: spacing.xl,
+-    paddingBottom: spacing.lg,
+-    paddingHorizontal: spacing.lg,
+-    borderBottomLeftRadius: radius.xl,
+-    borderBottomRightRadius: radius.xl,
+-  },
++  header: { backgroundColor: colors.brand, paddingTop: spacing.xl, paddingBottom: spacing.lg, paddingHorizontal: spacing.lg, borderBottomLeftRadius: radius.xl, borderBottomRightRadius: radius.xl },
+   headerRow: { marginBottom: spacing.md },
+   headerTitle: { color: colors.brandForeground, ...typography.h2 },
+-
+-  content: {
+-    padding: spacing.lg,
+-    paddingBottom: 60,
+-  },
+-
++  content: { padding: spacing.lg },
+   blockTitle: { color: colors.text, ...typography.body, fontWeight: '600', marginBottom: spacing.md },
+-
+-  choiceCard: {
+-    backgroundColor: colors.card,
+-    borderRadius: radius.xl,
+-    padding: spacing.md,
+-  },
+-  choiceRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+-  radio: {
+-    width: 20,
+-    height: 20,
+-    borderRadius: radius.full,
+-    borderWidth: 2,
+-    alignItems: 'center',
+-    justifyContent: 'center',
+-  },
+-  // ⚠️ overlays.brand30 n'existe pas chez toi -> on utilise brand20
+-  radioIdle: { borderColor: overlays.brand30 },
+-  radioActive: { borderColor: colors.brand },
+-  radioDot: { width: 10, height: 10, borderRadius: radius.full, backgroundColor: colors.brand },
+-
+-  choiceTitle: { color: colors.text, ...typography.body, fontWeight: '600' },
+-  choiceSubtitle: { color: colors.textMuted, ...typography.small, marginTop: 2 },
+-
+-  cardBox: {
+-    backgroundColor: colors.card,
+-    borderRadius: radius.xl,
+-    padding: spacing.md,
+-  },
++  cardBox: { backgroundColor: colors.card, borderRadius: radius.xl, padding: spacing.md },
+   methodTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+-
+   methodTitle: { color: colors.text, ...typography.body, fontWeight: '600' },
+   methodSubtitle: { color: colors.textMuted, ...typography.small, marginTop: 2 },
+-
+   idleBorder: { borderWidth: 1, borderColor: overlays.brand20 },
+-  // ⚠️ overlays.brand05 n'existe pas -> on met une surface douce
+   activeBorder: { borderWidth: 2, borderColor: colors.brand, backgroundColor: overlays.brand05 },
+-
+-  operatorRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+-  operatorPill: {
+-    paddingHorizontal: spacing.md,
+-    paddingVertical: 10,
+-    borderRadius: radius.xl,
+-  },
+-  operatorIdle: { backgroundColor: colors.background, borderWidth: 1, borderColor: overlays.brand20 },
+-  operatorActive: { backgroundColor: colors.brand, borderWidth: 1, borderColor: colors.brand },
+-  operatorText: { color: colors.text, ...typography.small, fontWeight: '600' },
+-
+-  hintBox: {
+-    // overlays.premium10 doit exister (tu l'as demandé)
+-    backgroundColor: overlays.premium10,
+-    borderRadius: radius.lg,
+-    padding: spacing.md,
+-    borderWidth: 1,
+-    borderColor: overlays.premium20,
+-  },
+-  hintTitle: { color: colors.text, ...typography.small, fontWeight: '700', marginBottom: 4 },
+-  hintText: { color: colors.textMuted, ...typography.small },
+-
+-  recapBox: {
+-    backgroundColor: colors.card,
+-    borderRadius: radius.xl,
+-    padding: spacing.md,
+-    borderWidth: 1,
+-    borderColor: overlays.brand20,
+-  },
++  recapBox: { backgroundColor: colors.card, borderRadius: radius.xl, padding: spacing.md, borderWidth: 1, borderColor: overlays.brand20 },
+   recapTitle: { color: colors.text, ...typography.body, fontWeight: '700', marginBottom: spacing.md },
+   recapRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm },
+   recapLabel: { color: colors.textMuted, ...typography.small, flex: 1 },
+   recapStrong: { color: colors.text, ...typography.body, fontWeight: '700' },
+   recapPrice: { color: colors.brand, ...typography.h3 },
+-
+   recapSub: { color: colors.textMuted, ...typography.small },
+-  recapSubStrong: { color: colors.brand, ...typography.small, fontWeight: '700' },
+-
+-  // ⚠️ overlays.brand10 n'existe pas -> hairline
+   divider: { height: 1, backgroundColor: overlays.brand10, marginVertical: spacing.md },
+ })
+diff --git a/apps/mobile/app/(screens)/salon.tsx b/apps/mobile/app/(screens)/salon.tsx
+index 21e8576ecf6fe20c265574d997f1cb308fc44750..564c94b059317c3fcf47a36a163410fa3e70dbf3 100644
+--- a/apps/mobile/app/(screens)/salon.tsx
++++ b/apps/mobile/app/(screens)/salon.tsx
+@@ -1,601 +1,189 @@
+-// app/(tabs)/salon.tsx
+ import React, { useMemo, useState } from 'react'
+-import { View, Text, StyleSheet, ScrollView, Pressable, Image } from 'react-native'
+-import { router } from 'expo-router'
++import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native'
++import { router, useLocalSearchParams } from 'expo-router'
+ import { Ionicons } from '@expo/vector-icons'
+-import { LinearGradient } from 'expo-linear-gradient'
+ 
+-import { Screen, TabPill, IconBubble, ReviewCard } from '../../src/components'
++import { Screen, TabPill, ReviewCard } from '../../src/components'
+ import { colors, overlays } from '../../src/theme/colors'
+ import { spacing } from '../../src/theme/spacing'
+ import { radius } from '../../src/theme/radius'
+ import { typography } from '../../src/theme/typography'
+ import { useBooking } from '../../src/providers/BookingProvider'
++import { useSalonDetails } from '../../src/api/discovery'
+ 
+ type TabKey = 'about' | 'services' | 'reviews'
+-type Service = { id: string; name: string; price: number; duration: number }
+ type CartItem = { id: string; name: string; price: number; duration?: number; quantity: number }
+ 
++function formatFCFA(v: number) {
++  return `${v.toLocaleString('fr-FR')} FCFA`
++}
++
+ export default function SalonDetailScreen() {
+-  const [currentPhotoIndex, setCurrentPhotoIndex] = useState(4)
++  const params = useLocalSearchParams<{ salonId?: string }>()
++  const salonId = params.salonId
++  const { data, isLoading } = useSalonDetails(salonId)
++
+   const [activeTab, setActiveTab] = useState<TabKey>('about')
+   const [expandedCategory, setExpandedCategory] = useState<string | null>(null)
+   const [cart, setCart] = useState<CartItem[]>([])
+   const { setCart: setBookingCart, patch } = useBooking()
+ 
+-  const galleryPhotos = useMemo(
+-    () => [
+-      {
+-        url: 'https://images.unsplash.com/photo-1681965823525-b684fb97e9fe?auto=format&fit=crop&w=1080&q=80',
+-        caption: 'Intérieur du salon',
+-      },
+-      {
+-        url: 'https://images.unsplash.com/photo-1560066984-138dadb4c035?auto=format&fit=crop&w=1080&q=80',
+-        caption: 'Coupe & Brushing',
+-      },
+-      {
+-        url: 'https://images.unsplash.com/photo-1712213396688-c6f2d536671f?auto=format&fit=crop&w=1080&q=80',
+-        caption: 'Coloration professionnelle',
+-      },
+-      {
+-        url: 'https://images.unsplash.com/photo-1659036354224-48dd0a9a6b86?auto=format&fit=crop&w=1080&q=80',
+-        caption: 'Coupe précise',
+-      },
+-      {
+-        url: 'https://images.unsplash.com/photo-1711274094763-ff442e4719ef?auto=format&fit=crop&w=1080&q=80',
+-        caption: 'Manucure & Beauté des mains',
+-      },
+-    ],
+-    []
+-  )
+-
+-  const servicesByCategory: Record<string, Service[]> = useMemo(
+-    () => ({
+-      Manucure: [
+-        { id: '1', name: 'Manucure simple', price: 8000, duration: 30 },
+-        { id: '2', name: 'Manucure + vernis semi-permanent', price: 12000, duration: 45 },
+-        { id: '3', name: 'Extension ongles', price: 18000, duration: 90 },
+-      ],
+-      Pédicure: [
+-        { id: '4', name: 'Pédicure simple', price: 10000, duration: 40 },
+-        { id: '5', name: 'Pédicure spa', price: 15000, duration: 60 },
+-      ],
+-      Massage: [
+-        { id: '6', name: 'Massage relaxant', price: 25000, duration: 60 },
+-        { id: '7', name: 'Massage deep tissue', price: 35000, duration: 90 },
+-      ],
+-      'Soin du visage': [
+-        { id: '8', name: 'Nettoyage de peau', price: 20000, duration: 45 },
+-        { id: '9', name: 'Soin anti-âge', price: 30000, duration: 60 },
+-      ],
+-    }),
+-    []
+-  )
+-
+-  const schedule = useMemo(
+-    () => [
+-      { day: 'Lundi', hours: '08:00 - 18:00' },
+-      { day: 'Mardi', hours: '08:00 - 18:00' },
+-      { day: 'Mercredi', hours: '08:00 - 18:00' },
+-      { day: 'Jeudi', hours: '08:00 - 18:00' },
+-      { day: 'Vendredi', hours: '08:00 - 19:00' },
+-      { day: 'Samedi', hours: '09:00 - 17:00' },
+-      { day: 'Dimanche', hours: 'Fermé' },
+-    ],
+-    []
+-  )
+-
+-  const photo = galleryPhotos[currentPhotoIndex]
+-
+-  const nextPhoto = () => setCurrentPhotoIndex((p) => (p + 1) % galleryPhotos.length)
+-  const prevPhoto = () => setCurrentPhotoIndex((p) => (p - 1 + galleryPhotos.length) % galleryPhotos.length)
++  const servicesByCategory = data?.servicesByCategory ?? {}
+ 
+-  const addToCart = (service: Service) => {
++  const addToCart = (service: { id: string; name: string; price: number; durationMin: number }) => {
+     setCart((prev) => {
+       const found = prev.find((x) => x.id === service.id)
+       if (!found) {
+-        return [
+-          ...prev,
+-          {
+-            id: service.id,
+-            name: service.name,
+-            price: service.price,
+-            duration: service.duration,
+-            quantity: 1,
+-          },
+-        ]
++        return [...prev, { id: service.id, name: service.name, price: service.price, duration: service.durationMin, quantity: 1 }]
+       }
+       return prev.map((x) => (x.id === service.id ? { ...x, quantity: x.quantity + 1 } : x))
+     })
+   }
+ 
+   const removeFromCart = (serviceId: string) => {
+     setCart((prev) => {
+       const found = prev.find((x) => x.id === serviceId)
+       if (!found) return prev
+       if (found.quantity <= 1) return prev.filter((x) => x.id !== serviceId)
+       return prev.map((x) => (x.id === serviceId ? { ...x, quantity: x.quantity - 1 } : x))
+     })
+   }
+ 
+-  const totalItems = cart.reduce((sum, x) => sum + x.quantity, 0)
+-  const totalPrice = cart.reduce((sum, x) => sum + x.price * x.quantity, 0)
++  const totalItems = useMemo(() => cart.reduce((sum, x) => sum + x.quantity, 0), [cart])
++  const totalPrice = useMemo(() => cart.reduce((sum, x) => sum + x.price * x.quantity, 0), [cart])
+ 
+   return (
+     <Screen noPadding style={styles.screen}>
+-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 120 }}>
+-        {/* GALLERY */}
+-        <View style={styles.galleryWrap}>
+-          <Image source={{ uri: photo.url }} style={styles.heroImage} />
+-
+-          {/* Open badge */}
+-          <View style={styles.openBadge}>
+-            <Text style={styles.openBadgeText}>Ouvert</Text>
+-          </View>
+-
+-          {/* Back */}
+-          <Pressable onPress={() => router.back()} style={styles.heroBtnLeft}>
+-            <Ionicons name="arrow-back" size={18} color={colors.brand} />
+-          </Pressable>
+-
+-          {/* Camera */}
+-          <Pressable onPress={() => {}} style={styles.heroBtnRight}>
+-            <Ionicons name="camera-outline" size={18} color={colors.brand} />
+-          </Pressable>
++      <View style={styles.header}>
++        <Pressable onPress={() => router.back()}>
++          <Ionicons name="arrow-back" size={22} color={colors.brandForeground} />
++        </Pressable>
++        <Text style={styles.headerTitle}>{data?.name ?? 'Salon'}</Text>
++      </View>
+ 
+-          {/* arrows */}
+-          <Pressable onPress={prevPhoto} style={styles.heroArrowLeft}>
+-            <Ionicons name="chevron-back" size={18} color={colors.brand} />
+-          </Pressable>
+-          <Pressable onPress={nextPhoto} style={styles.heroArrowRight}>
+-            <Ionicons name="chevron-forward" size={18} color={colors.brand} />
+-          </Pressable>
++      <ScrollView contentContainerStyle={styles.content}>
++        {isLoading ? <Text>Chargement...</Text> : null}
+ 
+-          {/* caption + counter */}
+-          <LinearGradient
+-            colors={['rgba(0,0,0,0.70)', 'rgba(0,0,0,0)']}
+-            start={{ x: 0, y: 1 }}
+-            end={{ x: 0, y: 0 }}
+-            style={styles.heroCaption}
+-          >
+-            <Text style={styles.captionText} numberOfLines={1}>
+-              {photo.caption}
+-            </Text>
+-            <Text style={styles.counterText}>
+-              {currentPhotoIndex + 1} / {galleryPhotos.length}
+-            </Text>
+-          </LinearGradient>
++        <View style={styles.infoCard}>
++          <Text style={styles.salonTitle}>{data?.name ?? '-'}</Text>
++          <Text style={styles.metaText}>⭐ {data?.rating?.toFixed(1) ?? '4.5'} ({data?.reviewCount ?? 0} avis)</Text>
++          <Text style={styles.metaText}>{[data?.address, data?.city, data?.country].filter(Boolean).join(', ')}</Text>
+         </View>
+ 
+-        {/* THUMBNAILS */}
+-        <View style={styles.thumbBar}>
+-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.thumbRow}>
+-            {galleryPhotos.map((p, idx) => {
+-              const active = idx === currentPhotoIndex
+-              return (
+-                <Pressable
+-                  key={idx}
+-                  onPress={() => setCurrentPhotoIndex(idx)}
+-                  style={[styles.thumb, active ? styles.thumbOn : styles.thumbOff]}
+-                >
+-                  <Image source={{ uri: p.url }} style={styles.thumbImg} />
+-                </Pressable>
+-              )
+-            })}
+-          </ScrollView>
++        <View style={styles.tabsRow}>
++          <TabPill label="À propos" active={activeTab === 'about'} onPress={() => setActiveTab('about')} />
++          <TabPill label="Services" active={activeTab === 'services'} onPress={() => setActiveTab('services')} />
++          <TabPill label="Avis" active={activeTab === 'reviews'} onPress={() => setActiveTab('reviews')} />
+         </View>
+ 
+-        {/* SALON INFO */}
+-        <View style={styles.infoCard}>
+-          <Text style={styles.salonTitle}>Salon Élégance</Text>
+-
+-          <View style={styles.ratingRow}>
+-            <View style={styles.ratingLeft}>
+-              <Ionicons name="star" size={14} color={colors.premium} />
+-              <Text style={styles.ratingText}>4.8 (120+)</Text>
+-            </View>
++        {activeTab === 'about' && (
++          <View style={styles.block}>
++            <Text style={styles.blockTitle}>Description</Text>
++            <Text style={styles.paragraph}>{data?.description || 'Description indisponible pour le moment.'}</Text>
+ 
+-            <View style={styles.socialRow}>
+-              <IconBubble name="logo-instagram" onPress={() => {}} />
+-              <IconBubble name="logo-facebook" onPress={() => {}} />
+-              <IconBubble name="logo-tiktok" onPress={() => {}} />
+-              <IconBubble name="globe-outline" onPress={() => {}} />
+-            </View>
++            <Text style={styles.blockTitle}>Équipe</Text>
++            {(data?.employees ?? []).map((employee) => (
++              <Text key={employee.id} style={styles.paragraph}>• {employee.displayName}</Text>
++            ))}
+           </View>
++        )}
+ 
+-          <View style={styles.addressRow}>
+-            <Ionicons name="location-outline" size={16} color={colors.premium} />
+-            <Text style={styles.addressText} numberOfLines={2}>
+-              123 Boulevard de l&apos;Indépendance, Libreville
+-            </Text>
+-          </View>
+-        </View>
+-
+-        {/* TABS PILLS */}
+-        <View style={styles.tabsWrap}>
+-          <View style={styles.tabsRow}>
+-            <TabPill label="À propos" active={activeTab === 'about'} onPress={() => setActiveTab('about')} />
+-            <TabPill label="Services" active={activeTab === 'services'} onPress={() => setActiveTab('services')} />
+-            <TabPill label="Avis clients" active={activeTab === 'reviews'} onPress={() => setActiveTab('reviews')} />
+-          </View>
+-        </View>
+-
+-        {/* CONTENT */}
+-        <View style={styles.body}>
+-          {activeTab === 'about' && (
+-            <View style={{ gap: spacing.lg }}>
+-              <View>
+-                <Text style={styles.blockTitle}>Description du salon</Text>
+-                <Text style={styles.paragraph}>
+-                  Salon premium spécialisé en coiffure afro et européenne. Notre équipe de professionnels qualifiés vous accueille dans un cadre élégant et chaleureux.
+-                </Text>
+-              </View>
+-
+-              <View>
+-                <Text style={styles.blockTitle}>Horaires d'ouverture</Text>
+-                <View style={styles.whiteBox}>
+-                  {schedule.map((d, idx) => (
+-                    <View key={idx} style={styles.scheduleRow}>
+-                      <Text style={styles.scheduleDay}>{d.day}</Text>
+-                      <Text style={[styles.scheduleHours, d.hours === 'Fermé' && styles.scheduleClosed]}>
+-                        {d.hours}
+-                      </Text>
++        {activeTab === 'services' && (
++          <View style={{ gap: spacing.md }}>
++            {Object.entries(servicesByCategory).map(([category, services]) => {
++              const expanded = expandedCategory === category
++              return (
++                <View key={category} style={styles.accordion}>
++                  <Pressable onPress={() => setExpandedCategory(expanded ? null : category)} style={styles.accordionHeader}>
++                    <Text style={styles.accordionTitle}>{category}</Text>
++                    <Ionicons name="chevron-down" size={18} color={colors.brand} />
++                  </Pressable>
++
++                  {expanded && (
++                    <View style={{ gap: spacing.sm }}>
++                      {services.map((service) => {
++                        const qty = cart.find((x) => x.id === service.id)?.quantity ?? 0
++                        return (
++                          <View key={service.id} style={styles.serviceRow}>
++                            <View style={{ flex: 1 }}>
++                              <Text style={styles.serviceName}>{service.name}</Text>
++                              <Text style={styles.serviceMeta}>Durée: {service.durationMin} min</Text>
++                              <Text style={styles.servicePrice}>{formatFCFA(service.price)}</Text>
++                            </View>
++                            <View style={styles.qtyWrap}>
++                              {qty > 0 ? <Pressable onPress={() => removeFromCart(service.id)} style={styles.qtyBtnGhost}><Text>−</Text></Pressable> : null}
++                              {qty > 0 ? <Text>{qty}</Text> : null}
++                              <Pressable onPress={() => addToCart(service)} style={styles.qtyBtn}><Text style={{ color: '#fff' }}>+</Text></Pressable>
++                            </View>
++                          </View>
++                        )
++                      })}
+                     </View>
+-                  ))}
+-                </View>
+-              </View>
+-
+-              <View>
+-                <Text style={styles.blockTitle}>Conditions</Text>
+-                <View style={styles.whiteBox}>
+-                  <Text style={styles.bullet}>• Paiement : Espèces, Mobile Money, Carte bancaire</Text>
+-                  <Text style={styles.bullet}>• Annulation gratuite jusqu’à 24h avant</Text>
+-                  <Text style={styles.bullet}>• Retard de plus de 15 min = annulation automatique</Text>
++                  )}
+                 </View>
+-              </View>
+-            </View>
+-          )}
+-
+-          {activeTab === 'services' && (
+-            <View style={{ gap: spacing.md }}>
+-              {Object.entries(servicesByCategory).map(([category, services]) => {
+-                const expanded = expandedCategory === category
+-                return (
+-                  <View key={category} style={styles.accordion}>
+-                    <Pressable
+-                      onPress={() => setExpandedCategory(expanded ? null : category)}
+-                      style={styles.accordionHeader}
+-                    >
+-                      <Text style={styles.accordionTitle}>{category}</Text>
+-                      <Ionicons
+-                        name="chevron-forward"
+-                        size={18}
+-                        color={colors.brand}
+-                        style={{ transform: [{ rotate: expanded ? '90deg' : '0deg' }] }}
+-                      />
+-                    </Pressable>
+-
+-                    {expanded && (
+-                      <View style={styles.accordionBody}>
+-                        {services.map((s) => {
+-                          const qty = cart.find((x) => x.id === s.id)?.quantity ?? 0
+-                          return (
+-                            <View key={s.id} style={styles.serviceRow}>
+-                              <View style={{ flex: 1, minWidth: 0 }}>
+-                                <Text style={styles.serviceName} numberOfLines={2}>
+-                                  {s.name}
+-                                </Text>
+-                                <Text style={styles.serviceMeta}>Durée : {s.duration} min</Text>
+-                                <Text style={styles.servicePrice}>{formatFCFA(s.price)}</Text>
+-                              </View>
+-
+-                              <View style={styles.qtyWrap}>
+-                                {qty > 0 && (
+-                                  <>
+-                                    <Pressable onPress={() => removeFromCart(s.id)} style={styles.qtyBtnGhost}>
+-                                      <Text style={styles.qtyBtnGhostText}>−</Text>
+-                                    </Pressable>
+-                                    <Text style={styles.qtyText}>{qty}</Text>
+-                                  </>
+-                                )}
+-
+-                                <Pressable onPress={() => addToCart(s)} style={styles.qtyBtn}>
+-                                  <Ionicons name="add" size={16} color={colors.brandForeground} />
+-                                </Pressable>
+-                              </View>
+-                            </View>
+-                          )
+-                        })}
+-                      </View>
+-                    )}
+-                  </View>
+-                )
+-              })}
+-            </View>
+-          )}
+-
+-          {activeTab === 'reviews' && (
+-            <View style={{ gap: spacing.md }}>
+-              <ReviewCard name="Marie K." stars={4} text="Très beau salon, ambiance agréable." />
+-              <ReviewCard name="Sarah M." stars={5} text="Excellent service ! L'équipe est très professionnelle." />
+-              <ReviewCard name="Julie D." stars={5} text="Accueil chaleureux, services de qualité. Je recommande !" />
+-            </View>
+-          )}
+-        </View>
++              )
++            })}
++          </View>
++        )}
++
++        {activeTab === 'reviews' && (
++          <View style={{ gap: spacing.md }}>
++            {(data?.reviews ?? []).length === 0 ? <Text>Aucun avis pour le moment.</Text> : null}
++            {(data?.reviews ?? []).map((review) => (
++              <ReviewCard key={review.id} name={review.author} stars={review.rating} text={review.comment} />
++            ))}
++          </View>
++        )}
+       </ScrollView>
+ 
+-      {/* CART BAR */}
+       {totalItems > 0 && (
+         <View style={styles.cartBar}>
+           <View>
+-            <Text style={styles.cartSmall}>
+-              {totalItems} service{totalItems > 1 ? 's' : ''}
+-            </Text>
++            <Text style={styles.cartSmall}>{totalItems} service(s)</Text>
+             <Text style={styles.cartTotal}>{formatFCFA(totalPrice)}</Text>
+           </View>
+ 
+           <Pressable
+             onPress={() => {
+               setBookingCart(cart)
+-              patch({ salonId: 'salon-elegance', salonName: 'Salon Élégance' })
++              patch({ salonId: data?.id, salonName: data?.name })
+               router.push('/(screens)/recap')
+             }}
+             style={styles.cartCta}
+           >
+             <Text style={styles.cartCtaText}>Voir le récap</Text>
+           </Pressable>
+-
+         </View>
+       )}
+     </Screen>
+   )
+ }
+ 
+-function formatFCFA(v: number) {
+-  return `${v.toLocaleString('fr-FR')} FCFA`
+-}
+-
+ const styles = StyleSheet.create({
+   screen: { backgroundColor: colors.background },
+-
+-  galleryWrap: {
+-    height: 260,
+-    backgroundColor: '#000',
+-  },
+-  heroImage: { width: '100%', height: '100%' },
+-
+-  openBadge: {
+-    position: 'absolute',
+-    top: spacing.md,
+-    left: spacing.md,
+-    backgroundColor: '#22C55E',
+-    paddingHorizontal: spacing.md,
+-    paddingVertical: 6,
+-    borderRadius: radius.full,
+-  },
+-  openBadgeText: { color: '#fff', ...typography.small, fontWeight: '600' },
+-
+-  heroBtnLeft: {
+-    position: 'absolute',
+-    top: spacing.xl,
+-    left: spacing.md,
+-    width: 40,
+-    height: 40,
+-    borderRadius: radius.full,
+-    backgroundColor: 'rgba(255,255,255,0.90)',
+-    alignItems: 'center',
+-    justifyContent: 'center',
+-  },
+-  heroBtnRight: {
+-    position: 'absolute',
+-    top: spacing.xl,
+-    right: spacing.md,
+-    width: 40,
+-    height: 40,
+-    borderRadius: radius.full,
+-    backgroundColor: 'rgba(255,255,255,0.90)',
+-    alignItems: 'center',
+-    justifyContent: 'center',
+-  },
+-
+-  heroArrowLeft: {
+-    position: 'absolute',
+-    left: 10,
+-    top: '50%',
+-    marginTop: -16,
+-    width: 32,
+-    height: 32,
+-    borderRadius: radius.full,
+-    backgroundColor: 'rgba(255,255,255,0.80)',
+-    alignItems: 'center',
+-    justifyContent: 'center',
+-  },
+-  heroArrowRight: {
+-    position: 'absolute',
+-    right: 10,
+-    top: '50%',
+-    marginTop: -16,
+-    width: 32,
+-    height: 32,
+-    borderRadius: radius.full,
+-    backgroundColor: 'rgba(255,255,255,0.80)',
+-    alignItems: 'center',
+-    justifyContent: 'center',
+-  },
+-
+-  heroCaption: {
+-    position: 'absolute',
+-    left: 0,
+-    right: 0,
+-    bottom: 0,
+-    paddingHorizontal: spacing.lg,
+-    paddingVertical: spacing.md,
+-    flexDirection: 'row',
+-    alignItems: 'flex-end',
+-    justifyContent: 'space-between',
+-  },
+-  captionText: { color: '#fff', ...typography.small, fontWeight: '600', flex: 1, marginRight: spacing.md },
+-  counterText: { color: 'rgba(255,255,255,0.80)', ...typography.small },
+-
+-  thumbBar: {
+-    backgroundColor: colors.card,
+-    paddingHorizontal: spacing.lg,
+-    paddingVertical: spacing.md,
+-    borderBottomWidth: 1,
+-    borderBottomColor: colors.border,
+-  },
+-  thumbRow: { gap: spacing.sm },
+-  thumb: {
+-    width: 60,
+-    height: 60,
+-    borderRadius: radius.lg,
+-    overflow: 'hidden',
+-    borderWidth: 2,
+-  },
+-  thumbOn: { borderColor: colors.brand },
+-  thumbOff: { borderColor: 'rgba(58,58,58,0.10)', opacity: 0.65 },
+-  thumbImg: { width: '100%', height: '100%' },
+-
+-  infoCard: {
+-    backgroundColor: colors.card,
+-    paddingHorizontal: spacing.lg,
+-    paddingTop: spacing.lg,
+-    paddingBottom: spacing.md,
+-  },
+-  salonTitle: { color: colors.text, ...typography.h2, marginBottom: spacing.sm },
+-
+-  ratingRow: {
+-    flexDirection: 'row',
+-    alignItems: 'center',
+-    justifyContent: 'space-between',
+-    gap: spacing.md,
+-    marginBottom: spacing.sm,
+-  },
+-  ratingLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+-  ratingText: { color: colors.text, ...typography.small, fontWeight: '500' },
+-
+-  socialRow: { flexDirection: 'row', gap: spacing.sm },
+-
+-  addressRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+-  addressText: { color: colors.text, ...typography.small, flex: 1 },
+-
+-  tabsWrap: {
+-    backgroundColor: colors.card,
+-    paddingHorizontal: spacing.lg,
+-    paddingTop: spacing.sm,
+-    paddingBottom: spacing.sm,
+-    borderBottomWidth: 1,
+-    borderBottomColor: 'rgba(107,39,55,0.10)',
+-  },
++  header: { backgroundColor: colors.brand, padding: spacing.lg, flexDirection: 'row', alignItems: 'center', gap: spacing.md },
++  headerTitle: { color: colors.brandForeground, ...typography.h3 },
++  content: { padding: spacing.lg, gap: spacing.md, paddingBottom: 120 },
++  infoCard: { backgroundColor: colors.card, borderRadius: radius.xl, padding: spacing.md, borderWidth: 1, borderColor: overlays.brand20 },
++  salonTitle: { color: colors.text, ...typography.h2 },
++  metaText: { color: colors.textMuted, marginTop: 4 },
+   tabsRow: { flexDirection: 'row', gap: spacing.sm },
+-
+-  body: {
+-    paddingHorizontal: spacing.lg,
+-    paddingTop: spacing.lg,
+-    gap: spacing.md,
+-  },
+-
+-  blockTitle: { color: colors.text, ...typography.h3, marginBottom: spacing.sm },
+-  paragraph: { color: 'rgba(58,58,58,0.80)', ...typography.body, lineHeight: 20 },
+-
+-  whiteBox: {
+-    backgroundColor: colors.card,
+-    borderRadius: radius.xl,
+-    padding: spacing.lg,
+-    shadowColor: '#000',
+-    shadowOpacity: 0.05,
+-    shadowRadius: 10,
+-    shadowOffset: { width: 0, height: 4 },
+-    elevation: 1,
+-    gap: spacing.sm,
+-  },
+-
+-  scheduleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+-  scheduleDay: { color: colors.text, ...typography.small },
+-  scheduleHours: { color: colors.brand, ...typography.small, fontWeight: '600' },
+-  scheduleClosed: { color: '#DC2626' },
+-
+-  bullet: { color: 'rgba(58,58,58,0.80)', ...typography.small, lineHeight: 18 },
+-
+-  accordion: {
+-    backgroundColor: colors.card,
+-    borderRadius: radius.xl,
+-    overflow: 'hidden',
+-    shadowColor: '#000',
+-    shadowOpacity: 0.05,
+-    shadowRadius: 10,
+-    shadowOffset: { width: 0, height: 4 },
+-    elevation: 1,
+-  },
+-  accordionHeader: {
+-    paddingHorizontal: spacing.lg,
+-    paddingVertical: spacing.md,
+-    flexDirection: 'row',
+-    alignItems: 'center',
+-    justifyContent: 'space-between',
+-  },
+-  accordionTitle: { color: colors.text, ...typography.body, fontWeight: '600' },
+-
+-  accordionBody: {
+-    borderTopWidth: 1,
+-    borderTopColor: 'rgba(107,39,55,0.10)',
+-    paddingHorizontal: spacing.lg,
+-    paddingBottom: spacing.md,
+-  },
+-
+-  serviceRow: {
+-    paddingTop: spacing.md,
+-    flexDirection: 'row',
+-    gap: spacing.md,
+-    alignItems: 'flex-start',
+-  },
+-  serviceName: { color: colors.text, ...typography.small, fontWeight: '600' },
+-  serviceMeta: { color: colors.textMuted, ...typography.small, marginTop: 2 },
+-  servicePrice: { color: colors.brand, ...typography.small, fontWeight: '700', marginTop: 6 },
+-
++  block: { backgroundColor: colors.card, borderRadius: radius.xl, padding: spacing.md, gap: spacing.sm, borderWidth: 1, borderColor: overlays.brand20 },
++  blockTitle: { color: colors.text, ...typography.body, fontWeight: '700' },
++  paragraph: { color: colors.textMuted, ...typography.small },
++  accordion: { backgroundColor: colors.card, borderRadius: radius.xl, padding: spacing.md, borderWidth: 1, borderColor: overlays.brand20 },
++  accordionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
++  accordionTitle: { color: colors.text, fontWeight: '700' },
++  serviceRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md, marginTop: spacing.md },
++  serviceName: { color: colors.text, fontWeight: '600' },
++  serviceMeta: { color: colors.textMuted, fontSize: 12 },
++  servicePrice: { color: colors.brand, fontWeight: '700', marginTop: 4 },
+   qtyWrap: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+-  qtyBtn: {
+-    width: 34,
+-    height: 34,
+-    borderRadius: radius.full,
+-    backgroundColor: colors.brand,
+-    alignItems: 'center',
+-    justifyContent: 'center',
+-  },
+-  qtyBtnGhost: {
+-    width: 34,
+-    height: 34,
+-    borderRadius: radius.full,
+-    backgroundColor: colors.background,
+-    borderWidth: 2,
+-    borderColor: overlays.brand20,
+-    alignItems: 'center',
+-    justifyContent: 'center',
+-  },
+-  qtyBtnGhostText: { color: colors.brand, fontSize: 18, fontWeight: '800', marginTop: -1 },
+-  qtyText: { width: 22, textAlign: 'center', color: colors.text, ...typography.small, fontWeight: '700' },
+-
+-  cartBar: {
+-    position: 'absolute',
+-    left: 0,
+-    right: 0,
+-    bottom: 0,
+-    backgroundColor: colors.brand,
+-    paddingHorizontal: spacing.lg,
+-    paddingVertical: spacing.md,
+-    flexDirection: 'row',
+-    alignItems: 'center',
+-    justifyContent: 'space-between',
+-    gap: spacing.md,
+-  },
+-  cartSmall: { color: 'rgba(255,255,255,0.80)', ...typography.small },
+-  cartTotal: { color: colors.brandForeground, ...typography.h3, fontWeight: '800' },
+-
+-  cartCta: {
+-    backgroundColor: colors.premium,
+-    paddingHorizontal: spacing.xl,
+-    paddingVertical: spacing.md,
+-    borderRadius: radius.full,
+-  },
+-  cartCtaText: { color: colors.brand, ...typography.small, fontWeight: '800' },
++  qtyBtnGhost: { width: 28, height: 28, borderRadius: 14, backgroundColor: colors.card, borderWidth: 1, borderColor: overlays.brand20, alignItems: 'center', justifyContent: 'center' },
++  qtyBtn: { width: 28, height: 28, borderRadius: 14, backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center' },
++  cartBar: { position: 'absolute', left: spacing.lg, right: spacing.lg, bottom: spacing.lg, backgroundColor: colors.brand, borderRadius: radius.xl, padding: spacing.md, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
++  cartSmall: { color: 'rgba(255,255,255,0.85)' },
++  cartTotal: { color: colors.brandForeground, ...typography.h3 },
++  cartCta: { backgroundColor: colors.brandForeground, borderRadius: radius.full, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
++  cartCtaText: { color: colors.brand, fontWeight: '700' },
+ })
+diff --git a/apps/mobile/app/(screens)/schedule.tsx b/apps/mobile/app/(screens)/schedule.tsx
+index 64f0eddc8beee6fbfe9eefdd6600466440d4bd5b..5c8cb7b680d0f8f220821dd82cd271a531e4561a 100644
+--- a/apps/mobile/app/(screens)/schedule.tsx
++++ b/apps/mobile/app/(screens)/schedule.tsx
+@@ -1,235 +1,166 @@
+ import React, { useMemo, useState } from 'react'
+ import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native'
+ import { router } from 'expo-router'
+ import { Ionicons } from '@expo/vector-icons'
+-import { LinearGradient } from 'expo-linear-gradient'
+ 
+ import { Screen } from '../../src/components/Screen'
+ import { Button } from '../../src/components/Button'
+ import { useBooking } from '../../src/providers/BookingProvider'
++import { useSalonAvailability } from '../../src/api/discovery'
+ 
+ import { colors, overlays } from '../../src/theme/colors'
+ import { spacing } from '../../src/theme/spacing'
+ import { radius } from '../../src/theme/radius'
+ import { typography } from '../../src/theme/typography'
+ 
+-const DATES = [
+-  { day: 'Lun', date: 6 },
+-  { day: 'Mar', date: 7 },
+-  { day: 'Mer', date: 8 },
+-  { day: 'Jeu', date: 9 },
+-  { day: 'Ven', date: 10 },
+-]
+-
+-const TIMES = ['09:00','09:30','10:00','10:30','11:00','11:30','14:00','14:30','15:00','15:30','16:00','16:30']
+-
+-const PROS = [
+-  { name: 'Sophie Martin', available: true },
+-  { name: 'Marie Dubois', available: true },
+-  { name: 'Pas de préférence', available: true },
+-]
++function getNextDays(count: number) {
++  const items: Array<{ label: string; iso: string }> = []
++  const now = new Date()
++  for (let i = 0; i < count; i++) {
++    const d = new Date(now)
++    d.setDate(now.getDate() + i)
++    const iso = d.toISOString().slice(0, 10)
++    const label = d.toLocaleDateString('fr-FR', { weekday: 'short', day: '2-digit', month: '2-digit' })
++    items.push({ label, iso })
++  }
++  return items
++}
+ 
+ export default function ScheduleScreen() {
+   const { draft, patch } = useBooking()
+ 
+-  const [selectedDate, setSelectedDate] = useState<number | null>(draft.date?.date ?? null)
++  const days = useMemo(() => getNextDays(7), [])
++  const [selectedDateIso, setSelectedDateIso] = useState<string>(draft.selectedDateIso ?? days[0].iso)
+   const [selectedTime, setSelectedTime] = useState<string | null>(draft.time ?? null)
+-  const [selectedPro, setSelectedPro] = useState<string | null>(draft.professionalName ?? null)
++  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(draft.selectedEmployeeId ?? null)
+ 
+-  const canContinue = useMemo(() => !!selectedDate && !!selectedTime, [selectedDate, selectedTime])
++  const serviceIds = useMemo(() => draft.cart.map((item) => item.id), [draft.cart])
++  const { data, isLoading } = useSalonAvailability({
++    salonId: draft.salonId,
++    date: selectedDateIso,
++    serviceIds,
++  })
++
++  const timeSlots = data?.slots ?? []
++  const professionals = data?.professionals ?? []
++
++  const filteredProfessionals = useMemo(() => {
++    if (!selectedTime) return professionals
++    return professionals.filter((professional) =>
++      professional.slots.some((slot) => slot.time === selectedTime && slot.available),
++    )
++  }, [professionals, selectedTime])
++
++  const canContinue = !!selectedDateIso && !!selectedTime
+ 
+   const onContinue = () => {
+-    const dateObj = DATES.find(d => d.date === selectedDate) || undefined
++    const day = days.find((d) => d.iso === selectedDateIso)
+     patch({
+-      date: dateObj,
+-      time: selectedTime || undefined,
+-      professionalName: selectedPro || undefined,
++      selectedDateIso,
++      date: day ? { day: day.label, date: Number(day.iso.slice(-2)) } : undefined,
++      time: selectedTime ?? undefined,
++      selectedEmployeeId: selectedEmployeeId ?? undefined,
++      professionalName: professionals.find((p) => p.id === selectedEmployeeId)?.displayName,
+     })
+     router.push('/(screens)/payment')
+   }
+ 
+   return (
+     <Screen noPadding style={styles.screen}>
+       <View style={styles.header}>
+         <View style={styles.headerRow}>
+           <Ionicons name="arrow-back" size={22} color="#fff" onPress={() => router.back()} />
+         </View>
+         <Text style={styles.headerTitle}>Choisir un créneau</Text>
+       </View>
+ 
+       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+         <Text style={styles.blockTitle}>Sélectionnez une date</Text>
+ 
+         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.sm }}>
+-          {DATES.map(({ day, date }) => {
+-            const active = selectedDate === date
++          {days.map((d) => {
++            const active = selectedDateIso === d.iso
+             return (
+-              <Pressable
+-                key={date}
+-                onPress={() => setSelectedDate(date)}
+-                style={[styles.datePill, active ? styles.pillActive : styles.pillIdle]}
+-              >
+-                <Text style={[styles.dateDay, active && styles.pillTextActive]}>{day}</Text>
+-                <Text style={[styles.dateNum, active && styles.pillTextActive]}>{date}</Text>
++              <Pressable key={d.iso} onPress={() => setSelectedDateIso(d.iso)} style={[styles.datePill, active ? styles.pillActive : styles.pillIdle]}>
++                <Text style={[styles.dateDay, active && styles.pillTextActive]}>{d.label}</Text>
+               </Pressable>
+             )
+           })}
+         </ScrollView>
+ 
+         <View style={{ height: spacing.lg }} />
+ 
+         <Text style={styles.blockTitle}>Sélectionnez une heure</Text>
+-
++        {isLoading ? <Text>Chargement des créneaux...</Text> : null}
+         <View style={styles.grid}>
+-          {TIMES.map((t) => {
+-            const active = selectedTime === t
++          {timeSlots.map((slot) => {
++            const active = selectedTime === slot.time
+             return (
+               <Pressable
+-                key={t}
+-                onPress={() => setSelectedTime(t)}
+-                style={[styles.timePill, active ? styles.pillActive : styles.pillIdle]}
++                key={slot.time}
++                onPress={() => slot.available && setSelectedTime(slot.time)}
++                style={[styles.timePill, active ? styles.pillActive : styles.pillIdle, !slot.available && styles.disabledPill]}
+               >
+-                <Text style={[styles.timeText, active && styles.pillTextActive]}>{t}</Text>
++                <Text style={[styles.timeText, active && styles.pillTextActive]}>{slot.time}</Text>
+               </Pressable>
+             )
+           })}
+         </View>
+ 
+-        {!!selectedDate && !!selectedTime && (
++        {!!selectedTime && (
+           <>
+             <View style={{ height: spacing.lg }} />
+-            <Text style={styles.blockTitle}>Choisir un professionnel</Text>
++            <Text style={styles.blockTitle}>Choisir un professionnel (optionnel)</Text>
+ 
+             <View style={{ gap: spacing.md }}>
+-              {PROS.map((p) => {
+-                const active = selectedPro === p.name
++              {filteredProfessionals.map((p) => {
++                const active = selectedEmployeeId === p.id
+                 return (
+-                  <Pressable
+-                    key={p.name}
+-                    onPress={() => setSelectedPro(p.name)}
+-                    style={[
+-                      styles.proCard,
+-                      active ? styles.proCardActive : styles.proCardIdle,
+-                    ]}
+-                  >
+-                    <View style={styles.proRow}>
+-                      <LinearGradient
+-                        colors={[colors.brand, colors.premium]}
+-                        start={{ x: 0, y: 0 }}
+-                        end={{ x: 1, y: 1 }}
+-                        style={styles.proAvatar}
+-                      />
+-                      <View style={{ flex: 1, minWidth: 0 }}>
+-                        <Text style={styles.proName} numberOfLines={1}>
+-                          {p.name}
+-                        </Text>
+-                        <Text style={styles.proStatus}>Disponible</Text>
+-                      </View>
+-
+-                      {active && (
+-                        <Ionicons name="checkmark" size={18} color={colors.brand} />
+-                      )}
+-                    </View>
++                  <Pressable key={p.id} onPress={() => setSelectedEmployeeId(active ? null : p.id)} style={[styles.proCard, active ? styles.proCardActive : styles.proCardIdle]}>
++                    <Text style={styles.proName}>{p.displayName}</Text>
++                    <Text style={styles.proStatus}>{active ? 'Sélectionné' : 'Disponible'}</Text>
+                   </Pressable>
+                 )
+               })}
+             </View>
+           </>
+         )}
+       </ScrollView>
+ 
+       <View style={styles.bottom}>
+-        <Button
+-          title="Passer au paiement"
+-          onPress={onContinue}
+-          disabled={!canContinue}
+-        />
++        <Button title="Passer au paiement" onPress={onContinue} disabled={!canContinue} />
+       </View>
+     </Screen>
+   )
+ }
+ 
+ const styles = StyleSheet.create({
+   screen: { backgroundColor: colors.background },
+-
+   header: {
+     backgroundColor: colors.brand,
+     paddingTop: spacing.xl,
+     paddingBottom: spacing.lg,
+     paddingHorizontal: spacing.lg,
+     borderBottomLeftRadius: radius.xl,
+     borderBottomRightRadius: radius.xl,
+   },
+   headerRow: { marginBottom: spacing.md },
+   headerTitle: { color: colors.brandForeground, ...typography.h2 },
+-
+-  content: {
+-    padding: spacing.lg,
+-    paddingBottom: 140,
+-  },
+-
++  content: { padding: spacing.lg, paddingBottom: 140 },
+   blockTitle: { color: colors.text, ...typography.body, fontWeight: '600', marginBottom: spacing.md },
+-
+-  pillIdle: {
+-    backgroundColor: colors.card,
+-    borderWidth: 1,
+-    borderColor: overlays.brand20,
+-  },
+-  pillActive: {
+-    backgroundColor: colors.brand,
+-    borderWidth: 1,
+-    borderColor: colors.brand,
+-  },
++  pillIdle: { backgroundColor: colors.card, borderWidth: 1, borderColor: overlays.brand20 },
++  pillActive: { backgroundColor: colors.brand, borderWidth: 1, borderColor: colors.brand },
+   pillTextActive: { color: colors.brandForeground },
+-
+-  datePill: {
+-    paddingHorizontal: 18,
+-    paddingVertical: 12,
+-    borderRadius: radius.xl,
+-    alignItems: 'center',
+-    justifyContent: 'center',
+-    minWidth: 70,
+-  },
+-  dateDay: { color: colors.text, ...typography.small, marginBottom: 2 },
+-  dateNum: { color: colors.text, ...typography.body, fontWeight: '700' },
+-
+-  grid: {
+-    flexDirection: 'row',
+-    flexWrap: 'wrap',
+-    gap: spacing.md,
+-  },
+-  timePill: {
+-    width: '30%',
+-    paddingVertical: 12,
+-    borderRadius: radius.xl,
+-    alignItems: 'center',
+-    justifyContent: 'center',
+-  },
++  disabledPill: { opacity: 0.35 },
++  datePill: { paddingHorizontal: 18, paddingVertical: 12, borderRadius: radius.xl, alignItems: 'center', justifyContent: 'center' },
++  dateDay: { color: colors.text, ...typography.small },
++  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
++  timePill: { width: '30%', paddingVertical: 12, borderRadius: radius.xl, alignItems: 'center', justifyContent: 'center' },
+   timeText: { color: colors.text, ...typography.body, fontWeight: '600' },
+-
+-  proCard: {
+-    borderRadius: radius.xl,
+-    padding: spacing.md,
+-  },
+-  proCardIdle: {
+-    backgroundColor: colors.card,
+-    borderWidth: 1,
+-    borderColor: overlays.brand20,
+-  },
+-  proCardActive: {
+-    backgroundColor: overlays.brand05,
+-    borderWidth: 2,
+-    borderColor: colors.brand,
+-  },
+-  proRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+-  proAvatar: { width: 48, height: 48, borderRadius: radius.full },
++  proCard: { borderRadius: radius.xl, padding: spacing.md },
++  proCardIdle: { backgroundColor: colors.card, borderWidth: 1, borderColor: overlays.brand20 },
++  proCardActive: { backgroundColor: overlays.brand05, borderWidth: 2, borderColor: colors.brand },
+   proName: { color: colors.text, ...typography.body, fontWeight: '600' },
+   proStatus: { color: '#0F9D58', ...typography.small, marginTop: 2 },
+-
+-  bottom: {
+-    position: 'absolute',
+-    left: spacing.lg,
+-    right: spacing.lg,
+-    bottom: spacing.lg,
+-  },
++  bottom: { position: 'absolute', left: spacing.lg, right: spacing.lg, bottom: spacing.lg },
+ })
+diff --git a/apps/mobile/app/(screens)/search.tsx b/apps/mobile/app/(screens)/search.tsx
+index 0b398373dca22ee616f4f154dadc7c06d9c9884f..70a5760d2552a27b301e016ca3aedb38149a22e4 100644
+--- a/apps/mobile/app/(screens)/search.tsx
++++ b/apps/mobile/app/(screens)/search.tsx
+@@ -1,37 +1,77 @@
+-import { useState } from 'react'
+-import { View, Text } from 'react-native'
++import { useMemo, useState } from 'react'
++import { View, Text, Pressable } from 'react-native'
++import { router } from 'expo-router'
+ 
+ import { Screen } from '../../src/components/Screen'
+ import { Header } from '../../src/components/Header'
+ import { Card } from '../../src/components/Card'
+ import { Input } from '../../src/components/Input'
++import { useSearchDiscovery, useHomeDiscovery } from '../../src/api/discovery'
+ import { spacing } from '../../src/theme/spacing'
++import { colors } from '../../src/theme/colors'
+ 
+ export default function Search() {
+   const [query, setQuery] = useState('')
++  const [category, setCategory] = useState<string | null>(null)
++
++  const { data: categoriesData } = useHomeDiscovery({ city: 'Libreville', country: 'Gabon' })
++  const categories = categoriesData?.categories ?? []
++
++  const debouncedQuery = useMemo(() => query.trim(), [query])
++  const { data, isLoading } = useSearchDiscovery({
++    q: debouncedQuery || undefined,
++    city: 'Libreville',
++    country: 'Gabon',
++    category: category ?? undefined,
++  })
+ 
+   return (
+     <Screen>
+-      <Header
+-        title="Recherche"
+-        subtitle="Trouve un salon près de toi"
+-      />
++      <Header title="Recherche" subtitle="Trouve un salon près de toi" />
+ 
+       <View style={{ gap: spacing.md }}>
+-        <Input
+-          placeholder="Rechercher un salon..."
+-          value={query}
+-          onChangeText={setQuery}
+-        />
+-
+-        <Card>
+-          <Text>Résultat 1 (mock)</Text>
+-        </Card>
+-
+-        <Card>
+-          <Text>Résultat 2 (mock)</Text>
+-        </Card>
++        <Input placeholder="Rechercher un salon ou un service..." value={query} onChangeText={setQuery} />
++
++        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }}>
++          {categories.map((cat) => (
++            <Pressable
++              key={cat}
++              onPress={() => setCategory((prev) => (prev === cat ? null : cat))}
++              style={{
++                paddingHorizontal: 12,
++                paddingVertical: 8,
++                borderRadius: 999,
++                borderWidth: 1,
++                borderColor: category === cat ? colors.brand : 'rgba(107,39,55,0.2)',
++                backgroundColor: category === cat ? colors.brand : '#fff',
++              }}
++            >
++              <Text style={{ color: category === cat ? '#fff' : colors.text }}>{cat}</Text>
++            </Pressable>
++          ))}
++        </View>
++
++        {isLoading ? (
++          <Card><Text>Chargement...</Text></Card>
++        ) : (
++          (data?.items ?? []).map((item) => (
++            <Card key={item.id}>
++              <Pressable
++                onPress={() => router.push({ pathname: '/(screens)/salon', params: { salonId: item.id } })}
++                style={{ gap: spacing.xs }}
++              >
++                <Text style={{ fontWeight: '700', color: colors.text }}>{item.name}</Text>
++                <Text style={{ color: colors.textMuted }}>
++                  {[item.city, item.country].filter(Boolean).join(', ')}
++                </Text>
++                <Text style={{ color: colors.textMuted, fontSize: 12 }}>
++                  {item.highlights.slice(0, 3).map((h) => h.name).join(' • ')}
++                </Text>
++              </Pressable>
++            </Card>
++          ))
++        )}
+       </View>
+     </Screen>
+   )
+ }
+diff --git a/apps/mobile/app/(tabs)/home.tsx b/apps/mobile/app/(tabs)/home.tsx
+index f47e1071e1eed8059f57214550ad12bf8470efe0..72ffc53c8b9a626abd8f15c6bdfd50c1bcc22591 100644
+--- a/apps/mobile/app/(tabs)/home.tsx
++++ b/apps/mobile/app/(tabs)/home.tsx
+@@ -1,339 +1,138 @@
+-// app/(tabs)/home.tsx
+-import React, { useMemo, useState } from 'react'
++import React, { useState } from 'react'
+ import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native'
+ import { router } from 'expo-router'
+ import { Ionicons } from '@expo/vector-icons'
+ 
+ import { Screen } from '../../src/components/Screen'
+ import { SectionTitle } from '../../src/components/SectionTitle'
+ import { OfferCard } from '../../src/components/OfferCard'
+ import { SalonListItem } from '../../src/components/SalonListItem'
++import { useHomeDiscovery } from '../../src/api/discovery'
+ 
+ import { colors, overlays } from '../../src/theme/colors'
+ import { spacing } from '../../src/theme/spacing'
+ import { radius } from '../../src/theme/radius'
+ import { typography } from '../../src/theme/typography'
+ 
+-type Offer = {
+-  discount: string
+-  service: string
+-  salon: string
+-}
+-
+-type Salon = {
+-  name: string
+-  rating: number
+-  duration: string
+-  distance?: string
+-}
+-
+ export default function Home() {
+   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
+-  const [nearMe, setNearMe] = useState(false)
+-
+-  const categories = useMemo(
+-    () => ['Coiffure', 'Maquillage', 'Manucure', 'Massage', 'Fitness'],
+-    []
+-  )
+ 
+-  const offers: Offer[] = useMemo(
+-    () => [
+-      { discount: '-30%', service: 'Coiffure Premium', salon: 'Salon Élégance' },
+-      { discount: '-20%', service: 'Massage Relaxant', salon: 'Spa Wellness' },
+-    ],
+-    []
+-  )
+-
+-  const topRated: Salon[] = useMemo(
+-    () => [
+-      { name: 'Salon Élégance', rating: 4.8, duration: '20-30 min', distance: '1.2 km' },
+-      { name: 'Beauty Lounge', rating: 4.7, duration: '20-30 min', distance: '2.5 km' },
+-      { name: 'Glam Studio', rating: 4.6, duration: '20-30 min', distance: '3.8 km' },
+-    ],
+-    []
+-  )
++  const { data, isLoading } = useHomeDiscovery({
++    city: 'Libreville',
++    country: 'Gabon',
++    category: selectedCategory ?? undefined,
++  })
+ 
+-  const onSearchClick = () => router.push('../(screens)/search')
+-  const onOfferClick = () => router.push('../(screens)/salon')
+-  const onSalonSelect = () => router.push('../(screens)/salon')
++  const categories = data?.categories ?? []
++  const offers = data?.offers ?? []
++  const topRated = data?.topRatedSalons ?? []
+ 
+   return (
+     <Screen noPadding style={styles.screen}>
+-      <ScrollView
+-        showsVerticalScrollIndicator={false}
+-        stickyHeaderIndices={[0]}
+-        contentContainerStyle={styles.content}
+-      >
+-        {/* STICKY HEADER */}
++      <ScrollView showsVerticalScrollIndicator={false} stickyHeaderIndices={[0]} contentContainerStyle={styles.content}>
+         <View style={styles.stickyHeader}>
+-          {/* Location + Near */}
+           <View style={styles.topRow}>
+             <View style={styles.location}>
+               <Ionicons name="location-outline" size={16} color={colors.brand} />
+-              <Text style={styles.locationText} numberOfLines={1}>
+-                Libreville, Gabon
+-              </Text>
++              <Text style={styles.locationText}>Libreville, Gabon</Text>
+             </View>
+-
+-            <Pressable
+-              onPress={() => setNearMe(v => !v)}
+-              style={[styles.nearBtn, nearMe ? styles.nearBtnOn : styles.nearBtnOff]}
+-            >
+-              <Ionicons
+-                name="navigate-outline"
+-                size={14}
+-                color={nearMe ? colors.brandForeground : colors.brand}
+-              />
+-              <Text style={[styles.nearBtnText, nearMe ? styles.nearBtnTextOn : styles.nearBtnTextOff]}>
+-                Près
+-              </Text>
+-            </Pressable>
+           </View>
+ 
+-          {/* Search */}
+-          <Pressable onPress={onSearchClick} style={styles.searchBtn}>
++          <Pressable onPress={() => router.push('/(screens)/search')} style={styles.searchBtn}>
+             <Ionicons name="search-outline" size={18} color="rgba(107,39,55,0.50)" />
+-            <Text style={styles.searchPlaceholder} numberOfLines={1}>
+-              Rechercher salon, service...
+-            </Text>
++            <Text style={styles.searchPlaceholder}>Rechercher salon, service...</Text>
+           </Pressable>
+ 
+-          {/* Categories */}
+-          <ScrollView
+-            horizontal
+-            showsHorizontalScrollIndicator={false}
+-            contentContainerStyle={styles.chipsRow}
+-          >
+-            {categories.map(cat => {
++          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsRow}>
++            {categories.map((cat) => {
+               const active = selectedCategory === cat
+               return (
+                 <Pressable
+                   key={cat}
+-                  onPress={() => setSelectedCategory(prev => (prev === cat ? null : cat))}
++                  onPress={() => setSelectedCategory((prev) => (prev === cat ? null : cat))}
+                   style={[styles.chip, active ? styles.chipOn : styles.chipOff]}
+                 >
+-                  <Text style={[styles.chipText, active ? styles.chipTextOn : styles.chipTextOff]}>
+-                    {cat}
+-                  </Text>
++                  <Text style={[styles.chipText, active ? styles.chipTextOn : styles.chipTextOff]}>{cat}</Text>
+                 </Pressable>
+               )
+             })}
+           </ScrollView>
+         </View>
+ 
+-        {/* BODY */}
+         <View style={styles.body}>
+-          {/* Offers */}
+           <SectionTitle title="Offres du moment" />
+-          <ScrollView
+-            horizontal
+-            showsHorizontalScrollIndicator={false}
+-            contentContainerStyle={styles.offersRow}
+-          >
+-            {offers.map((o, idx) => (
+-              <OfferCard
+-                key={idx}
+-                discount={o.discount}
+-                service={o.service}
+-                salon={o.salon}
+-                onPress={onOfferClick}
+-              />
+-            ))}
+-          </ScrollView>
+-
+-          {/* Map placeholder when nearMe */}
+-          {nearMe && (
+-            <View style={styles.mapPlaceholder}>
+-              <View style={styles.mapBox}>
+-                <Ionicons name="location" size={34} color={colors.brand} />
+-                <Text style={styles.mapText}>Carte interactive (UX mode)</Text>
+-              </View>
+-            </View>
++          {isLoading ? (
++            <Text style={styles.loading}>Chargement…</Text>
++          ) : (
++            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.offersRow}>
++              {offers.map((offer) => (
++                <OfferCard
++                  key={`${offer.salonId}-${offer.serviceName}`}
++                  discount={`-${offer.discountPercent}%`}
++                  service={offer.serviceName}
++                  salon={offer.salonName}
++                  onPress={() =>
++                    router.push({
++                      pathname: '/(screens)/salon',
++                      params: { salonId: offer.salonId },
++                    })
++                  }
++                />
++              ))}
++            </ScrollView>
+           )}
+ 
+-          {/* Top rated */}
+           <SectionTitle title="Les mieux notés" />
+           <View style={styles.list}>
+-            {topRated.map((s, idx) => (
++            {topRated.map((salon) => (
+               <SalonListItem
+-                key={idx}
+-                name={s.name}
+-                rating={s.rating}
+-                duration={s.duration}
+-                distance={s.distance}
+-                showDistance={nearMe}
+-                onPress={onSalonSelect}
++                key={salon.id}
++                name={salon.name}
++                rating={salon.rating}
++                duration={salon.duration}
++                onPress={() =>
++                  router.push({
++                    pathname: '/(screens)/salon',
++                    params: { salonId: salon.id },
++                  })
++                }
+               />
+             ))}
+           </View>
+-
+-          <View style={{ height: 24 }} />
+         </View>
+       </ScrollView>
+     </Screen>
+   )
+ }
+ 
+ const styles = StyleSheet.create({
+-  screen: {
+-    backgroundColor: colors.background,
+-  },
+-
+-  content: {
+-    paddingBottom: 24,
+-  },
+-
+-  stickyHeader: {
+-    backgroundColor: colors.card,
+-    paddingTop: spacing.xl,
+-    paddingHorizontal: spacing.lg,
+-    paddingBottom: spacing.md,
+-    borderBottomWidth: 1,
+-    borderBottomColor: colors.border,
+-    shadowColor: '#000',
+-    shadowOpacity: 0.06,
+-    shadowRadius: 8,
+-    shadowOffset: { width: 0, height: 4 },
+-    elevation: 2,
+-  },
+-
+-  topRow: {
+-    flexDirection: 'row',
+-    alignItems: 'center',
+-    justifyContent: 'space-between',
+-    gap: spacing.sm,
+-    marginBottom: spacing.sm,
+-  },
+-
+-  location: {
+-    flexDirection: 'row',
+-    alignItems: 'center',
+-    gap: spacing.sm,
+-    flex: 1,
+-    minWidth: 0,
+-  },
+-
+-  locationText: {
+-    color: colors.text,
+-    ...typography.small,
+-    fontWeight: '500',
+-  },
+-
+-  nearBtn: {
+-    flexDirection: 'row',
+-    alignItems: 'center',
+-    gap: spacing.xs,
+-    paddingHorizontal: spacing.sm,
+-    paddingVertical: spacing.xs,
+-    borderRadius: radius.full,
+-  },
+-
+-  nearBtnOff: {
+-    backgroundColor: colors.background,
+-    borderWidth: 1,
+-    borderColor: overlays.brand20,
+-  },
+-
+-  nearBtnOn: {
+-    backgroundColor: colors.brand,
+-  },
+-
+-  nearBtnText: {
+-    ...typography.small,
+-    fontWeight: '600',
+-  },
+-
+-  nearBtnTextOff: {
+-    color: colors.brand,
+-  },
+-
+-  nearBtnTextOn: {
+-    color: colors.brandForeground,
+-  },
+-
++  screen: { backgroundColor: colors.background },
++  content: { paddingBottom: 24 },
++  stickyHeader: { backgroundColor: colors.background, padding: spacing.lg, gap: spacing.md },
++  topRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
++  location: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
++  locationText: { color: colors.text, ...typography.body, fontWeight: '600' },
+   searchBtn: {
+-    flexDirection: 'row',
+-    alignItems: 'center',
+-    gap: spacing.sm,
+-    backgroundColor: colors.background,
++    backgroundColor: colors.card,
+     borderRadius: radius.full,
+     paddingHorizontal: spacing.lg,
+-    paddingVertical: spacing.md,
+-    marginBottom: spacing.md,
+-  },
+-
+-  searchPlaceholder: {
+-    color: 'rgba(58,58,58,0.60)',
+-    ...typography.body,
+-  },
+-
+-  chipsRow: {
+-    gap: spacing.sm,
+-    paddingBottom: spacing.xs,
+-  },
+-
+-  chip: {
+-    borderRadius: radius.full,
+-    paddingHorizontal: spacing.md,
+-    paddingVertical: spacing.sm,
++    height: 48,
+     borderWidth: 1,
+-  },
+-
+-  chipOff: {
+-    backgroundColor: colors.background,
+-    borderColor: overlays.brand20,
+-  },
+-
+-  chipOn: {
+-    backgroundColor: colors.brand,
+-    borderColor: colors.brand,
+-  },
+-
+-  chipText: {
+-    ...typography.small,
+-    fontWeight: '500',
+-  },
+-
+-  chipTextOff: {
+-    color: colors.text,
+-  },
+-
+-  chipTextOn: {
+-    color: colors.brandForeground,
+-  },
+-
+-  body: {
+-    paddingHorizontal: spacing.lg,
+-    paddingTop: spacing.lg,
+-  },
+-
+-  offersRow: {
+-    gap: spacing.md,
+-    paddingBottom: spacing.sm,
+-  },
+-
+-  mapPlaceholder: {
+-    marginTop: spacing.lg,
+-    marginBottom: spacing.lg,
+-  },
+-
+-  mapBox: {
+-    height: 180,
+-    borderRadius: radius.xl,
+-    backgroundColor: 'rgba(107,39,55,0.06)',
+-    borderWidth: 2,
+     borderColor: overlays.brand20,
++    flexDirection: 'row',
+     alignItems: 'center',
+-    justifyContent: 'center',
+     gap: spacing.sm,
+   },
+-
+-  mapText: {
+-    color: 'rgba(58,58,58,0.60)',
+-    ...typography.small,
+-  },
+-
+-  list: {
+-    gap: spacing.md,
+-  },
++  searchPlaceholder: { color: colors.textMuted, ...typography.body },
++  chipsRow: { gap: spacing.sm },
++  chip: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radius.full, borderWidth: 1 },
++  chipOff: { backgroundColor: colors.card, borderColor: overlays.brand20 },
++  chipOn: { backgroundColor: colors.brand, borderColor: colors.brand },
++  chipText: { ...typography.small, fontWeight: '600' },
++  chipTextOff: { color: colors.text },
++  chipTextOn: { color: colors.brandForeground },
++  body: { paddingHorizontal: spacing.lg, gap: spacing.md },
++  offersRow: { gap: spacing.md },
++  list: { gap: spacing.md },
++  loading: { color: colors.textMuted, ...typography.small },
+ })
+diff --git a/apps/mobile/src/api/appointments.ts b/apps/mobile/src/api/appointments.ts
+index 4e2502ca319f2b1a59c6961e03b52aecc3c177e6..08c3aaaa6399c4517d16d56749bf99d2c9b2e926 100644
+--- a/apps/mobile/src/api/appointments.ts
++++ b/apps/mobile/src/api/appointments.ts
+@@ -28,25 +28,39 @@ export async function fetchAppointments() {
+ }
+ 
+ export function useAppointments() {
+   return useQuery({
+     queryKey: ['appointments'],
+     queryFn: fetchAppointments,
+ 
+     // ✅ "Affichage RDV avec cache"
+     staleTime: 60_000,       // 1 min fresh (pas de refetch inutile)
+     gcTime: 10 * 60_000,     // 10 min en cache
+     refetchOnMount: false,
+     refetchOnReconnect: true,
+     refetchOnWindowFocus: true,
+   })
+ }
+ 
+ export async function createAppointment(payload: CreateAppointmentPayload) {
+   const res = await api.post('/appointments', payload)
+   return res.data
+ }
+ 
+ export async function assignEmployee(appointmentId: string, employeeId?: string) {
+   const res = await api.patch(`/appointments/${appointmentId}/assign-employee`, { employeeId })
+   return res.data
+ }
++
++
++export type CreateAppointmentsFromCartPayload = {
++  salonId: string
++  startAt: string
++  employeeId?: string
++  note?: string
++  items: Array<{ serviceId: string; quantity: number }>
++}
++
++export async function createAppointmentsFromCart(payload: CreateAppointmentsFromCartPayload) {
++  const res = await api.post('/appointments/from-cart', payload)
++  return res.data
++}
+diff --git a/apps/mobile/src/api/discovery.ts b/apps/mobile/src/api/discovery.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..0446c9047f0af06cba11bf0fc32836259d54f445
+--- /dev/null
++++ b/apps/mobile/src/api/discovery.ts
+@@ -0,0 +1,112 @@
++import { useQuery } from '@tanstack/react-query'
++import { api } from './client'
++
++export type HomePayload = {
++  categories: string[]
++  offers: Array<{
++    salonId: string
++    salonName: string
++    serviceName: string
++    discountPercent: number
++    originalPrice: number
++    discountedPrice: number
++  }>
++  topRatedSalons: Array<{
++    id: string
++    name: string
++    city: string | null
++    country: string | null
++    rating: number
++    duration: string
++  }>
++}
++
++export type SearchPayload = {
++  items: Array<{
++    id: string
++    name: string
++    city: string | null
++    country: string | null
++    highlights: Array<{
++      id: string
++      name: string
++      price: number
++      durationMin: number
++    }>
++  }>
++  total: number
++}
++
++export type SalonDetailsPayload = {
++  id: string
++  name: string
++  description?: string | null
++  address?: string | null
++  city?: string | null
++  country?: string | null
++  phone?: string | null
++  rating: number
++  reviewCount: number
++  reviews: Array<{ id: string; author: string; rating: number; comment: string; createdAt: string }>
++  employees: Array<{ id: string; displayName: string }>
++  servicesByCategory: Record<string, Array<{ id: string; name: string; description?: string | null; price: number; durationMin: number }>>
++}
++
++export type SalonAvailabilityPayload = {
++  date: string
++  totalDurationMin: number
++  slots: Array<{ time: string; available: boolean }>
++  professionals: Array<{
++    id: string
++    displayName: string
++    slots: Array<{ time: string; available: boolean }>
++  }>
++}
++
++export function useHomeDiscovery(params?: { city?: string; country?: string; category?: string }) {
++  return useQuery({
++    queryKey: ['discover', 'home', params],
++    queryFn: async () => {
++      const res = await api.get<HomePayload>('/discover/home', { params })
++      return res.data
++    },
++    staleTime: 1000 * 60,
++  })
++}
++
++export function useSearchDiscovery(params: { q?: string; city?: string; country?: string; category?: string }) {
++  return useQuery({
++    queryKey: ['discover', 'search', params],
++    queryFn: async () => {
++      const res = await api.get<SearchPayload>('/discover/search', { params })
++      return res.data
++    },
++  })
++}
++
++export function useSalonDetails(salonId?: string) {
++  return useQuery({
++    queryKey: ['salons', salonId],
++    queryFn: async () => {
++      const res = await api.get<SalonDetailsPayload>(`/salons/${salonId}`)
++      return res.data
++    },
++    enabled: !!salonId,
++  })
++}
++
++export function useSalonAvailability(params: { salonId?: string; date?: string; serviceIds?: string[] }) {
++  return useQuery({
++    queryKey: ['salons', params.salonId, 'availability', params.date, params.serviceIds],
++    queryFn: async () => {
++      const res = await api.get<SalonAvailabilityPayload>(`/salons/${params.salonId}/availability`, {
++        params: {
++          date: params.date,
++          serviceIds: params.serviceIds?.join(','),
++        },
++      })
++      return res.data
++    },
++    enabled: !!params.salonId && !!params.date,
++  })
++}
+diff --git a/apps/mobile/src/providers/BookingProvider.tsx b/apps/mobile/src/providers/BookingProvider.tsx
+index 19576414b45d48446e83e500e9c709e604d0a868..d9d9d55a45a055f3cd97b80e0fb4c807832d3541 100644
+--- a/apps/mobile/src/providers/BookingProvider.tsx
++++ b/apps/mobile/src/providers/BookingProvider.tsx
+@@ -1,45 +1,48 @@
+ import React, { createContext, useContext, useMemo, useState } from 'react'
+ 
+ export type CartItem = {
+   id: string
+   name: string
+   price: number
+   duration?: number
+   quantity?: number
+ }
+ 
+ export type BookingDraft = {
+   cart: CartItem[]
+   salonId?: string
+   salonName?: string
+ 
+   // schedule
+   date?: { day: string; date: number } // simple pour coller à la maquette
+   time?: string
+   professionalName?: string // “Pas de préférence” possible
+ 
++  selectedDateIso?: string // YYYY-MM-DD
++  selectedEmployeeId?: string
++
+   // payment
+   depositEnabled?: boolean
+   depositPercentage?: number
+   paymentChoice?: 'full' | 'deposit'
+   paymentMethod?: 'card' | 'mobile_money' | 'cash'
+   operator?: string
+ }
+ 
+ type BookingContextValue = {
+   draft: BookingDraft
+   setCart: (cart: CartItem[]) => void
+   patch: (partial: Partial<BookingDraft>) => void
+   reset: () => void
+ }
+ 
+ const BookingContext = createContext<BookingContextValue | null>(null)
+ 
+ export function BookingProvider({ children }: { children: React.ReactNode }) {
+   const [draft, setDraft] = useState<BookingDraft>({
+     cart: [],
+     depositEnabled: true,
+     depositPercentage: 30,
+     paymentChoice: 'full',
+   })
+ 
+ 
+EOF
+)
