@@ -16,7 +16,10 @@ export default function ProLayout() {
       <Stack.Screen name="loyalty" />
       <Stack.Screen name="booking-history" />
       <Stack.Screen name="client-details" />
-      <Stack.Screen name="accounting-reports" />
+      <Stack.Screen name="EmployeeManagement" />
+      <Stack.Screen name="ExpenseManagement" />
+      <Stack.Screen name="service" />
+      <Stack.Screen name="AccountingReports" />
     </Stack>
   );
 }

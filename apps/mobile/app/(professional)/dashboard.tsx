@@ -61,14 +61,14 @@ export default function ProDashboard() {
         <Tile title="Caisse & Transactions" subtitle="Suivi des paiements" icon="cash-outline" href="/(professional)/cash-register" />
         <Tile title="Paramètres du Salon" subtitle="Infos • Photos • Horaires • Paiements • Acompte" icon="settings-outline" href="/(professional)/salon-settings" />
         <Tile title="Promotions & Offres" subtitle="Créer et piloter vos promos" icon="pricetags-outline" href="/(professional)/promotions" tone="gold" />
-        <Tile title="Carte de Fidélité" subtitle="Programme personnalisé salon" icon="gift-outline" href="/(professional)/loyalty" tone="gold" />
+        <Tile title="Carte de Fidélité" subtitle="Gestion du programme de fidélité" icon="gift-outline" href="/(professional)/loyalty" tone="gold" />
         <Tile title="Historique Réservations" subtitle="Terminé • Annulé • No-show" icon="calendar-outline" href="/(professional)/booking-history" />
   <Tile title="Fiche Client (exemple)" subtitle="Détails + gestion acompte" icon="person-outline" href="/(professional)/client-details" />
 
   <Tile title="Gestion des Employés" subtitle="Ajouter, modifier ou supprimer des employés" icon="people-outline" href="/(professional)/EmployeeManagement" />
   <Tile title="Dépenses & Revenus" subtitle="Gestion des dépenses et revenus du salon" icon="cash-outline" href="/(professional)/ExpenseManagement" />
   <Tile title="Rapports Comptables" subtitle="Analyse des revenus et dépenses" icon="bar-chart-outline" href="/(professional)/AccountingReports" />
-  <Tile title="Fidélité" subtitle="Gestion du programme de fidélité" icon="gift-outline" href="/(professional)/loyalty" />
+  <Tile title="Service" subtitle="service & promotions" icon="service-outline" href="/(professional)/service" />
 </ScrollView>
     </SafeAreaView>
   );
