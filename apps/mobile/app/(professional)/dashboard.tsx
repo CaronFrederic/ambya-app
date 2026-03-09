@@ -53,6 +53,34 @@ type KPIProps = {
   value: string
 }
 
+function TodayAppointmentsBanner() {
+  return (
+    <View style={styles.bannerWrap}>
+      <View style={styles.bannerLeft}>
+        <View style={styles.bannerIconCircle}>
+          <Ionicons name="calendar-outline" size={24} color={COLORS.white} />
+        </View>
+
+        <View>
+          <Text style={styles.bannerLabel}>RDV aujourd'hui</Text>
+          <Text style={styles.bannerValue}>12</Text>
+        </View>
+      </View>
+
+      <Pressable
+        onPress={() => router.push("/(professional)/booking-history")}
+        style={({ pressed }) => [
+          styles.bannerButton,
+          pressed && { opacity: 0.9 },
+        ]}
+      >
+        <Text style={styles.bannerButtonText}>Voir l'agenda</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+
 function KPI({ icon, iconColor, bgColor, label, value }: KPIProps) {
   return (
     <View style={styles.kpiCard}>
@@ -184,6 +212,9 @@ export default function ProDashboard() {
 
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 28 }}>
 
+          <TodayAppointmentsBanner />
+
+
               {/* KPI */}
           <View style={styles.kpiGrid}>
             <KPI
@@ -231,7 +262,7 @@ export default function ProDashboard() {
   <Tile title="Gestion des Employés" subtitle="Ajouter, modifier ou supprimer des employés" icon="people-outline" href="/(professional)/EmployeeManagement" />
   <Tile title="Dépenses & Revenus" subtitle="Gestion des dépenses et revenus du salon" icon="cash-outline" href="/(professional)/ExpenseManagement" />
   <Tile title="Rapports Comptables" subtitle="Analyse des revenus et dépenses" icon="bar-chart-outline" href="/(professional)/AccountingReports" />
-  <Tile title="Service" subtitle="service & promotions" icon="service-outline" href="/(professional)/service" />
+  <Tile title="Service" subtitle="service & promotions" icon="construct-outline" href="/(professional)/service" />
 </ScrollView>
     </SafeAreaView>
   );
@@ -391,4 +422,62 @@ quickActionLabel: {
   fontSize: 14,
   fontWeight: "500",
 },
+bannerWrap: {
+  backgroundColor: COLORS.primary,
+  borderRadius: 22,
+  paddingHorizontal: 16,
+  paddingVertical: 18,
+  marginBottom: 18,
+  flexDirection: "row",
+  alignItems: "center",
+  justifyContent: "space-between",
+  shadowColor: "#000",
+  shadowOpacity: 0.12,
+  shadowRadius: 8,
+  elevation: 4,
+},
+
+bannerLeft: {
+  flexDirection: "row",
+  alignItems: "center",
+  flex: 1,
+},
+
+bannerIconCircle: {
+  width: 48,
+  height: 48,
+  borderRadius: 999,
+  backgroundColor: "rgba(255,255,255,0.18)",
+  alignItems: "center",
+  justifyContent: "center",
+  marginRight: 14,
+},
+
+bannerLabel: {
+  color: "rgba(255,255,255,0.82)",
+  fontSize: 14,
+  fontWeight: "500",
+},
+
+bannerValue: {
+  color: COLORS.white,
+  fontSize: 28,
+  fontWeight: "800",
+  marginTop: 2,
+},
+
+bannerButton: {
+  backgroundColor: COLORS.white,
+  paddingHorizontal: 16,
+  paddingVertical: 10,
+  borderRadius: 999,
+  marginLeft: 12,
+},
+
+bannerButtonText: {
+  color: COLORS.primary,
+  fontSize: 14,
+  fontWeight: "700",
+},
+
 });
