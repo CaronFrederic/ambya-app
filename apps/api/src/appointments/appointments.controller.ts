@@ -8,6 +8,8 @@ import { CurrentUser } from '../auth/decorators/current-user.decorator'
 import type { JwtUser } from '../auth/decorators/current-user.decorator'
 import { CancelAppointmentDto } from './dto/cancel-appointment.dto'
 import { CreateAppointmentsFromCartDto } from './dto/create-appointments-from-cart.dto'
+import { UpdateAppointmentGroupDto } from './dto/update-appointment-group.dto'
+import { CreateReviewDto } from './dto/create-review.dto'
 
 @Controller('appointments')
 @UseGuards(JwtAuthGuard)
@@ -43,4 +45,35 @@ export class AppointmentsController {
     return this.service.cancel(user, id, dto)
   }
 
+  @Get('group/:groupId')
+  groupDetails(@CurrentUser() user: JwtUser, @Param('groupId') groupId: string) {
+    return this.service.groupDetails(user, groupId)
+  }
+
+  @Patch('group/:groupId')
+  updateGroup(
+    @CurrentUser() user: JwtUser,
+    @Param('groupId') groupId: string,
+    @Body() dto: UpdateAppointmentGroupDto,
+  ) {
+    return this.service.updateGroup(user, groupId, dto)
+  }
+
+  @Patch('group/:groupId/cancel')
+  cancelGroup(
+    @CurrentUser() user: JwtUser,
+    @Param('groupId') groupId: string,
+    @Body() dto: CancelAppointmentDto,
+  ) {
+    return this.service.cancelGroup(user, groupId, dto)
+  }
+
+  @Post('group/:groupId/review')
+  createReview(
+    @CurrentUser() user: JwtUser,
+    @Param('groupId') groupId: string,
+    @Body() dto: CreateReviewDto,
+  ) {
+    return this.service.createGroupReview(user, groupId, dto)
+  }
 }

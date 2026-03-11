@@ -6,6 +6,7 @@ export type HomePayload = {
   offers: Array<{
     salonId: string;
     salonName: string;
+    serviceId: string;
     serviceName: string;
     discountPercent: number;
     originalPrice: number;
@@ -27,6 +28,7 @@ export type SearchPayload = {
     name: string;
     city: string | null;
     country: string | null;
+    rating: number;
     highlights: Array<{
       id: string;
       name: string;
@@ -63,6 +65,14 @@ export type SalonDetailsPayload = {
     createdAt: string;
   }>;
   employees: Array<{ id: string; displayName: string }>;
+  openingHours: Array<{
+    day: string;
+    open: string | null;
+    close: string | null;
+    closed: boolean;
+  }>;
+  conditions: string[];
+  responseTimeMin: number;
   servicesByCategory: Record<
     string,
     Array<{
@@ -106,6 +116,8 @@ export function useSearchDiscovery(params: {
   city?: string;
   country?: string;
   category?: string;
+  preferredCity?: string;
+  preferredCountry?: string;
 }) {
   return useQuery({
     queryKey: ["discover", "search", params],

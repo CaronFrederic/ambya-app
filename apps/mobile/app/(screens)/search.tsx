@@ -1,36 +1,60 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { View, Text, Pressable } from 'react-native'
 import { router } from 'expo-router'
+import * as SecureStore from 'expo-secure-store'
 
 import { Screen } from '../../src/components/Screen'
 import { Header } from '../../src/components/Header'
 import { Card } from '../../src/components/Card'
 import { Input } from '../../src/components/Input'
+import { SalonListItem } from '../../src/components/SalonListItem'
 import { useSearchDiscovery, useHomeDiscovery } from '../../src/api/discovery'
+import { useCountries } from '../../src/api/config'
+import { FALLBACK_COUNTRIES } from '../../src/constants/countries'
+import { useMeSummary } from '../../src/api/me'
 import { spacing } from '../../src/theme/spacing'
 import { colors } from '../../src/theme/colors'
 
 export default function Search() {
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState<string | null>(null)
+  const [country, setCountry] = useState<string | undefined>(undefined)
 
-  const { data: categoriesData } = useHomeDiscovery({ city: 'Libreville', country: 'Gabon' })
+  const { data: countriesData } = useCountries()
+  const { data: me } = useMeSummary(true)
+
+  useEffect(() => {
+    const loadCountry = async () => {
+      const countryCode = await SecureStore.getItemAsync('countryCode')
+      const countries = countriesData?.length ? countriesData : FALLBACK_COUNTRIES
+      const selectedCountry = countries.find((item) => item.code === countryCode)
+      setCountry(selectedCountry?.name)
+    }
+
+    void loadCountry()
+  }, [countriesData])
+
+  const { data: categoriesData } = useHomeDiscovery({ country })
   const categories = categoriesData?.categories ?? []
 
   const debouncedQuery = useMemo(() => query.trim(), [query])
   const { data, isLoading } = useSearchDiscovery({
     q: debouncedQuery || undefined,
-    city: 'Libreville',
-    country: 'Gabon',
     category: category ?? undefined,
+    preferredCity: me?.profile?.city ?? undefined,
+    preferredCountry: me?.profile?.country ?? country,
   })
 
   return (
-    <Screen>
-      <Header title="Recherche" subtitle="Trouve un salon près de toi" />
+    <Screen scroll keyboard>
+      <Header title="Recherche" subtitle="Trouve un salon dans ton pays" />
 
       <View style={{ gap: spacing.md }}>
-        <Input placeholder="Rechercher un salon ou un service..." value={query} onChangeText={setQuery} />
+        <Input
+          placeholder="Rechercher un salon, service, ville ou pays..."
+          value={query}
+          onChangeText={setQuery}
+        />
 
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm }}>
           {categories.map((cat) => (
@@ -52,25 +76,28 @@ export default function Search() {
         </View>
 
         {isLoading ? (
-          <Card><Text>Chargement...</Text></Card>
-        ) : (
-          (data?.items ?? []).map((item) => (
-            <Card key={item.id}>
-              <Pressable
-                onPress={() => router.push({ pathname: '/(screens)/salon', params: { salonId: item.id } })}
-                style={{ gap: spacing.xs }}
-              >
-                <Text style={{ fontWeight: '700', color: colors.text }}>{item.name}</Text>
-                <Text style={{ color: colors.textMuted }}>
-                  {[item.city, item.country].filter(Boolean).join(', ')}
-                </Text>
-                <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-                  {item.highlights.slice(0, 3).map((h) => h.name).join(' • ')}
-                </Text>
-              </Pressable>
-            </Card>
-          ))
-        )}
+          <Card>
+            <Text>Chargement...</Text>
+          </Card>
+        ) : null}
+
+        {(data?.items ?? []).map((item) => (
+          <SalonListItem
+            key={item.id}
+            name={item.name}
+            city={item.city}
+            country={item.country}
+            rating={item.rating}
+            duration={
+              item.highlights[0]?.durationMin
+                ? `${item.highlights[0].durationMin} min`
+                : '30 min'
+            }
+            onPress={() =>
+              router.push({ pathname: '/(screens)/salon', params: { salonId: item.id } })
+            }
+          />
+        ))}
       </View>
     </Screen>
   )

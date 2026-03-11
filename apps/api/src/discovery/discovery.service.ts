@@ -15,9 +15,6 @@ export class DiscoveryService {
 
   async home(query: HomeQueryDto) {
     const where: any = { isActive: true };
-    if (query.city) where.city = { contains: query.city, mode: 'insensitive' };
-    if (query.country)
-      where.country = { contains: query.country, mode: 'insensitive' };
 
     const salons = await this.prisma.salon.findMany({
       where,
@@ -68,8 +65,12 @@ export class DiscoveryService {
         duration: salon.services[0]
           ? `${salon.services[0].durationMin} min`
           : '30 min',
+        geoRank: this.computeGeoRank(salon, query.city, query.country),
       }))
-      .sort((a, b) => b.rating - a.rating)
+      .sort((a, b) => {
+        if (a.geoRank !== b.geoRank) return a.geoRank - b.geoRank;
+        return b.rating - a.rating;
+      })
       .slice(0, 12);
 
     const offers = filteredByCategory
@@ -81,6 +82,7 @@ export class DiscoveryService {
         return {
           salonId: salon.id,
           salonName: salon.name,
+          serviceId: service.id,
           serviceName: service.name,
           discountPercent: discount,
           originalPrice: service.price,
@@ -91,7 +93,7 @@ export class DiscoveryService {
     return {
       categories,
       offers,
-      topRatedSalons,
+      topRatedSalons: topRatedSalons.map(({ geoRank, ...salon }) => salon),
     };
   }
 
@@ -114,6 +116,8 @@ export class DiscoveryService {
             },
           },
         },
+        { city: { contains: q, mode: 'insensitive' } },
+        { country: { contains: q, mode: 'insensitive' } },
       ];
     }
 
@@ -124,13 +128,16 @@ export class DiscoveryService {
         name: true,
         city: true,
         country: true,
+        appointments: {
+          where: { status: { in: ['COMPLETED', 'CONFIRMED'] } },
+          select: { id: true },
+        },
         services: {
           where: { isActive: true },
           select: { id: true, name: true, price: true, durationMin: true },
           take: 10,
         },
       },
-      orderBy: { createdAt: 'desc' },
       take: 80,
     });
 
@@ -142,20 +149,33 @@ export class DiscoveryService {
         )
       : salons;
 
-    return {
-      items: filtered.map((salon) => ({
+    const ranked = filtered
+      .map((salon) => ({
         id: salon.id,
         name: salon.name,
         city: salon.city,
         country: salon.country,
+        rating: this.estimateRating(salon.appointments.length),
+        geoRank: this.computeGeoRank(
+          salon,
+          query.preferredCity ?? query.city,
+          query.preferredCountry ?? query.country,
+        ),
         highlights: salon.services.map((service) => ({
           id: service.id,
           name: service.name,
           price: service.price,
           durationMin: service.durationMin,
         })),
-      })),
-      total: filtered.length,
+      }))
+      .sort((a, b) => {
+        if (a.geoRank !== b.geoRank) return a.geoRank - b.geoRank;
+        return b.rating - a.rating;
+      });
+
+    return {
+      items: ranked.map(({ geoRank, ...salon }) => salon),
+      total: ranked.length,
     };
   }
 
@@ -285,6 +305,9 @@ export class DiscoveryService {
         : this.defaultGallery(),
       socialLinks: this.normalizeSocialLinks(salon.socialLinks, salon.name),
       employees: salon.employees,
+      openingHours: this.defaultOpeningHours(),
+      conditions: this.defaultConditions(),
+      responseTimeMin: this.estimateResponseTimeMin(salon.employees.length),
       servicesByCategory,
       rating: averageRating,
       reviewCount: reviews.length,
@@ -448,6 +471,47 @@ export class DiscoveryService {
       tiktok: `https://tiktok.com/@${slug}`,
       website: `https://ambya.app/salons/${slug}`,
     };
+  }
+
+  private defaultOpeningHours() {
+    return [
+      { day: 'Lundi', open: '08:00', close: '18:00', closed: false },
+      { day: 'Mardi', open: '08:00', close: '18:00', closed: false },
+      { day: 'Mercredi', open: '08:00', close: '18:00', closed: false },
+      { day: 'Jeudi', open: '08:00', close: '18:00', closed: false },
+      { day: 'Vendredi', open: '08:00', close: '19:00', closed: false },
+      { day: 'Samedi', open: '09:00', close: '17:00', closed: false },
+      { day: 'Dimanche', open: null, close: null, closed: true },
+    ];
+  }
+
+  private defaultConditions() {
+    return [
+      'Paiement: Espèces, Mobile Money, Carte bancaire',
+      'Annulation gratuite jusqu’à 24h avant',
+      'Retard de plus de 15 min = annulation automatique',
+    ];
+  }
+
+  private estimateResponseTimeMin(employeeCount: number) {
+    if (employeeCount >= 4) return 10;
+    if (employeeCount >= 2) return 15;
+    return 20;
+  }
+
+  private computeGeoRank(
+    salon: { city: string | null; country: string | null },
+    preferredCity?: string,
+    preferredCountry?: string,
+  ) {
+    const normalizedCity = preferredCity?.trim().toLowerCase();
+    const normalizedCountry = preferredCountry?.trim().toLowerCase();
+    const salonCity = salon.city?.trim().toLowerCase();
+    const salonCountry = salon.country?.trim().toLowerCase();
+
+    if (normalizedCity && salonCity === normalizedCity) return 0;
+    if (normalizedCountry && salonCountry === normalizedCountry) return 1;
+    return 2;
   }
 
   private estimateRating(completedCount: number) {

@@ -25,6 +25,7 @@ export const colors = {
 
   dangerSoft: '#FCE1E6',
   dangerText: '#9F1239',
+  danger: '#9F1239',
 
   // Aliases existants (compat)
   primary: '#6B2737',

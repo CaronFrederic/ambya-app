@@ -33,8 +33,14 @@ function formatFCFA(v: number) {
 }
 
 export default function SalonDetailScreen() {
-  const params = useLocalSearchParams<{ salonId?: string }>();
+  const params = useLocalSearchParams<{
+    salonId?: string;
+    offerServiceId?: string;
+    offerPrice?: string;
+  }>();
   const salonId = params.salonId;
+  const offerServiceId = params.offerServiceId;
+  const offerPrice = params.offerPrice ? Number(params.offerPrice) : undefined;
   const { data, isLoading } = useSalonDetails(salonId);
 
   const [activeTab, setActiveTab] = useState<TabKey>("about");
@@ -46,10 +52,13 @@ export default function SalonDetailScreen() {
   const servicesByCategory = data?.servicesByCategory ?? {};
   const gallery = data?.galleryImageUrls ?? [];
   const currentImage = gallery[activeImageIndex] ?? data?.coverImageUrl;
+  const addressLine = [data?.address, data?.city, data?.country]
+    .filter(Boolean)
+    .join(", ");
 
   const openLink = (url?: string) => {
     if (!url) return;
-    Linking.openURL(url);
+    void Linking.openURL(url);
   };
 
   const moveImage = (delta: number) => {
@@ -57,6 +66,18 @@ export default function SalonDetailScreen() {
     setActiveImageIndex(
       (prev) => (prev + delta + gallery.length) % gallery.length,
     );
+  };
+
+  const getEffectivePrice = (serviceId: string, originalPrice: number) => {
+    if (
+      offerServiceId &&
+      offerPrice &&
+      offerPrice > 0 &&
+      serviceId === offerServiceId
+    ) {
+      return offerPrice;
+    }
+    return originalPrice;
   };
 
   const addToCart = (service: {
@@ -67,17 +88,19 @@ export default function SalonDetailScreen() {
   }) => {
     setCart((prev) => {
       const found = prev.find((x) => x.id === service.id);
-      if (!found)
+      if (!found) {
         return [
           ...prev,
           {
             id: service.id,
             name: service.name,
-            price: service.price,
+            price: getEffectivePrice(service.id, service.price),
             duration: service.durationMin,
             quantity: 1,
           },
         ];
+      }
+
       return prev.map((x) =>
         x.id === service.id ? { ...x, quantity: x.quantity + 1 } : x,
       );
@@ -153,7 +176,7 @@ export default function SalonDetailScreen() {
           </View>
         ) : null}
 
-        {gallery.length > 0 && (
+        {gallery.length > 0 ? (
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -165,16 +188,14 @@ export default function SalonDetailScreen() {
                 onPress={() => setActiveImageIndex(index)}
                 style={[
                   styles.thumbWrap,
-                  activeImageIndex === index
-                    ? styles.thumbWrapActive
-                    : undefined,
+                  activeImageIndex === index ? styles.thumbWrapActive : undefined,
                 ]}
               >
                 <Image source={{ uri: url }} style={styles.thumbImage} />
               </Pressable>
             ))}
           </ScrollView>
-        )}
+        ) : null}
 
         {isLoading ? <Text style={styles.loading}>Chargement...</Text> : null}
 
@@ -183,7 +204,7 @@ export default function SalonDetailScreen() {
 
           <View style={styles.metaSocialRow}>
             <Text style={styles.metaText}>
-              ⭐ {data?.rating?.toFixed(1) ?? "4.5"} ({data?.reviewCount ?? 0}+)
+              {"⭐"} {data?.rating?.toFixed(1) ?? "4.5"} ({data?.reviewCount ?? 0}+)
             </Text>
             <View style={styles.socialRow}>
               <Pressable
@@ -217,11 +238,16 @@ export default function SalonDetailScreen() {
             </View>
           </View>
 
-          <Text style={styles.metaText}>
-            {[data?.address, data?.city, data?.country]
-              .filter(Boolean)
-              .join(", ")}
-          </Text>
+          {addressLine ? (
+            <View style={styles.locationRow}>
+              <Ionicons
+                name="location-outline"
+                size={15}
+                color={colors.premium}
+              />
+              <Text style={styles.metaText}>{addressLine}</Text>
+            </View>
+          ) : null}
         </View>
 
         <View style={styles.tabsRow}>
@@ -242,23 +268,80 @@ export default function SalonDetailScreen() {
           />
         </View>
 
-        {activeTab === "about" && (
-          <View style={styles.block}>
-            <Text style={styles.blockTitle}>Description du salon</Text>
-            <Text style={styles.paragraph}>
-              {data?.description || "Description indisponible pour le moment."}
-            </Text>
-
-            <Text style={styles.blockTitle}>Équipe</Text>
-            {(data?.employees ?? []).map((employee) => (
-              <Text key={employee.id} style={styles.paragraph}>
-                • {employee.displayName}
+        {activeTab === "about" ? (
+          <View style={styles.aboutWrap}>
+            <View style={styles.aboutSection}>
+              <Text style={styles.aboutTitle}>Description du salon</Text>
+              <Text style={styles.aboutText}>
+                {data?.description || "Description indisponible pour le moment."}
               </Text>
-            ))}
-          </View>
-        )}
+            </View>
 
-        {activeTab === "services" && (
+            <View style={styles.aboutSection}>
+              <Text style={styles.aboutTitle}>Horaires d'ouverture</Text>
+              <View style={styles.aboutCard}>
+                {(data?.openingHours ?? []).map((item) => (
+                  <View key={item.day} style={styles.hoursRow}>
+                    <Text style={styles.hoursDay}>{item.day}</Text>
+                    <Text
+                      style={[
+                        styles.hoursValue,
+                        item.closed ? styles.hoursClosed : undefined,
+                      ]}
+                    >
+                      {item.closed ? "Fermé" : `${item.open} - ${item.close}`}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+
+            <View style={styles.aboutSection}>
+              <Text style={styles.aboutTitle}>Conditions</Text>
+              <View style={styles.aboutCard}>
+                {(data?.conditions ?? []).map((condition) => (
+                  <Text key={condition} style={styles.conditionText}>
+                    • {condition}
+                  </Text>
+                ))}
+              </View>
+            </View>
+
+            <View style={styles.aboutSection}>
+              <Text style={styles.aboutTitle}>Temps de réponse</Text>
+              <View style={styles.responseCard}>
+                <View style={styles.responseRow}>
+                  <Ionicons
+                    name="time-outline"
+                    size={18}
+                    color={colors.premium}
+                  />
+                  <Text style={styles.responseText}>
+                    Temps de réponse moyen : {data?.responseTimeMin ?? 15} min
+                  </Text>
+                </View>
+                <Text style={styles.responseHint}>
+                  Indication basée sur les réponses du prestataire
+                </Text>
+              </View>
+            </View>
+
+            {(data?.employees ?? []).length ? (
+              <View style={styles.aboutSection}>
+                <Text style={styles.aboutTitle}>Équipe</Text>
+                <View style={styles.aboutCard}>
+                  {(data?.employees ?? []).map((employee) => (
+                    <Text key={employee.id} style={styles.conditionText}>
+                      • {employee.displayName}
+                    </Text>
+                  ))}
+                </View>
+              </View>
+            ) : null}
+          </View>
+        ) : null}
+
+        {activeTab === "services" ? (
           <View style={{ gap: spacing.md }}>
             {Object.entries(servicesByCategory).map(([category, services]) => {
               const expanded = expandedCategory === category;
@@ -277,7 +360,7 @@ export default function SalonDetailScreen() {
                       color={colors.brand}
                     />
                   </Pressable>
-                  {expanded && (
+                  {expanded ? (
                     <View style={{ gap: spacing.sm }}>
                       {services.map((service) => {
                         const qty =
@@ -291,9 +374,20 @@ export default function SalonDetailScreen() {
                               <Text style={styles.serviceMeta}>
                                 Durée: {service.durationMin} min
                               </Text>
-                              <Text style={styles.servicePrice}>
-                                {formatFCFA(service.price)}
-                              </Text>
+                              {offerServiceId === service.id && offerPrice ? (
+                                <View style={styles.offerPriceRow}>
+                                  <Text style={styles.servicePriceOld}>
+                                    {formatFCFA(service.price)}
+                                  </Text>
+                                  <Text style={styles.servicePrice}>
+                                    {formatFCFA(offerPrice)}
+                                  </Text>
+                                </View>
+                              ) : (
+                                <Text style={styles.servicePrice}>
+                                  {formatFCFA(service.price)}
+                                </Text>
+                              )}
                             </View>
                             <View style={styles.qtyWrap}>
                               {qty > 0 ? (
@@ -301,7 +395,7 @@ export default function SalonDetailScreen() {
                                   onPress={() => removeFromCart(service.id)}
                                   style={styles.qtyBtnGhost}
                                 >
-                                  <Text>−</Text>
+                                  <Text>-</Text>
                                 </Pressable>
                               ) : null}
                               {qty > 0 ? <Text>{qty}</Text> : null}
@@ -316,17 +410,17 @@ export default function SalonDetailScreen() {
                         );
                       })}
                     </View>
-                  )}
+                  ) : null}
                 </View>
               );
             })}
           </View>
-        )}
+        ) : null}
 
-        {activeTab === "reviews" && (
+        {activeTab === "reviews" ? (
           <View style={{ gap: spacing.md }}>
             {(data?.reviews ?? []).length === 0 ? (
-              <Text>Aucun avis pour le moment.</Text>
+              <Text style={styles.emptyText}>Aucun avis pour le moment.</Text>
             ) : null}
             {(data?.reviews ?? []).map((review) => (
               <ReviewCard
@@ -337,10 +431,10 @@ export default function SalonDetailScreen() {
               />
             ))}
           </View>
-        )}
+        ) : null}
       </ScrollView>
 
-      {totalItems > 0 && (
+      {totalItems > 0 ? (
         <View style={styles.cartBar}>
           <View>
             <Text style={styles.cartSmall}>{totalItems} service(s)</Text>
@@ -357,7 +451,7 @@ export default function SalonDetailScreen() {
             <Text style={styles.cartCtaText}>Voir le récap</Text>
           </Pressable>
         </View>
-      )}
+      ) : null}
     </Screen>
   );
 }
@@ -440,15 +534,76 @@ const styles = StyleSheet.create({
     borderColor: overlays.brand20,
     backgroundColor: colors.card,
   },
+  locationRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+  },
   metaText: { color: colors.textMuted },
   tabsRow: {
     flexDirection: "row",
     gap: spacing.sm,
     paddingHorizontal: spacing.lg,
   },
-  block: { paddingHorizontal: spacing.lg, gap: spacing.sm },
-  blockTitle: { color: colors.text, ...typography.body, fontWeight: "700" },
-  paragraph: { color: colors.textMuted, ...typography.small },
+  aboutWrap: { paddingHorizontal: spacing.lg, gap: spacing.lg },
+  aboutSection: { gap: spacing.sm },
+  aboutTitle: {
+    color: colors.text,
+    ...typography.h3,
+    fontWeight: "700",
+  },
+  aboutText: {
+    color: colors.text,
+    ...typography.body,
+    lineHeight: 24,
+  },
+  aboutCard: {
+    backgroundColor: colors.card,
+    borderRadius: radius.xl,
+    borderWidth: 1,
+    borderColor: overlays.brand10,
+    padding: spacing.md,
+    gap: spacing.sm,
+    shadowColor: colors.shadowColor,
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+  hoursRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: spacing.md,
+  },
+  hoursDay: { color: colors.text, ...typography.body },
+  hoursValue: { color: colors.brand, ...typography.body, fontWeight: "600" },
+  hoursClosed: { color: colors.dangerText },
+  conditionText: {
+    color: colors.textMuted,
+    ...typography.body,
+    lineHeight: 24,
+  },
+  responseCard: {
+    backgroundColor: colors.card,
+    borderRadius: radius.xl,
+    borderWidth: 1,
+    borderColor: overlays.brand10,
+    padding: spacing.md,
+    gap: spacing.xs,
+    shadowColor: colors.shadowColor,
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 2,
+  },
+  responseRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  responseText: { color: colors.text, ...typography.body, fontWeight: "600" },
+  responseHint: { color: colors.textMuted, ...typography.small },
   accordion: {
     backgroundColor: colors.card,
     borderRadius: radius.xl,
@@ -472,6 +627,17 @@ const styles = StyleSheet.create({
   },
   serviceName: { color: colors.text, fontWeight: "600" },
   serviceMeta: { color: colors.textMuted, fontSize: 12 },
+  offerPriceRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    marginTop: 4,
+  },
+  servicePriceOld: {
+    color: colors.textMuted,
+    textDecorationLine: "line-through",
+    ...typography.small,
+  },
   servicePrice: { color: colors.brand, fontWeight: "700", marginTop: 4 },
   qtyWrap: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   qtyBtnGhost: {
@@ -491,6 +657,11 @@ const styles = StyleSheet.create({
     backgroundColor: colors.brand,
     alignItems: "center",
     justifyContent: "center",
+  },
+  emptyText: {
+    paddingHorizontal: spacing.lg,
+    color: colors.textMuted,
+    ...typography.body,
   },
   cartBar: {
     position: "absolute",
