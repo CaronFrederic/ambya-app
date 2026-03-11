@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -7,7 +7,7 @@ import {
   Pressable,
   StyleSheet,
 } from "react-native";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 
 import { useAppointments } from "../../src/api/appointments";
@@ -27,7 +27,8 @@ type AppointmentStatus =
   | "CANCELLED"
   | "REJECTED"
   | "COMPLETED"
-  | "NO_SHOW";
+  | "NO_SHOW"
+  | "EXPIRED";
 
 type GroupedAppointment = {
   id: string;
@@ -36,6 +37,7 @@ type GroupedAppointment = {
   salonName: string;
   services: string[];
   employeeNames: string[];
+  totalAmount: number;
 };
 
 function toStatusUi(status: AppointmentStatus) {
@@ -63,6 +65,30 @@ function toStatusUi(status: AppointmentStatus) {
       pillColor: "#4E5A68",
     };
   }
+  if (status === "EXPIRED") {
+    return {
+      label: "Expiré",
+      border: "#4E5A68",
+      pillBg: "#EDEFF3",
+      pillColor: "#4E5A68",
+    };
+  }
+  if (status === "CANCELLED") {
+    return {
+      label: "Annulé",
+      border: colors.dangerText,
+      pillBg: colors.dangerSoft,
+      pillColor: colors.dangerText,
+    };
+  }
+  if (status === "NO_SHOW") {
+    return {
+      label: "Non honoré",
+      border: colors.dangerText,
+      pillBg: colors.dangerSoft,
+      pillColor: colors.dangerText,
+    };
+  }
 
   return {
     label: status,
@@ -78,10 +104,57 @@ function extractGroupId(note?: string | null) {
   return match?.[1] ?? null;
 }
 
+function getDisplayStatus(
+  status: Exclude<AppointmentStatus, "EXPIRED">,
+  startAt: string,
+) {
+  if (status === "PENDING" && new Date(startAt).getTime() < Date.now()) {
+    return "EXPIRED" as const;
+  }
+
+  return status;
+}
+
+function shouldStrikeAmount(status: AppointmentStatus) {
+  return (
+    status === "EXPIRED" ||
+    status === "CANCELLED" ||
+    status === "NO_SHOW" ||
+    status === "REJECTED"
+  );
+}
+
+function formatCurrency(amount: number) {
+  return `${amount.toLocaleString("fr-FR")} FCFA`;
+}
+
+function formatAppointmentDate(dateIso: string) {
+  return new Date(dateIso).toLocaleDateString("fr-FR", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
+
+function formatAppointmentTime(dateIso: string) {
+  return new Date(dateIso).toLocaleTimeString("fr-FR", {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "UTC",
+  });
+}
+
 export default function AppointmentsScreen() {
   const { data, isLoading, isError, refetch } = useAppointments();
   const [refreshing, setRefreshing] = useState(false);
   const [tab, setTab] = useState<TabKey>("upcoming");
+
+  useFocusEffect(
+    useCallback(() => {
+      void refetch();
+    }, [refetch]),
+  );
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -95,7 +168,10 @@ export default function AppointmentsScreen() {
 
     for (const item of items) {
       const groupId = extractGroupId(item.note) ?? item.id;
-      const status = item.status as AppointmentStatus;
+      const status = getDisplayStatus(
+        item.status as Exclude<AppointmentStatus, "EXPIRED">,
+        item.startAt,
+      );
 
       if (!map.has(groupId)) {
         map.set(groupId, {
@@ -107,6 +183,7 @@ export default function AppointmentsScreen() {
           employeeNames: item.employee?.displayName
             ? [item.employee.displayName]
             : [],
+          totalAmount: item.service.price,
         });
         continue;
       }
@@ -121,11 +198,14 @@ export default function AppointmentsScreen() {
       ) {
         existing.employeeNames.push(item.employee.displayName);
       }
-
       if (
         new Date(item.startAt).getTime() < new Date(existing.startAt).getTime()
       ) {
         existing.startAt = item.startAt;
+      }
+      existing.totalAmount += item.service.price;
+      if (existing.status !== "EXPIRED") {
+        existing.status = status;
       }
     }
 
@@ -220,8 +300,15 @@ export default function AppointmentsScreen() {
               const statusUi = toStatusUi(item.status);
               const isPastCompleted =
                 tab === "past" && item.status === "COMPLETED";
+              const strikeAmount = shouldStrikeAmount(item.status);
+
               return (
-                <View
+                <Pressable
+                  onPress={() =>
+                    router.push(
+                      `/(screens)/appointment-details?groupId=${item.id}` as never,
+                    )
+                  }
                   style={[
                     styles.appointmentCard,
                     { borderLeftColor: statusUi.border },
@@ -254,6 +341,14 @@ export default function AppointmentsScreen() {
                       Employé: {item.employeeNames.join(", ")}
                     </Text>
                   ) : null}
+                  <Text
+                    style={[
+                      styles.totalText,
+                      strikeAmount ? styles.totalTextStriked : undefined,
+                    ]}
+                  >
+                    Total: {formatCurrency(item.totalAmount)}
+                  </Text>
 
                   <View style={styles.dateRow}>
                     <Ionicons
@@ -261,41 +356,40 @@ export default function AppointmentsScreen() {
                       size={15}
                       color={colors.textMuted}
                     />
-                    <Text style={styles.dateText}>
-                      {new Date(item.startAt).toLocaleDateString("fr-FR", {
-                        day: "numeric",
-                        month: "short",
-                        year: "numeric",
-                      })}
-                    </Text>
+                    <Text style={styles.dateText}>{formatAppointmentDate(item.startAt)}</Text>
                     <Ionicons
                       name="time-outline"
                       size={15}
                       color={colors.textMuted}
                       style={{ marginLeft: spacing.sm }}
                     />
-                    <Text style={styles.dateText}>
-                      {new Date(item.startAt).toLocaleTimeString("fr-FR", {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </Text>
+                    <Text style={styles.dateText}>{formatAppointmentTime(item.startAt)}</Text>
                   </View>
 
                   {isPastCompleted ? (
                     <>
                       <View style={styles.separator} />
-                      <Pressable style={styles.reviewRow}>
+                      <Pressable
+                        style={({ pressed }) => [
+                          styles.reviewRow,
+                          pressed ? styles.reviewRowPressed : undefined,
+                        ]}
+                        onPress={() =>
+                          router.push(
+                            `/(screens)/leave-review?groupId=${item.id}` as never,
+                          )
+                        }
+                      >
                         <Ionicons
                           name="star-outline"
                           size={14}
-                          color={colors.brand}
+                          color={colors.premium}
                         />
                         <Text style={styles.reviewText}>Laisser un avis</Text>
                       </Pressable>
                     </>
                   ) : null}
-                </View>
+                </Pressable>
               );
             }}
           />
@@ -355,6 +449,11 @@ const styles = StyleSheet.create({
   },
   serviceText: { color: colors.textMuted, ...typography.body },
   employeeText: { color: colors.textMuted, ...typography.small },
+  totalText: { color: colors.text, ...typography.body, fontWeight: "700" },
+  totalTextStriked: {
+    color: colors.textMuted,
+    textDecorationLine: "line-through",
+  },
   statusPill: {
     borderRadius: radius.full,
     paddingHorizontal: spacing.sm,
@@ -374,6 +473,9 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     marginTop: spacing.sm,
     justifyContent: "center",
+    borderRadius: radius.full,
+    paddingVertical: spacing.xs,
   },
-  reviewText: { color: colors.brand, ...typography.body, fontWeight: "600" },
+  reviewRowPressed: { backgroundColor: overlays.gold10 },
+  reviewText: { color: colors.premium, ...typography.body, fontWeight: "600" },
 });

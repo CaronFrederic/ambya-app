@@ -1,13 +1,17 @@
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { View, Text, StyleSheet, ScrollView, Pressable } from "react-native";
 import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import * as SecureStore from "expo-secure-store";
 
 import { Screen } from "../../src/components/Screen";
 import { SectionTitle } from "../../src/components/SectionTitle";
 import { OfferCard } from "../../src/components/OfferCard";
 import { SalonListItem } from "../../src/components/SalonListItem";
 import { useHomeDiscovery } from "../../src/api/discovery";
+import { useCountries } from "../../src/api/config";
+import { FALLBACK_COUNTRIES } from "../../src/constants/countries";
+import { useMeSummary } from "../../src/api/me";
 
 import { colors, overlays } from "../../src/theme/colors";
 import { spacing } from "../../src/theme/spacing";
@@ -16,8 +20,34 @@ import { typography } from "../../src/theme/typography";
 
 export default function Home() {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [fallbackCountry, setFallbackCountry] = useState<string | undefined>(
+    undefined,
+  );
+  const { data: countriesData } = useCountries();
+  const { data: me } = useMeSummary(true);
+
+  useEffect(() => {
+    const loadCountry = async () => {
+      const countryCode = await SecureStore.getItemAsync("countryCode");
+      const countries = countriesData?.length ? countriesData : FALLBACK_COUNTRIES;
+      const selectedCountry = countries.find((item) => item.code === countryCode);
+      setFallbackCountry(selectedCountry?.name);
+    };
+
+    void loadCountry();
+  }, [countriesData]);
+
+  const location = useMemo(
+    () => ({
+      city: me?.profile?.city ?? undefined,
+      country: me?.profile?.country ?? fallbackCountry,
+    }),
+    [fallbackCountry, me?.profile?.city, me?.profile?.country],
+  );
 
   const { data, isLoading } = useHomeDiscovery({
+    city: location.city,
+    country: location.country,
     category: selectedCategory ?? undefined,
   });
 
@@ -40,7 +70,10 @@ export default function Home() {
                 size={16}
                 color={colors.brand}
               />
-              <Text style={styles.locationText}>Libreville, Gabon</Text>
+              <Text style={styles.locationText}>
+                {[location.city, location.country].filter(Boolean).join(", ") ||
+                  "Votre pays"}
+              </Text>
             </View>
           </View>
 

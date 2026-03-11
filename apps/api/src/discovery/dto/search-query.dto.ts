@@ -17,4 +17,12 @@ export class SearchQueryDto {
   @IsOptional()
   @IsString()
   category?: string
+
+  @IsOptional()
+  @IsString()
+  preferredCity?: string
+
+  @IsOptional()
+  @IsString()
+  preferredCountry?: string
 }

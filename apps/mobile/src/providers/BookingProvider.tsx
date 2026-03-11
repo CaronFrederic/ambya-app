@@ -22,9 +22,6 @@ export type BookingDraft = {
   selectedDateIso?: string; // YYYY-MM-DD
   selectedEmployeeId?: string;
 
-  selectedDateIso?: string // YYYY-MM-DD
-  selectedEmployeeId?: string
-
   // payment
   depositEnabled?: boolean;
   depositPercentage?: number;

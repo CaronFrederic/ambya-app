@@ -9,6 +9,8 @@ import { ListAppointmentsDto } from './dto/list-appointments.dto';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
 import { AssignEmployeeDto } from './dto/assign-employee.dto';
 import { CreateAppointmentsFromCartDto } from './dto/create-appointments-from-cart.dto';
+import { UpdateAppointmentGroupDto } from './dto/update-appointment-group.dto';
+import { CreateReviewDto } from './dto/create-review.dto';
 import {
   LoyaltyReason,
   LoyaltyTier,
@@ -17,6 +19,8 @@ import {
   Prisma,
   UserRole,
 } from '@prisma/client';
+
+const CLIENT_CANCELLATION_NOTICE_HOURS = 24;
 
 @Injectable()
 export class AppointmentsService {
@@ -470,6 +474,221 @@ export class AppointmentsService {
     });
   }
 
+  async groupDetails(
+    user: { userId: string; role: UserRole },
+    groupId: string,
+  ) {
+    const appointments = await this.getManagedAppointments(user, groupId);
+    const primary = appointments[0];
+    const policy = this.getCancellationPolicy(primary.startAt);
+
+    const employees = await this.prisma.employee.findMany({
+      where: { salonId: primary.salonId, isActive: true },
+      select: { id: true, displayName: true },
+      orderBy: { displayName: 'asc' },
+    });
+
+    return {
+      groupId,
+      salon: primary.salon,
+      canManage: this.canManageAppointment(primary.status, primary.startAt),
+      cancellationPolicy: policy,
+      items: appointments.map((appointment) => ({
+        id: appointment.id,
+        status: appointment.status,
+        startAt: appointment.startAt,
+        endAt: appointment.endAt,
+        note: appointment.note,
+        service: appointment.service,
+        employee: appointment.employee,
+        paymentIntent: appointment.paymentIntents[0] ?? null,
+      })),
+      employees,
+    };
+  }
+
+  async updateGroup(
+    user: { userId: string; role: UserRole },
+    groupId: string,
+    dto: UpdateAppointmentGroupDto,
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      const appointments = await this.getManagedAppointments(user, groupId, tx);
+      const primary = appointments[0];
+
+      if (
+        !appointments.every((appointment) =>
+          this.canManageAppointment(appointment.status, appointment.startAt),
+        )
+      ) {
+        throw new BadRequestException('Only pending or confirmed appointments can be modified');
+      }
+
+      const startAt = dto.startAt ? new Date(dto.startAt) : appointments[0].startAt;
+      if (Number.isNaN(startAt.getTime())) {
+        throw new BadRequestException('Invalid startAt');
+      }
+      const timeChanged = appointments[0].startAt.getTime() !== startAt.getTime();
+
+      const targetEmployeeId =
+        dto.employeeId === undefined ? undefined : dto.employeeId || null;
+
+      if (targetEmployeeId) {
+        const employee = await tx.employee.findFirst({
+          where: { id: targetEmployeeId, salonId: primary.salonId, isActive: true },
+          select: { id: true },
+        });
+        if (!employee) {
+          throw new BadRequestException('Employee not found for this salon');
+        }
+      }
+
+      this.assertStartMatchesSalonSchedulingSlots(startAt);
+
+      let cursor = new Date(startAt);
+
+      for (const appointment of appointments) {
+        const nextEnd = new Date(
+          cursor.getTime() + appointment.service.durationMin * 60_000,
+        );
+
+        this.assertWithinSalonBusinessHours(cursor, nextEnd);
+        const employeeId =
+          targetEmployeeId === undefined
+            ? appointment.employeeId
+            : targetEmployeeId;
+
+        const resolvedEmployeeId = await this.resolveEmployeeForSlot(
+          tx,
+          primary.salonId,
+          cursor,
+          nextEnd,
+          appointments.map((item) => item.id),
+          employeeId,
+          targetEmployeeId === undefined && timeChanged,
+        );
+
+        await tx.appointment.update({
+          where: { id: appointment.id },
+          data: {
+            startAt: cursor,
+            endAt: nextEnd,
+            employeeId: resolvedEmployeeId,
+          },
+        });
+
+        cursor = nextEnd;
+      }
+
+      const refreshed = await this.getManagedAppointments(user, groupId, tx);
+      return {
+        groupId,
+        cancellationPolicy: this.getCancellationPolicy(refreshed[0].startAt),
+        items: refreshed.map((appointment) => ({
+          id: appointment.id,
+          status: appointment.status,
+          startAt: appointment.startAt,
+          endAt: appointment.endAt,
+          note: appointment.note,
+          service: appointment.service,
+          employee: appointment.employee,
+          paymentIntent: appointment.paymentIntents[0] ?? null,
+        })),
+      };
+    });
+  }
+
+  async cancelGroup(
+    user: { userId: string; role: UserRole },
+    groupId: string,
+    dto: { reason?: string },
+  ) {
+    return this.prisma.$transaction(async (tx) => {
+      const appointments = await this.getManagedAppointments(user, groupId, tx);
+      const cancellable = appointments.filter((appointment) =>
+        this.canManageAppointment(appointment.status, appointment.startAt),
+      );
+
+      if (!cancellable.length) {
+        throw new BadRequestException('No cancellable appointment found');
+      }
+
+      const policy = this.getCancellationPolicy(cancellable[0].startAt);
+      const refundedAppointmentIds: string[] = [];
+
+      for (const appointment of cancellable) {
+        await tx.appointment.update({
+          where: { id: appointment.id },
+          data: { status: AppointmentStatus.CANCELLED },
+        });
+
+        const paymentIntent = appointment.paymentIntents[0];
+        if (
+          paymentIntent &&
+          paymentIntent.status === PaymentStatus.SUCCEEDED &&
+          policy.refundRate > 0
+        ) {
+          await tx.paymentIntent.update({
+            where: { id: paymentIntent.id },
+            data: { status: PaymentStatus.REFUNDED },
+          });
+          refundedAppointmentIds.push(appointment.id);
+          await this.rollbackLoyaltyAfterRefund(
+            tx,
+            appointment.clientId,
+            appointment.id,
+            paymentIntent,
+            dto.reason,
+          );
+        }
+      }
+
+      return {
+        groupId,
+        cancelledCount: cancellable.length,
+        refundedAppointmentIds,
+        cancellationPolicy: policy,
+      };
+    });
+  }
+
+  async createGroupReview(
+    user: { userId: string; role: UserRole },
+    groupId: string,
+    dto: CreateReviewDto,
+  ) {
+    if (user.role !== 'CLIENT') {
+      throw new ForbiddenException('Only clients can create reviews');
+    }
+
+    const appointments = await this.getManagedAppointments(user, groupId);
+    const primary = appointments[0];
+    const hasCompletedAppointment = appointments.some(
+      (appointment) =>
+        appointment.status === AppointmentStatus.COMPLETED &&
+        appointment.startAt.getTime() <= Date.now(),
+    );
+    const comment = dto.comment.trim();
+
+    if (!hasCompletedAppointment) {
+      throw new BadRequestException('Only completed appointments can be reviewed');
+    }
+    if (!comment) {
+      throw new BadRequestException('Comment is required');
+    }
+
+    const review = await this.prisma.salonReview.create({
+      data: {
+        salonId: primary.salonId,
+        clientId: user.userId,
+        rating: dto.rating,
+        comment,
+      },
+    });
+
+    return { review };
+  }
+
   async cancel(
     user: { userId: string; role: UserRole },
     appointmentId: string,
@@ -610,5 +829,294 @@ export class AppointmentsService {
 
       return { appointment: cancelled };
     });
+  }
+
+  private async getManagedAppointments(
+    user: { userId: string; role: UserRole },
+    groupId: string,
+    prisma: Prisma.TransactionClient | PrismaService = this.prisma,
+  ) {
+    const direct = await prisma.appointment.findMany({
+      where: this.buildManagedAppointmentWhere(user, {
+        id: groupId,
+      }),
+      orderBy: { startAt: 'asc' },
+      include: {
+        salon: { select: { id: true, name: true } },
+        service: {
+          select: { id: true, name: true, durationMin: true, price: true },
+        },
+        employee: { select: { id: true, displayName: true } },
+        paymentIntents: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          select: {
+            id: true,
+            status: true,
+            amount: true,
+            payableAmount: true,
+            discountAmount: true,
+            appliedDiscountTier: true,
+            currency: true,
+            createdAt: true,
+          },
+        },
+      },
+    });
+
+    if (direct.length > 0) {
+      return direct;
+    }
+
+    const grouped = await prisma.appointment.findMany({
+      where: this.buildManagedAppointmentWhere(user, {
+        note: { contains: `[BOOKING_GROUP:${groupId}]` },
+      }),
+      orderBy: { startAt: 'asc' },
+      include: {
+        salon: { select: { id: true, name: true } },
+        service: {
+          select: { id: true, name: true, durationMin: true, price: true },
+        },
+        employee: { select: { id: true, displayName: true } },
+        paymentIntents: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          select: {
+            id: true,
+            status: true,
+            amount: true,
+            payableAmount: true,
+            discountAmount: true,
+            appliedDiscountTier: true,
+            currency: true,
+            createdAt: true,
+          },
+        },
+      },
+    });
+
+    if (!grouped.length) {
+      throw new NotFoundException('Appointment not found');
+    }
+
+    return grouped;
+  }
+
+  private buildManagedAppointmentWhere(
+    user: { userId: string; role: UserRole },
+    extra: Prisma.AppointmentWhereInput,
+  ): Prisma.AppointmentWhereInput {
+    if (user.role === 'CLIENT') {
+      return { ...extra, clientId: user.userId };
+    }
+
+    if (user.role === 'ADMIN') {
+      return extra;
+    }
+
+    throw new ForbiddenException('Not allowed');
+  }
+
+  private canManageAppointment(status: AppointmentStatus, startAt: Date) {
+    if (startAt.getTime() <= Date.now()) {
+      return false;
+    }
+
+    return (
+      status === AppointmentStatus.PENDING ||
+      status === AppointmentStatus.CONFIRMED
+    );
+  }
+
+  private getCancellationPolicy(startAt: Date) {
+    const noticeHours = Math.max(
+      0,
+      Math.floor((startAt.getTime() - Date.now()) / 3_600_000),
+    );
+    const isRefundEligible = noticeHours >= CLIENT_CANCELLATION_NOTICE_HOURS;
+
+    return {
+      source: 'default',
+      noticeHoursRequired: CLIENT_CANCELLATION_NOTICE_HOURS,
+      noticeHoursRemaining: noticeHours,
+      refundRate: isRefundEligible ? 1 : 0,
+      refundLabel: isRefundEligible
+        ? 'Remboursement complet'
+        : 'Annulation sans remboursement',
+    };
+  }
+
+  private assertWithinSalonBusinessHours(startAt: Date, endAt: Date) {
+    const sameDay = startAt.toISOString().slice(0, 10);
+    const dayStart = new Date(`${sameDay}T08:00:00.000Z`);
+    const dayEnd = new Date(`${sameDay}T18:00:00.000Z`);
+
+    if (startAt < dayStart || endAt > dayEnd) {
+      throw new BadRequestException(
+        'Selected time is outside salon opening hours',
+      );
+    }
+  }
+
+  private assertStartMatchesSalonSchedulingSlots(startAt: Date) {
+    if (![0, 30].includes(startAt.getUTCMinutes())) {
+      throw new BadRequestException(
+        'Selected time must match the salon scheduling slots',
+      );
+    }
+  }
+
+  private async resolveEmployeeForSlot(
+    prisma: Prisma.TransactionClient,
+    salonId: string,
+    startAt: Date,
+    endAt: Date,
+    excludedAppointmentIds: string[],
+    requestedEmployeeId?: string | null,
+    allowFallbackToAnyAvailable = false,
+  ) {
+    if (requestedEmployeeId) {
+      const conflict = await prisma.appointment.findFirst({
+        where: {
+          salonId,
+          employeeId: requestedEmployeeId,
+          id: { notIn: excludedAppointmentIds },
+          status: {
+            in: [AppointmentStatus.PENDING, AppointmentStatus.CONFIRMED],
+          },
+          startAt: { lt: endAt },
+          endAt: { gt: startAt },
+        },
+        select: { id: true },
+      });
+
+      if (conflict) {
+        if (allowFallbackToAnyAvailable) {
+          // Keep the booking modifiable when the chosen time is valid for the salon
+          // but the original employee is no longer free.
+        } else {
+          throw new BadRequestException(
+            'Selected employee is not available at this time',
+          );
+        }
+      } else {
+        return requestedEmployeeId;
+      }
+    }
+
+    const employees = await prisma.employee.findMany({
+      where: { salonId, isActive: true },
+      select: { id: true },
+      orderBy: { displayName: 'asc' },
+    });
+
+    for (const employee of employees) {
+      const conflict = await prisma.appointment.findFirst({
+        where: {
+          salonId,
+          employeeId: employee.id,
+          id: { notIn: excludedAppointmentIds },
+          status: {
+            in: [AppointmentStatus.PENDING, AppointmentStatus.CONFIRMED],
+          },
+          startAt: { lt: endAt },
+          endAt: { gt: startAt },
+        },
+        select: { id: true },
+      });
+
+      if (!conflict) {
+        return employee.id;
+      }
+    }
+
+    if (requestedEmployeeId) {
+      throw new BadRequestException(
+        'Selected employee is not available at this time',
+      );
+    }
+
+    throw new BadRequestException('No employee available at the selected time');
+  }
+
+  private async rollbackLoyaltyAfterRefund(
+    prisma: Prisma.TransactionClient,
+    clientId: string,
+    appointmentId: string,
+    paymentIntent: {
+      id: string;
+      amount: number;
+      payableAmount: number | null;
+      discountAmount: number;
+      appliedDiscountTier: LoyaltyTier | null;
+    },
+    reason?: string,
+  ) {
+    const payable =
+      paymentIntent.payableAmount && paymentIntent.payableAmount > 0
+        ? paymentIntent.payableAmount
+        : paymentIntent.amount;
+
+    const earnedPoints = Math.floor(payable / 100);
+
+    const loyalty = await prisma.loyaltyAccount.findUnique({
+      where: { userId: clientId },
+      select: { id: true, currentPoints: true, lifetimePoints: true },
+    });
+
+    if (loyalty && earnedPoints > 0) {
+      await prisma.loyaltyTransaction.create({
+        data: {
+          loyaltyAccountId: loyalty.id,
+          deltaPoints: -earnedPoints,
+          reason: LoyaltyReason.ADJUSTMENT,
+          meta: {
+            appointmentId,
+            refundPaymentIntentId: paymentIntent.id,
+            reason: reason ?? null,
+          },
+        },
+      });
+
+      const newCurrent = Math.max(0, loyalty.currentPoints - earnedPoints);
+      const newLifetime = Math.max(0, loyalty.lifetimePoints - earnedPoints);
+
+      const tierFromPoints = (pts: number): LoyaltyTier => {
+        if (pts >= 5000) return 'PLATINUM';
+        if (pts >= 2000) return 'GOLD';
+        if (pts >= 500) return 'SILVER';
+        return 'BRONZE';
+      };
+
+      await prisma.loyaltyAccount.update({
+        where: { userId: clientId },
+        data: {
+          currentPoints: newCurrent,
+          lifetimePoints: newLifetime,
+          tier: tierFromPoints(newLifetime),
+        },
+      });
+    }
+
+    if ((paymentIntent.discountAmount ?? 0) > 0) {
+      const account = await prisma.loyaltyAccount.findUnique({
+        where: { userId: clientId },
+        select: { pendingDiscountAmount: true },
+      });
+
+      if ((account?.pendingDiscountAmount ?? 0) === 0) {
+        await prisma.loyaltyAccount.update({
+          where: { userId: clientId },
+          data: {
+            pendingDiscountAmount: paymentIntent.discountAmount,
+            pendingDiscountTier: paymentIntent.appliedDiscountTier ?? null,
+            pendingDiscountIssuedAt: new Date(),
+            pendingDiscountConsumedAt: null,
+            pendingDiscountConsumedIntentId: null,
+          },
+        });
+      }
+    }
   }
 }
