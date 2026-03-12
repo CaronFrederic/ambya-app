@@ -4,7 +4,9 @@ export default function AuthLayout() {
   return (
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="login" />
-      {/* plus tard: register, forgot-password */}
+      <Stack.Screen name="client-signup" />
+      <Stack.Screen name="employee-activate" />
+      <Stack.Screen name="employee-activation-success" />
     </Stack>
   )
 }
