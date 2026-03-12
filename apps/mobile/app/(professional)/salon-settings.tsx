@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import { View, Text, ScrollView, Pressable, StyleSheet, TextInput, Switch, Modal, Image } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import { ProHeader } from "./components/ProHeader";
+import { router } from "expo-router";
 
 const COLORS = {
   bg: "#FAF7F2",
@@ -35,6 +36,7 @@ export default function SalonSettingsScreen() {
   const [phone, setPhone] = useState("+241 77 00 00 00");
   const [email, setEmail] = useState("contact@ebenecoiffure.com");
   const [categories, setCategories] = useState<Record<string, boolean>>({
+  
     Coiffure: true,
     Spa: false,
     Ongles: true,
@@ -44,6 +46,15 @@ export default function SalonSettingsScreen() {
     Massage: true,
     Maquillage: false,
   });
+  const [instagramHandle, setInstagramHandle] = useState("@ebenecoiffure");
+  const [instagramVerified] = useState(true);
+  const [showInstagramFeed, setShowInstagramFeed] = useState(true);
+
+  const [tiktokHandle, setTiktokHandle] = useState("");
+  const [showTikTokFeed, setShowTikTokFeed] = useState(false);
+
+  const [facebookUrl, setFacebookUrl] = useState("");
+  const [websiteUrl, setWebsiteUrl] = useState("");
 
   // photos
   const [profileImage, setProfileImage] = useState<string | null>(null);
@@ -113,6 +124,7 @@ export default function SalonSettingsScreen() {
       setGalleryImages((prev) => [...prev, ...uris].slice(0, 10));
     }
   }
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
 
   function SlotEditor({
     slots,
@@ -210,7 +222,125 @@ export default function SalonSettingsScreen() {
                 </Pressable>
               ))}
             </View>
+            <View style={styles.socialSection}>
+  <Text style={styles.socialSectionTitle}>📱 Réseaux Sociaux</Text>
+  <Text style={styles.socialSectionSubtitle}>
+    Connectez vos réseaux pour afficher vos publications sur votre fiche salon
+  </Text>
+
+  {/* Instagram */}
+  <View style={styles.socialCardInstagram}>
+    <View style={styles.socialHeaderRow}>
+      <View style={styles.socialTitleWrap}>
+        <Text style={styles.socialIcon}>📷</Text>
+        <Text style={styles.socialTitle}>Instagram</Text>
+      </View>
+
+      {instagramVerified && (
+        <View style={styles.verifiedBadge}>
+          <Text style={styles.verifiedBadgeText}>✓ Vérifié</Text>
+        </View>
+      )}
+    </View>
+
+    <TextInput
+      value={instagramHandle}
+      onChangeText={setInstagramHandle}
+      style={[styles.input, styles.socialInput, styles.socialInputInstagram]}
+      placeholder="@votresalon"
+      placeholderTextColor="rgba(58,58,58,0.35)"
+      autoCapitalize="none"
+    />
+
+    <Pressable
+      onPress={() => setShowInstagramFeed((prev) => !prev)}
+      style={styles.socialCheckboxRow}
+    >
+      <View style={[styles.checkboxSquare, showInstagramFeed && styles.checkboxSquareOn]}>
+        {showInstagramFeed && <Text style={styles.checkboxTick}>✓</Text>}
+      </View>
+      <Text style={styles.socialCheckboxLabel}>
+        Afficher le feed Instagram sur ma fiche salon
+      </Text>
+    </Pressable>
+  </View>
+
+  {/* TikTok */}
+  <View style={styles.socialCardTikTok}>
+    <View style={styles.socialHeaderRow}>
+      <View style={styles.socialTitleWrap}>
+        <Text style={styles.socialIcon}>🎵</Text>
+        <Text style={styles.socialTitle}>TikTok</Text>
+      </View>
+    </View>
+
+    <TextInput
+      value={tiktokHandle}
+      onChangeText={setTiktokHandle}
+      style={[styles.input, styles.socialInput, styles.socialInputTikTok]}
+      placeholder="@votresalon"
+      placeholderTextColor="rgba(58,58,58,0.35)"
+      autoCapitalize="none"
+    />
+
+    <Pressable
+      onPress={() => setShowTikTokFeed((prev) => !prev)}
+      style={styles.socialCheckboxRow}
+    >
+      <View style={[styles.checkboxSquare, showTikTokFeed && styles.checkboxSquareOn]}>
+        {showTikTokFeed && <Text style={styles.checkboxTick}>✓</Text>}
+      </View>
+      <Text style={styles.socialCheckboxLabel}>
+        Afficher les vidéos TikTok sur ma fiche salon
+      </Text>
+    </Pressable>
+  </View>
+
+  {/* Facebook */}
+  <View style={styles.socialCardFacebook}>
+    <View style={styles.socialHeaderRow}>
+      <View style={styles.socialTitleWrap}>
+        <Text style={styles.socialIcon}>📘</Text>
+        <Text style={styles.socialTitle}>Facebook</Text>
+      </View>
+    </View>
+
+    <TextInput
+      value={facebookUrl}
+      onChangeText={setFacebookUrl}
+      style={[styles.input, styles.socialInput, styles.socialInputFacebook]}
+      placeholder="facebook.com/EbeneCoiffure"
+      placeholderTextColor="rgba(58,58,58,0.35)"
+      autoCapitalize="none"
+    />
+
+    <Pressable style={styles.connectLinkBtn}>
+      <Text style={styles.connectLinkText}>Connecter Facebook</Text>
+    </Pressable>
+  </View>
+
+  {/* Site Web */}
+  <View style={styles.socialCardWebsite}>
+    <View style={styles.socialHeaderRow}>
+      <View style={styles.socialTitleWrap}>
+        <Text style={styles.socialIcon}>🌐</Text>
+        <Text style={styles.socialTitle}>Site Web</Text>
+      </View>
+    </View>
+
+    <TextInput
+      value={websiteUrl}
+      onChangeText={setWebsiteUrl}
+      style={[styles.input, styles.socialInput, styles.socialInputWebsite]}
+      placeholder="https://votre-site.com"
+      placeholderTextColor="rgba(58,58,58,0.35)"
+      autoCapitalize="none"
+    />
+  </View>
+</View>
+
           </View>
+
         )}
 
         {/* PHOTOS */}
@@ -424,6 +554,13 @@ export default function SalonSettingsScreen() {
         <Pressable onPress={() => {}} style={[styles.primaryBtn, { marginTop: 18 }]}>
           <Text style={styles.primaryBtnText}>Enregistrer les modifications</Text>
         </Pressable>
+              <Pressable
+          onPress={() => setShowLogoutModal(true)}
+           style={styles.logoutBtn}
+          >
+          <Text style={styles.logoutIcon}>🚪</Text>
+        <Text style={styles.logoutBtnText}>Se déconnecter</Text>
+        </Pressable>
 
         <View style={{ height: 24 }} />
       </ScrollView>
@@ -441,6 +578,48 @@ export default function SalonSettingsScreen() {
           <Pressable style={{ flex: 1 }} onPress={() => setPreviewUri(null)} />
         </View>
       </Modal>
+      <Modal
+  visible={showLogoutModal}
+  transparent
+  animationType="fade"
+  onRequestClose={() => setShowLogoutModal(false)}
+>
+  <View style={styles.logoutModalBg}>
+    <View style={styles.logoutModalCard}>
+      
+      <View style={styles.logoutIconWrap}>
+        <Text style={styles.logoutModalIcon}>🚪</Text>
+      </View>
+
+      <Text style={styles.logoutModalTitle}>Déconnexion</Text>
+
+      <Text style={styles.logoutModalText}>
+        Êtes-vous sûr de vouloir vous déconnecter ? Vous devrez vous reconnecter
+        pour accéder à votre tableau de bord.
+      </Text>
+
+      <View style={styles.logoutModalButtons}>
+        <Pressable
+          onPress={() => setShowLogoutModal(false)}
+          style={styles.logoutCancelBtn}
+        >
+          <Text style={styles.logoutCancelText}>Annuler</Text>
+        </Pressable>
+
+        <Pressable
+          onPress={() => {
+            setShowLogoutModal(false);
+            router.replace("/login");
+          }}
+          style={styles.logoutConfirmBtn}
+        >
+          <Text style={styles.logoutConfirmText}>Se déconnecter</Text>
+        </Pressable>
+      </View>
+
+    </View>
+  </View>
+</Modal>
     </View>
   );
 }
@@ -554,4 +733,253 @@ const styles = StyleSheet.create({
 
   modalBg: { flex: 1, backgroundColor: "rgba(0,0,0,0.55)", padding: 18, justifyContent: "center" },
   modalCard: { backgroundColor: "#FFF", borderRadius: 22, padding: 12 },
+  socialSection: {
+  marginTop: 10,
+  paddingTop: 22,
+  borderTopWidth: 1,
+  borderTopColor: "rgba(107,39,55,0.10)",
+  gap: 14,
+},
+
+socialSectionTitle: {
+  color: COLORS.primary,
+  fontSize: 15,
+  fontWeight: "900",
+},
+
+socialSectionSubtitle: {
+  color: "rgba(58,58,58,0.60)",
+  fontSize: 12,
+  marginTop: -4,
+},
+
+socialCardBase: {
+  borderRadius: 18,
+  padding: 14,
+  borderWidth: 1,
+},
+
+socialCardInstagram: {
+  backgroundColor: "#F9F1FB",
+  borderColor: "#E9C8F8",
+  borderRadius: 18,
+  padding: 14,
+},
+
+socialCardTikTok: {
+  backgroundColor: "#EEF9FC",
+  borderColor: "#9FE7F6",
+  borderRadius: 18,
+  padding: 14,
+},
+
+socialCardFacebook: {
+  backgroundColor: "#EEF4FF",
+  borderColor: "#BDD4FF",
+  borderRadius: 18,
+  padding: 14,
+},
+
+socialCardWebsite: {
+  backgroundColor: "#F5F5F5",
+  borderColor: "#D9D9D9",
+  borderRadius: 18,
+  padding: 14,
+},
+
+socialHeaderRow: {
+  flexDirection: "row",
+  alignItems: "center",
+  justifyContent: "space-between",
+  marginBottom: 12,
+},
+
+socialTitleWrap: {
+  flexDirection: "row",
+  alignItems: "center",
+  gap: 10,
+},
+
+socialIcon: {
+  fontSize: 22,
+},
+
+socialTitle: {
+  color: COLORS.text,
+  fontSize: 15,
+  fontWeight: "800",
+},
+
+verifiedBadge: {
+  backgroundColor: "#DCFCE7",
+  paddingHorizontal: 10,
+  paddingVertical: 5,
+  borderRadius: 999,
+},
+
+verifiedBadgeText: {
+  color: "#15803D",
+  fontSize: 12,
+  fontWeight: "800",
+},
+
+socialInput: {
+  marginBottom: 10,
+},
+
+socialInputInstagram: {
+  borderColor: "#D8B4FE",
+},
+
+socialInputTikTok: {
+  borderColor: "#67E8F9",
+},
+
+socialInputFacebook: {
+  borderColor: "#93C5FD",
+},
+
+socialInputWebsite: {
+  borderColor: "#D1D5DB",
+},
+
+socialCheckboxRow: {
+  flexDirection: "row",
+  alignItems: "center",
+  gap: 10,
+},
+
+checkboxSquare: {
+  width: 22,
+  height: 22,
+  borderRadius: 4,
+  borderWidth: 1.5,
+  borderColor: "rgba(58,58,58,0.3)",
+  alignItems: "center",
+  justifyContent: "center",
+  backgroundColor: "#FFF",
+},
+
+checkboxSquareOn: {
+  backgroundColor: "#93C5FD",
+  borderColor: "#93C5FD",
+},
+
+checkboxTick: {
+  color: "#1F2937",
+  fontWeight: "900",
+  fontSize: 13,
+},
+
+socialCheckboxLabel: {
+  flex: 1,
+  color: COLORS.text,
+  fontSize: 12,
+  fontWeight: "600",
+},
+
+connectLinkBtn: {
+  alignSelf: "flex-start",
+  marginTop: 2,
+},
+
+connectLinkText: {
+  color: "#2563EB",
+  fontSize: 13,
+  fontWeight: "700",
+},
+logoutBtn: {
+  marginTop: 14,
+  backgroundColor: "#DC2626",
+  borderRadius: 999,
+  paddingVertical: 14,
+  flexDirection: "row",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 8,
+},
+
+logoutBtnText: {
+  color: "#FFF",
+  fontWeight: "900",
+  fontSize: 14,
+},
+
+logoutIcon: {
+  fontSize: 16,
+},
+
+logoutModalBg: {
+  flex: 1,
+  backgroundColor: "rgba(0,0,0,0.55)",
+  justifyContent: "center",
+  padding: 20,
+},
+
+logoutModalCard: {
+  backgroundColor: "#FFF",
+  borderRadius: 26,
+  padding: 22,
+},
+
+logoutIconWrap: {
+  width: 64,
+  height: 64,
+  borderRadius: 32,
+  backgroundColor: "rgba(220,38,38,0.1)",
+  alignItems: "center",
+  justifyContent: "center",
+  alignSelf: "center",
+  marginBottom: 14,
+},
+
+logoutModalIcon: {
+  fontSize: 28,
+},
+
+logoutModalTitle: {
+  color: COLORS.primary,
+  fontSize: 20,
+  fontWeight: "900",
+  textAlign: "center",
+  marginBottom: 8,
+},
+
+logoutModalText: {
+  textAlign: "center",
+  color: "rgba(58,58,58,0.7)",
+  fontSize: 13,
+  marginBottom: 20,
+},
+
+logoutModalButtons: {
+  flexDirection: "row",
+  gap: 10,
+},
+
+logoutCancelBtn: {
+  flex: 1,
+  backgroundColor: "#FAF7F2",
+  paddingVertical: 12,
+  borderRadius: 999,
+  alignItems: "center",
+},
+
+logoutCancelText: {
+  color: COLORS.text,
+  fontWeight: "700",
+},
+
+logoutConfirmBtn: {
+  flex: 1,
+  backgroundColor: "#DC2626",
+  paddingVertical: 12,
+  borderRadius: 999,
+  alignItems: "center",
+},
+
+logoutConfirmText: {
+  color: "#FFF",
+  fontWeight: "800",
+},
 });
