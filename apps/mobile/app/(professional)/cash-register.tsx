@@ -1,8 +1,10 @@
 import React, { useMemo, useState } from "react";
 import { View, Text, ScrollView, Pressable, StyleSheet, TextInput } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import Svg, { Circle } from "react-native-svg";
 import { ProHeader } from "./components/ProHeader";
-import { formatFCFA, formatDateFR, formatTimeFR } from "./utils/format";
 
+import { formatFCFA, formatDateFR, formatTimeFR } from "./utils/format";
 type Method = "all" | "mobile-money" | "card" | "cash";
 type TxStatus = "paid" | "pending";
 
@@ -22,6 +24,59 @@ const COLORS = {
   primary: "#6B2737",
   gold: "#D4AF6A",
 };
+
+function PaymentDonutChart({
+  data,
+  size = 180,
+  strokeWidth = 34,
+}: {
+  data: { name: string; value: number; color: string }[];
+  size?: number;
+  strokeWidth?: number;
+}) {
+  const radius = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const total = data.reduce((sum, item) => sum + item.value, 0);
+
+  let cumulative = 0;
+
+  return (
+    <View style={{ alignItems: "center", justifyContent: "center" }}>
+      <Svg width={size} height={size}>
+        <Circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          stroke="rgba(0,0,0,0.06)"
+          strokeWidth={strokeWidth}
+          fill="none"
+        />
+
+        {data.map((item, index) => {
+          const segment = (item.value / total) * circumference;
+          const strokeDasharray = `${segment} ${circumference - segment}`;
+          const rotation = (cumulative / total) * 360 - 90;
+          cumulative += item.value;
+
+          return (
+            <Circle
+              key={`${item.name}-${index}`}
+              cx={size / 2}
+              cy={size / 2}
+              r={radius}
+              stroke={item.color}
+              strokeWidth={strokeWidth}
+              fill="none"
+              strokeDasharray={strokeDasharray}
+              strokeLinecap="butt"
+              transform={`rotate(${rotation} ${size / 2} ${size / 2})`}
+            />
+          );
+        })}
+      </Svg>
+    </View>
+  );
+}
 
 export default function CashRegisterScreen() {
   const [activeFilter, setActiveFilter] = useState<Method>("all");
@@ -61,6 +116,11 @@ export default function CashRegisterScreen() {
       { total: 0, mobileMoney: 0, card: 0, cash: 0 }
     );
   }, [filtered]);
+    const paymentBreakdown = [
+    { name: "Part salon", value: 65, color: "#6B2737" },
+    { name: "Commission AMBYA", value: 15, color: "#D4AF6A" },
+    { name: "Frais transaction", value: 5, color: "#8B8B8B" },
+  ];
 
   return (
     <View style={styles.screen}>
@@ -93,6 +153,30 @@ export default function CashRegisterScreen() {
           <View style={styles.statCard}>
             <Text style={styles.statLabel}>Espèces</Text>
             <Text style={styles.statValue}>{totals.cash.toLocaleString("fr-FR")}</Text>
+          </View>
+        </View>
+
+
+        <View style={styles.breakdownCard}>
+          <View style={styles.breakdownHeader}>
+            <Text style={styles.breakdownTitle}>Répartition des paiements</Text>
+            <Ionicons name="information-circle-outline" size={18} color="rgba(107,39,55,0.55)" />
+          </View>
+
+          <View style={styles.breakdownChartWrap}>
+            <PaymentDonutChart data={paymentBreakdown} />
+          </View>
+
+          <View style={styles.breakdownLegend}>
+            {paymentBreakdown.map((item, index) => (
+              <View key={`${item.name}-${index}`} style={styles.legendItem}>
+                <View style={[styles.legendDot, { backgroundColor: item.color }]} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.legendLabel}>{item.name}</Text>
+                  <Text style={styles.legendValue}>{item.value}%</Text>
+                </View>
+              </View>
+            ))}
           </View>
         </View>
 
@@ -213,4 +297,65 @@ const styles = StyleSheet.create({
   badgePaidText: { color: "#15803d" },
   badgePending: { backgroundColor: "rgba(249,115,22,0.18)" },
   badgePendingText: { color: "#c2410c" },
+
+   breakdownCard: {
+    marginTop: 16,
+    backgroundColor: "#FFF",
+    borderRadius: 22,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: "rgba(107,39,55,0.08)",
+  },
+
+  breakdownHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 14,
+  },
+
+  breakdownTitle: {
+    color: COLORS.text,
+    fontSize: 15,
+    fontWeight: "800",
+  },
+
+  breakdownChartWrap: {
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 18,
+  },
+
+  breakdownLegend: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    rowGap: 14,
+  },
+
+  legendItem: {
+    width: "48%",
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+  },
+
+  legendDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 999,
+    marginTop: 3,
+  },
+
+  legendLabel: {
+    color: COLORS.text,
+    fontSize: 12,
+  },
+
+  legendValue: {
+    color: COLORS.text,
+    fontSize: 14,
+    fontWeight: "800",
+    marginTop: 2,
+  },
 });

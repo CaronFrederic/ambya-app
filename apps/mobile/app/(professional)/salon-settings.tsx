@@ -609,7 +609,7 @@ export default function SalonSettingsScreen() {
         <Pressable
           onPress={() => {
             setShowLogoutModal(false);
-            router.replace("/login");
+            router.replace("/(auth)/login");
           }}
           style={styles.logoutConfirmBtn}
         >

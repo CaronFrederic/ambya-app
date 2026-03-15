@@ -7,6 +7,7 @@ import { ProHeader } from "./components/ProHeader";
 type EmployeeStatus = "active" | "leave" | "absent";
 
 type Employee = {
+
   id: number;
   name: string;
   role: string;
@@ -14,6 +15,16 @@ type Employee = {
   photo?: string | null;
   phone?: string;
   email?: string;
+};
+type RequestStatus = "pending" | "accepted" | "refused";
+
+type AppointmentRequest = {
+  id: number;
+  employeeName: string;
+  subject: string;
+  date: string; // yyyy-mm-dd
+  time: string; // HH:mm
+  status: RequestStatus;
 };
 
 export default function EmployeeManagement() {
@@ -50,6 +61,57 @@ export default function EmployeeManagement() {
     { id: 3, name: "Sophie Mbongo", role: "Esthéticienne", status: "leave", photo: null, phone: "+241 77 44 55 66", email: "sophie@exemple.com" },
     { id: 4, name: "Paul N'Guema", role: "Masseur", status: "active", photo: null, phone: "+241 77 77 88 99", email: "paul@exemple.com" },
   ]);
+
+  const [showAppointmentRequests, setShowAppointmentRequests] = useState(false);
+
+  const [appointmentRequests, setAppointmentRequests] = useState<AppointmentRequest[]>([
+    {
+      id: 1,
+      employeeName: "Marie Kouassi",
+      subject: "Demande de rendez-vous mensuel",
+      date: "2026-02-05",
+      time: "10:00",
+      status: "pending",
+    },
+    {
+      id: 2,
+      employeeName: "Jean Bongo",
+      subject: "Discussion sur planification",
+      date: "2026-02-07",
+      time: "14:30",
+      status: "pending",
+    },
+    {
+      id: 3,
+      employeeName: "Sophie Mbongo",
+      subject: "Retour de congé - Briefing",
+      date: "2026-02-10",
+      time: "09:00",
+      status: "accepted",
+    },
+    {
+      id: 4,
+      employeeName: "Paul N'Guema",
+      subject: "Formation continue",
+      date: "2026-02-12",
+      time: "15:00",
+      status: "refused",
+    },
+  ]);
+
+  const handleAcceptRequest = (id: number) => {
+    setAppointmentRequests((prev) =>
+      prev.map((req) => (req.id === id ? { ...req, status: "accepted" } : req))
+    );
+    toast("Demande acceptée");
+  };
+
+  const handleRefuseRequest = (id: number) => {
+    setAppointmentRequests((prev) =>
+      prev.map((req) => (req.id === id ? { ...req, status: "refused" } : req))
+    );
+    toast("Demande refusée");
+  };
 
   const headerSubtitle = useMemo(() => `${employees.length} membres dans votre équipe`, [employees.length]);
 
@@ -188,6 +250,14 @@ export default function EmployeeManagement() {
           <Text style={styles.primaryBtnText}>Ajouter un employé</Text>
         </Pressable>
 
+        <Pressable
+          onPress={() => setShowAppointmentRequests(true)}
+          style={styles.leaveRequestsBtn}
+        >
+          <Ionicons name="calendar-outline" size={18} color="#fff" />
+          <Text style={styles.leaveRequestsBtnText}>Demandes de congés</Text>
+        </Pressable>
+
         <View style={{ gap: 12 }}>
           {employees.map((employee) => (
             <View key={employee.id} style={styles.card}>
@@ -242,6 +312,91 @@ export default function EmployeeManagement() {
           <View style={styles.toast}>
             <Ionicons name="checkmark-circle" size={18} color="#fff" />
             <Text style={styles.toastText}>{toastMsg}</Text>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Appointment Requests modal */}
+      <Modal
+        visible={showAppointmentRequests}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowAppointmentRequests(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.requestsModalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.requestsModalTitle}>Demandes de rendez-vous employés</Text>
+              <Pressable onPress={() => setShowAppointmentRequests(false)} style={styles.closeBtn}>
+                <Ionicons name="close" size={24} color="#3A3A3A" />
+              </Pressable>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 14 }}>
+              {appointmentRequests.map((request) => (
+                <View key={request.id} style={styles.requestCard}>
+                  <View style={styles.requestHeader}>
+                    <View style={{ flex: 1 }}>
+                      <View style={styles.requestTitleRow}>
+                        <Text style={styles.requestEmployeeName}>{request.employeeName}</Text>
+                        <View style={[styles.requestBadge, requestBadgeStyle(request.status)]}>
+                          <Text style={[styles.requestBadgeText, requestBadgeTextStyle(request.status)]}>
+                            {request.status === "pending"
+                              ? "En attente"
+                              : request.status === "accepted"
+                              ? "Accepté"
+                              : "Refusé"}
+                          </Text>
+                        </View>
+                      </View>
+
+                      <Text style={styles.requestSubject}>{request.subject}</Text>
+
+                      <View style={styles.requestMetaRow}>
+                        <View style={styles.requestMetaItem}>
+                          <Ionicons name="calendar-outline" size={14} color="rgba(58,58,58,0.55)" />
+                          <Text style={styles.requestMetaText}>
+                            {new Date(request.date).toLocaleDateString("fr-FR")}
+                          </Text>
+                        </View>
+
+                        <View style={styles.requestMetaItem}>
+                          <Ionicons name="time-outline" size={14} color="rgba(58,58,58,0.55)" />
+                          <Text style={styles.requestMetaText}>{request.time}</Text>
+                        </View>
+                      </View>
+                    </View>
+                  </View>
+
+                  {request.status === "pending" && (
+                    <View style={styles.requestActions}>
+                      <Pressable
+                        onPress={() => handleAcceptRequest(request.id)}
+                        style={styles.acceptBtn}
+                      >
+                        <Ionicons name="checkmark-circle-outline" size={18} color="#fff" />
+                        <Text style={styles.acceptBtnText}>Accepter</Text>
+                      </Pressable>
+
+                      <Pressable
+                        onPress={() => handleRefuseRequest(request.id)}
+                        style={styles.refuseBtn}
+                      >
+                        <Ionicons name="close-outline" size={18} color="#fff" />
+                        <Text style={styles.refuseBtnText}>Refuser</Text>
+                      </Pressable>
+                    </View>
+                  )}
+                </View>
+              ))}
+            </ScrollView>
+
+            <Pressable
+              onPress={() => setShowAppointmentRequests(false)}
+              style={[styles.primaryBtn, { marginTop: 18 }]}
+            >
+              <Text style={styles.primaryBtnText}>Fermer</Text>
+            </Pressable>
           </View>
         </View>
       </Modal>
@@ -451,6 +606,32 @@ function badgeByStatus(status: EmployeeStatus) {
   }
 }
 
+function requestBadgeStyle(status: RequestStatus) {
+  switch (status) {
+    case "pending":
+      return { backgroundColor: "#FDE7C7" };
+    case "accepted":
+      return { backgroundColor: "#DCFCE7" };
+    case "refused":
+      return { backgroundColor: "#FEE2E2" };
+    default:
+      return { backgroundColor: "#eee" };
+  }
+}
+
+function requestBadgeTextStyle(status: RequestStatus) {
+  switch (status) {
+    case "pending":
+      return { color: "#C2410C" };
+    case "accepted":
+      return { color: "#15803D" };
+    case "refused":
+      return { color: "#DC2626" };
+    default:
+      return { color: "#3A3A3A" };
+  }
+}
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#FAF7F2" },
   content: { padding: 18, paddingBottom: 32, gap: 12 },
@@ -549,4 +730,146 @@ const styles = StyleSheet.create({
   smallPrimary: { backgroundColor: "#6B2737", borderRadius: 999, paddingVertical: 10, paddingHorizontal: 12, flexDirection: "row", gap: 6, justifyContent: "center", alignItems: "center" },
   smallDanger: { backgroundColor: "#dc2626", borderRadius: 999, paddingVertical: 10, paddingHorizontal: 12, flexDirection: "row", gap: 6, justifyContent: "center", alignItems: "center" },
   smallPrimaryText: { color: "#fff", fontWeight: "900", fontSize: 12 },
+  leaveRequestsBtn: {
+    backgroundColor: "#D4AF6A",
+    borderRadius: 999,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    flexDirection: "row",
+    gap: 8,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+
+  leaveRequestsBtnText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "700",
+  },
+
+  requestsModalCard: {
+    backgroundColor: "#fff",
+    borderRadius: 30,
+    padding: 18,
+    maxHeight: "90%",
+  },
+
+  requestsModalTitle: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: "#6B2737",
+    flex: 1,
+    paddingRight: 12,
+  },
+
+  closeBtn: {
+    padding: 4,
+    borderRadius: 10,
+  },
+
+  requestCard: {
+    backgroundColor: "#FAF7F2",
+    borderRadius: 22,
+    padding: 16,
+  },
+
+  requestHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+  },
+
+  requestTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 8,
+    flexWrap: "wrap",
+  },
+
+  requestEmployeeName: {
+    color: "#3A3A3A",
+    fontSize: 16,
+    fontWeight: "800",
+  },
+
+  requestBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+
+  requestBadgeText: {
+    fontSize: 12,
+    fontWeight: "700",
+  },
+
+  requestSubject: {
+    color: "#3A3A3A",
+    fontSize: 14,
+    marginBottom: 10,
+  },
+
+  requestMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 18,
+  },
+
+  requestMetaItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+
+  requestMetaText: {
+    color: "rgba(58,58,58,0.6)",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+
+  requestActions: {
+    flexDirection: "row",
+    gap: 12,
+    marginTop: 14,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(107,39,55,0.10)",
+  },
+
+  acceptBtn: {
+    flex: 1,
+    backgroundColor: "#09B43A",
+    borderRadius: 999,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 8,
+  },
+
+  acceptBtnText: {
+    color: "#fff",
+    fontWeight: "800",
+    fontSize: 14,
+  },
+
+  refuseBtn: {
+    flex: 1,
+    backgroundColor: "#F40000",
+    borderRadius: 999,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 8,
+  },
+
+  refuseBtnText: {
+    color: "#fff",
+    fontWeight: "800",
+    fontSize: 14,
+  },
 });
