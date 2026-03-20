@@ -81,6 +81,7 @@ export default function CardPaymentDetailsScreen() {
         salonId: draft.salonId,
         startAt: startAtIso,
         employeeId: draft.selectedEmployeeId,
+        paymentMethod: "CARD",
         items: draft.cart.map((item) => ({
           serviceId: item.id,
           quantity: item.quantity || 1,
@@ -100,10 +101,21 @@ export default function CardPaymentDetailsScreen() {
 
       return result;
     },
-    onSuccess: async () => {
+    onSuccess: async (result: any) => {
       await qc.invalidateQueries({ queryKey: ["appointments"] });
       await qc.invalidateQueries({ queryKey: ["me", "payment-methods"] });
-      router.replace("/(screens)/booking-success");
+      router.replace({
+        pathname: "/(screens)/booking-success",
+        params: {
+          salonName: draft.salonName ?? "",
+          serviceLabel: draft.cart.map((item) => item.name).join(" + "),
+          dateIso: draft.selectedDateIso ?? "",
+          timeLabel: draft.time ?? "",
+          totalAmount: String(result?.totalAmount ?? amount),
+          paymentStatus: String(result?.payment?.status ?? "SUCCEEDED"),
+          paymentMethod: String(result?.payment?.method ?? "CARD"),
+        },
+      });
     },
     onError: (error: any) => {
       Alert.alert("Paiement refusé", error?.message ?? "Erreur inconnue");
@@ -130,7 +142,7 @@ export default function CardPaymentDetailsScreen() {
               color={colors.brandForeground}
             />
           </Pressable>
-          <Text style={styles.headerTitle}>Paiement par carte</Text>
+          <Text style={styles.headerTitle}>Paiement beta par carte</Text>
         </View>
 
         <ScrollView
@@ -182,6 +194,10 @@ export default function CardPaymentDetailsScreen() {
               </Text>
             ) : null}
 
+            <Text style={styles.saveHint}>
+              Le salon devra encore confirmer le rendez-vous apres ce paiement beta.
+            </Text>
+
             <Card style={styles.amountCard}>
               <View style={styles.amountRow}>
                 <Text style={styles.amountLabel}>Montant à payer</Text>
@@ -196,7 +212,7 @@ export default function CardPaymentDetailsScreen() {
             title={
               mutation.isPending
                 ? "Traitement..."
-                : `Payer ${formatFCFA(amount)}`
+                : `Valider ${formatFCFA(amount)}`
             }
             onPress={onPay}
             disabled={!canPay || mutation.isPending}

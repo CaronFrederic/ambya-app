@@ -1,5 +1,15 @@
 import { Type } from 'class-transformer'
-import { ArrayMinSize, IsArray, IsISO8601, IsInt, IsOptional, IsString, Min, ValidateNested } from 'class-validator'
+import {
+  ArrayMinSize,
+  IsArray,
+  IsIn,
+  IsISO8601,
+  IsInt,
+  IsOptional,
+  IsString,
+  Min,
+  ValidateNested,
+} from 'class-validator'
 
 class CartItemDto {
   @IsString()
@@ -25,6 +35,11 @@ export class CreateAppointmentsFromCartDto {
   @IsOptional()
   @IsString()
   note?: string
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['CARD', 'MOMO', 'CASH'])
+  paymentMethod?: 'CARD' | 'MOMO' | 'CASH'
 
   @IsArray()
   @ArrayMinSize(1)

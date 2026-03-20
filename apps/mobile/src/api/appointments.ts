@@ -102,6 +102,7 @@ export type CreateAppointmentsFromCartPayload = {
   startAt: string
   employeeId?: string
   note?: string
+  paymentMethod?: 'CARD' | 'MOMO' | 'CASH'
   items: Array<{ serviceId: string; quantity: number }>
 }
 

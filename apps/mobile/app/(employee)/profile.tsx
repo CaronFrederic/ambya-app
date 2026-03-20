@@ -1,5 +1,5 @@
-import React, { useState } from 'react'
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import React, { useEffect, useState } from 'react'
+import { Alert, Pressable, ScrollView, StyleSheet, Text } from 'react-native'
 import { router } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import * as SecureStore from 'expo-secure-store'
@@ -10,7 +10,7 @@ import { Input } from '../../src/components/Input'
 import { Screen } from '../../src/components/Screen'
 import { EmployeeModal } from '../../src/components/employee/EmployeeModal'
 import { EmployeeHeader } from '../../src/components/employee/EmployeeHeader'
-import { useEmployeeFlow } from '../../src/features/employee/EmployeeFlowProvider'
+import { useEmployeeProfile, useUpdateEmployeeProfile } from '../../src/api/employee'
 import { useAuthRefresh } from '../../src/providers/AuthRefreshProvider'
 import { colors, overlays } from '../../src/theme/colors'
 import { radius } from '../../src/theme/radius'
@@ -20,14 +20,23 @@ import { typography } from '../../src/theme/typography'
 export default function EmployeeProfileScreen() {
   const { refreshAuth } = useAuthRefresh()
   const queryClient = useQueryClient()
-  const { profile, updateProfile } = useEmployeeFlow()
+  const profileQuery = useEmployeeProfile()
+  const updateProfile = useUpdateEmployeeProfile()
 
-  const [firstName, setFirstName] = useState(profile.firstName)
-  const [lastName, setLastName] = useState(profile.lastName)
-  const [email, setEmail] = useState(profile.email)
-  const [phone, setPhone] = useState(profile.phone)
+  const [firstName, setFirstName] = useState('')
+  const [lastName, setLastName] = useState('')
+  const [email, setEmail] = useState('')
+  const [phone, setPhone] = useState('')
   const [isEditing, setIsEditing] = useState(false)
   const [showResetConfirm, setShowResetConfirm] = useState(false)
+
+  useEffect(() => {
+    if (!profileQuery.data?.profile || isEditing) return
+    setFirstName(profileQuery.data.profile.firstName ?? '')
+    setLastName(profileQuery.data.profile.lastName ?? '')
+    setEmail(profileQuery.data.profile.email ?? '')
+    setPhone(profileQuery.data.profile.phone ?? '')
+  }, [isEditing, profileQuery.data?.profile])
 
   const onLogout = async () => {
     await SecureStore.deleteItemAsync('accessToken')
@@ -37,23 +46,46 @@ export default function EmployeeProfileScreen() {
     router.replace('/(auth)/login')
   }
 
-  const handleUpdate = () => {
-    updateProfile({
-      firstName: firstName.trim(),
-      lastName: lastName.trim(),
-      email: email.trim(),
-      phone: phone.trim(),
-    })
-    setIsEditing(false)
+  const handleUpdate = async () => {
+    try {
+      await updateProfile.mutateAsync({
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        email: email.trim(),
+        phone: phone.trim(),
+      })
+      setIsEditing(false)
+      Alert.alert('Profil mis a jour', 'Vos informations ont bien ete enregistrees.')
+    } catch (error: any) {
+      Alert.alert('Impossible de mettre a jour le profil', error?.message ?? 'Erreur inconnue')
+    }
   }
 
   const handleCancel = () => {
-    setFirstName(profile.firstName)
-    setLastName(profile.lastName)
-    setEmail(profile.email)
-    setPhone(profile.phone)
+    setFirstName(profileQuery.data?.profile.firstName ?? '')
+    setLastName(profileQuery.data?.profile.lastName ?? '')
+    setEmail(profileQuery.data?.profile.email ?? '')
+    setPhone(profileQuery.data?.profile.phone ?? '')
     setIsEditing(false)
   }
+
+  if (profileQuery.isLoading) {
+    return (
+      <Screen style={styles.screen}>
+        <Text style={styles.loadingText}>Chargement du profil...</Text>
+      </Screen>
+    )
+  }
+
+  if (profileQuery.isError || !profileQuery.data?.profile) {
+    return (
+      <Screen style={styles.screen}>
+        <Text style={styles.loadingText}>Impossible de charger le profil employe.</Text>
+      </Screen>
+    )
+  }
+
+  const profile = profileQuery.data.profile
 
   return (
     <Screen noPadding keyboard style={styles.screen}>
@@ -100,25 +132,35 @@ export default function EmployeeProfileScreen() {
             value={phone}
             onChangeText={setPhone}
             keyboardType="phone-pad"
+            containerStyle={styles.field}
             editable={isEditing}
           />
+          <Input label="Role" value={profile.role} editable={false} containerStyle={styles.field} />
+          <Input label="Salon" value={profile.salon} editable={false} />
 
           {isEditing ? (
-            <View style={styles.actionsRow}>
-              <Pressable onPress={handleCancel} style={styles.cancelButton}>
-                <Text style={styles.cancelButtonText}>Annuler</Text>
-              </Pressable>
-
-              <Pressable onPress={handleUpdate} style={styles.primaryButton}>
-                <Text style={styles.primaryButtonText}>Enregistrer</Text>
-              </Pressable>
-            </View>
+            <Pressable
+              onPress={handleUpdate}
+              style={styles.primaryButtonWide}
+              disabled={updateProfile.isPending}
+            >
+              <Ionicons name="save-outline" size={16} color={colors.brandForeground} />
+              <Text style={styles.primaryButtonText}>
+                {updateProfile.isPending ? 'Enregistrement...' : 'Enregistrer'}
+              </Text>
+            </Pressable>
           ) : (
             <Pressable onPress={() => setIsEditing(true)} style={styles.primaryButtonWide}>
               <Ionicons name="create-outline" size={16} color={colors.brandForeground} />
               <Text style={styles.primaryButtonText}>Modifier mes informations</Text>
             </Pressable>
           )}
+
+          {isEditing ? (
+            <Pressable onPress={handleCancel} style={styles.cancelButtonWide}>
+              <Text style={styles.cancelButtonText}>Annuler</Text>
+            </Pressable>
+          ) : null}
         </Card>
 
         <Card style={styles.securityCard}>
@@ -176,6 +218,11 @@ const styles = StyleSheet.create({
   screen: {
     backgroundColor: '#F3F0EB',
   },
+  loadingText: {
+    color: colors.text,
+    ...typography.body,
+    textAlign: 'center',
+  },
   content: {
     padding: spacing.lg,
     gap: spacing.lg,
@@ -194,14 +241,6 @@ const styles = StyleSheet.create({
   field: {
     marginBottom: spacing.sm,
   },
-  primaryButton: {
-    height: 40,
-    backgroundColor: colors.brand,
-    borderRadius: radius.full,
-    alignItems: 'center',
-    justifyContent: 'center',
-    flex: 1,
-  },
   primaryButtonWide: {
     marginTop: spacing.lg,
     height: 40,
@@ -212,25 +251,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.xs,
   },
-  primaryButtonText: {
-    color: colors.brandForeground,
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  actionsRow: {
-    marginTop: spacing.lg,
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  cancelButton: {
+  cancelButtonWide: {
+    marginTop: spacing.sm,
     height: 40,
-    flex: 1,
     borderRadius: radius.full,
     borderWidth: 1,
     borderColor: overlays.brand20,
     backgroundColor: '#FBF8F5',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  primaryButtonText: {
+    color: colors.brandForeground,
+    fontSize: 15,
+    fontWeight: '700',
   },
   cancelButtonText: {
     color: colors.text,

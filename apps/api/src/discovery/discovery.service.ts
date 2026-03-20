@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { ServiceCategory } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { HomeQueryDto } from './dto/home-query.dto';
 import { SearchQueryDto } from './dto/search-query.dto';
@@ -25,7 +26,7 @@ export class DiscoveryService {
         country: true,
         services: {
           where: { isActive: true },
-          select: { id: true, name: true, durationMin: true, price: true },
+          select: { id: true, name: true, category: true, durationMin: true, price: true },
           orderBy: { price: 'asc' },
           take: 4,
         },
@@ -39,18 +40,18 @@ export class DiscoveryService {
 
     const serviceCategories = await this.prisma.service.findMany({
       where: { isActive: true },
-      select: { name: true },
+      select: { category: true },
       take: 500,
     });
 
     const categories = Array.from(
-      new Set(serviceCategories.map((s) => this.toCategory(s.name))),
+      new Set(serviceCategories.map((s) => this.toCategoryFromEnum(s.category))),
     );
 
     const filteredByCategory = query.category
       ? salons.filter((salon) =>
           salon.services.some(
-            (service) => this.toCategory(service.name) === query.category,
+            (service) => this.toCategoryFromEnum(service.category) === query.category,
           ),
         )
       : salons;
@@ -134,7 +135,7 @@ export class DiscoveryService {
         },
         services: {
           where: { isActive: true },
-          select: { id: true, name: true, price: true, durationMin: true },
+          select: { id: true, name: true, category: true, price: true, durationMin: true },
           take: 10,
         },
       },
@@ -144,7 +145,7 @@ export class DiscoveryService {
     const filtered = query.category
       ? salons.filter((salon) =>
           salon.services.some(
-            (service) => this.toCategory(service.name) === query.category,
+            (service) => this.toCategoryFromEnum(service.category) === query.category,
           ),
         )
       : salons;
@@ -198,6 +199,7 @@ export class DiscoveryService {
           select: {
             id: true,
             name: true,
+            category: true,
             description: true,
             price: true,
             durationMin: true,
@@ -247,7 +249,7 @@ export class DiscoveryService {
 
     const servicesByCategory: Record<string, typeof salon.services> = {};
     for (const service of salon.services) {
-      const category = this.toCategory(service.name);
+      const category = this.toCategoryFromEnum(service.category);
       if (!servicesByCategory[category]) servicesByCategory[category] = [];
       servicesByCategory[category].push(service);
     }
@@ -519,6 +521,25 @@ export class DiscoveryService {
     if (completedCount >= 20) return 4.8;
     if (completedCount >= 10) return 4.7;
     return 4.5;
+  }
+
+  private toCategoryFromEnum(category: ServiceCategory) {
+    switch (category) {
+      case ServiceCategory.HAIR:
+      case ServiceCategory.BARBER:
+        return 'Coiffure';
+      case ServiceCategory.NAILS:
+        return 'Manucure/Pedicure';
+      case ServiceCategory.FACE:
+        return 'Soin du visage';
+      case ServiceCategory.BODY:
+        return 'Massage';
+      case ServiceCategory.FITNESS:
+        return 'Fitness';
+      case ServiceCategory.OTHER:
+      default:
+        return 'Autres';
+    }
   }
 
   private toCategory(name: string) {

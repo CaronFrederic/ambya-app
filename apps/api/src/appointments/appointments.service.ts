@@ -261,6 +261,8 @@ export class AppointmentsService {
   const bookingGroupId = `cart-${Date.now()}-${Math.random()
     .toString(36)
     .slice(2, 8)}`;
+  const paymentMethod = dto.paymentMethod ?? 'CASH'
+  const isInternalPaymentCaptured = paymentMethod !== 'CASH'
 
   const appointments = await this.prisma.$transaction(async (tx) => {
     const created: Prisma.AppointmentGetPayload<{
@@ -355,10 +357,20 @@ export class AppointmentsService {
           discountAmount: 0,
           payableAmount: service.price,
           currency: 'XAF',
-          status: PaymentStatus.CREATED,
-          provider: null,
-          providerRef: null,
-          providerData: Prisma.DbNull,
+          status: isInternalPaymentCaptured
+            ? PaymentStatus.SUCCEEDED
+            : PaymentStatus.CREATED,
+          provider: isInternalPaymentCaptured ? 'INTERNAL_BETA' : null,
+          providerRef: isInternalPaymentCaptured
+            ? `client-beta-${paymentMethod.toLowerCase()}-${appointment.id}`
+            : null,
+          providerData: isInternalPaymentCaptured
+            ? {
+                source: 'client_beta',
+                paymentMethod,
+                bookingGroupId,
+              }
+            : Prisma.DbNull,
           platformFeeAmount: 0,
           providerFeeAmount: 0,
           netAmount: service.price,
@@ -385,6 +397,10 @@ export class AppointmentsService {
       (sum, appointment) => sum + appointment.service.price,
       0,
     ),
+    payment: {
+      method: paymentMethod,
+      status: isInternalPaymentCaptured ? PaymentStatus.SUCCEEDED : PaymentStatus.CREATED,
+    },
   };
 }
 

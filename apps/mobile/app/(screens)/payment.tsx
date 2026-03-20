@@ -87,15 +87,27 @@ export default function PaymentScreen() {
         salonId: draft.salonId,
         startAt: startAtIso,
         employeeId: draft.selectedEmployeeId,
+        paymentMethod: method === "cash" ? "CASH" : method === "mobile_money" ? "MOMO" : "CARD",
         items: draft.cart.map((item) => ({
           serviceId: item.id,
           quantity: item.quantity || 1,
         })),
       });
     },
-    onSuccess: async () => {
+    onSuccess: async (result: any) => {
       await qc.invalidateQueries({ queryKey: ["appointments"] });
-      router.replace("/(screens)/booking-success");
+      router.replace({
+        pathname: "/(screens)/booking-success",
+        params: {
+          salonName: draft.salonName ?? "",
+          serviceLabel: draft.cart.map((item) => item.name).join(" + "),
+          dateIso: draft.selectedDateIso ?? "",
+          timeLabel: draft.time ?? "",
+          totalAmount: String(result?.totalAmount ?? totalAmount),
+          paymentStatus: String(result?.payment?.status ?? "CREATED"),
+          paymentMethod: String(result?.payment?.method ?? "CASH"),
+        },
+      });
     },
     onError: (error: any) => {
       Alert.alert(
@@ -117,6 +129,7 @@ export default function PaymentScreen() {
         params: {
           amount: String(totalAmount),
           saveCard: saveNewCard ? "1" : "0",
+          paymentMethod: "CARD",
         },
       });
       return;
@@ -176,7 +189,7 @@ export default function PaymentScreen() {
           <MethodRow
             icon="card-outline"
             title="Carte bancaire"
-            subtitle="Visa, Mastercard"
+            subtitle="Paiement beta interne immediat"
             active={method === "card"}
             onPress={() => setMethod("card")}
           />
@@ -334,6 +347,9 @@ export default function PaymentScreen() {
             Créneau: {draft.selectedDateIso} {draft.time ?? "-"}
           </Text>
           <Text style={styles.recapSub}>Salon: {draft.salonName ?? "-"}</Text>
+          <Text style={styles.recapSub}>
+            Le salon doit encore confirmer le rendez-vous apres cette etape.
+          </Text>
         </View>
 
         <View style={{ height: 24 }} />

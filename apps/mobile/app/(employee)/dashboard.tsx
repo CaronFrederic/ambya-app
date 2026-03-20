@@ -14,8 +14,10 @@ import { EmployeeModal } from '../../src/components/employee/EmployeeModal'
 import { EmployeePickerField } from '../../src/components/employee/EmployeePickerField'
 import { EmployeeSelectList } from '../../src/components/employee/EmployeeSelectList'
 import { EmployeeTimePicker } from '../../src/components/employee/EmployeeTimePicker'
-import { useEmployeeFlow } from '../../src/features/employee/EmployeeFlowProvider'
-import { services } from '../../src/features/employee/data'
+import {
+  useCreateEmployeeBlockedSlot,
+  useEmployeeDashboard,
+} from '../../src/api/employee'
 import { colors, overlays } from '../../src/theme/colors'
 import { radius } from '../../src/theme/radius'
 import { spacing } from '../../src/theme/spacing'
@@ -48,20 +50,25 @@ const quickActions = [
 ]
 
 export default function EmployeeDashboardScreen() {
-  const { appointments, profile, blockSlot } = useEmployeeFlow()
+  const dashboard = useEmployeeDashboard()
+  const createBlockedSlot = useCreateEmployeeBlockedSlot()
+
   const [showBlockModal, setShowBlockModal] = useState(false)
   const [activePicker, setActivePicker] = useState<PickerType>(null)
   const [blockDate, setBlockDate] = useState('')
   const [blockTime, setBlockTime] = useState('')
-  const [service, setService] = useState('')
+  const [serviceName, setServiceName] = useState('')
   const [clientName, setClientName] = useState('')
-  const [phone, setPhone] = useState(profile.phone)
+  const [phone, setPhone] = useState('')
   const [note, setNote] = useState('')
   const [errors, setErrors] = useState<Record<string, string>>({})
 
-  const todayAppointments = useMemo(
-    () => appointments.filter((item) => item.status === 'upcoming'),
-    [appointments],
+  const profile = dashboard.data?.profile
+  const services = dashboard.data?.services ?? []
+  const todayItems = dashboard.data?.todayItems ?? []
+  const selectedService = useMemo(
+    () => services.find((item) => item.name === serviceName),
+    [serviceName, services],
   )
 
   const onQuickAction = (key: string) => {
@@ -85,37 +92,57 @@ export default function EmployeeDashboardScreen() {
     setActivePicker(null)
     setBlockDate('')
     setBlockTime('')
-    setService('')
+    setServiceName('')
     setClientName('')
-    setPhone(profile.phone)
+    setPhone('')
     setNote('')
     setErrors({})
   }
 
-  const handleBlockSubmit = () => {
+  const handleBlockSubmit = async () => {
     const nextErrors: Record<string, string> = {}
 
     if (!blockDate) nextErrors.blockDate = 'Selectionnez une date.'
     if (!blockTime) nextErrors.blockTime = 'Selectionnez une heure.'
-    if (!service) nextErrors.service = 'Selectionnez un service.'
+    if (!selectedService) nextErrors.service = 'Selectionnez un service.'
     if (!clientName.trim()) nextErrors.clientName = 'Le nom du client est requis.'
     if (!phone.trim()) nextErrors.phone = 'Le telephone est requis.'
 
     setErrors(nextErrors)
 
-    if (Object.keys(nextErrors).length > 0) return
+    if (Object.keys(nextErrors).length > 0 || !selectedService) return
 
-    blockSlot({
-      date: blockDate,
-      time: blockTime,
-      service,
-      clientName: clientName.trim(),
-      phone: phone.trim(),
-      note: note.trim(),
-    })
+    try {
+      await createBlockedSlot.mutateAsync({
+        startAt: toUtcIso(blockDate, blockTime),
+        serviceId: selectedService.id,
+        clientName: clientName.trim(),
+        clientPhone: phone.trim(),
+        note: note.trim() || undefined,
+      })
+      resetBlockForm()
+      Alert.alert('Creneau bloque', 'Le creneau a bien ete ajoute a votre planning.')
+    } catch (error: any) {
+      Alert.alert('Impossible de bloquer ce creneau', error?.message ?? 'Erreur inconnue')
+    }
+  }
 
-    resetBlockForm()
-    Alert.alert('Creneau bloque', 'Le creneau a bien ete ajoute a votre planning.')
+  if (dashboard.isLoading) {
+    return (
+      <Screen style={styles.loadingScreen}>
+        <Text style={styles.loadingText}>Chargement du tableau de bord...</Text>
+      </Screen>
+    )
+  }
+
+  if (dashboard.isError || !dashboard.data || !profile) {
+    return (
+      <Screen style={styles.loadingScreen}>
+        <Text style={styles.loadingText}>
+          Impossible de charger le flow employe.
+        </Text>
+      </Screen>
+    )
   }
 
   return (
@@ -133,7 +160,7 @@ export default function EmployeeDashboardScreen() {
           style={styles.hero}
         >
           <EmployeeHeader
-            title={`Bonjour ${profile.firstName}`}
+            title={`Bonjour ${profile.firstName || 'Employe'}`}
             subtitle={`${profile.role} - ${profile.salon}`}
             actionIcon="notifications-outline"
             onActionPress={() => {}}
@@ -141,8 +168,14 @@ export default function EmployeeDashboardScreen() {
           />
 
           <View style={styles.statsRow}>
-            <SummaryStatCard label="Rendez-vous aujourd'hui" value={String(todayAppointments.length)} />
-            <SummaryStatCard label="Cette semaine" value="23" />
+            <SummaryStatCard
+              label="Rendez-vous aujourd'hui"
+              value={String(dashboard.data.metrics.todayCount)}
+            />
+            <SummaryStatCard
+              label="Cette semaine"
+              value={String(dashboard.data.metrics.weekCount)}
+            />
           </View>
         </LinearGradient>
 
@@ -170,60 +203,59 @@ export default function EmployeeDashboardScreen() {
 
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Rendez-vous du jour</Text>
-            <Text style={styles.sectionMeta}>Mercredi 28 Jan 2026</Text>
+            <Text style={styles.sectionMeta}>{formatFullDate(new Date())}</Text>
           </View>
 
           <View style={styles.list}>
-            {todayAppointments.map((appointment) => (
-              <Card key={appointment.id} style={styles.appointmentCard}>
-                <View style={styles.appointmentTop}>
-                  <View style={styles.avatar}>
-                    <Ionicons name="person-outline" size={18} color={colors.brand} />
-                  </View>
-
-                  <View style={styles.appointmentInfo}>
-                    <Text style={styles.appointmentName}>{appointment.clientName}</Text>
-                    <Text style={styles.appointmentService}>{appointment.service}</Text>
-                  </View>
-
-                  <View style={styles.timePill}>
-                    <Text style={styles.timePillText}>{appointment.time}</Text>
-                  </View>
-                </View>
-
-                <View style={styles.separator} />
-
-                <View style={styles.appointmentBottom}>
-                  <View style={styles.inline}>
-                    <Ionicons name="time-outline" size={14} color={colors.textMuted} />
-                    <Text style={styles.metaText}>{appointment.duration}</Text>
-                  </View>
-
-                  <Pressable onPress={() => router.push(`./appointment-detail?id=${appointment.id}`)}>
-                    <Text style={styles.linkText}>Voir details</Text>
-                  </Pressable>
-                </View>
+            {todayItems.length === 0 ? (
+              <Card style={styles.emptyCard}>
+                <Text style={styles.emptyTitle}>Aucun rendez-vous aujourd'hui</Text>
+                <Text style={styles.emptyText}>
+                  Les rendez-vous confirmes et les creneaux bloques apparaitront ici.
+                </Text>
               </Card>
-            ))}
+            ) : (
+              todayItems.map((appointment) => (
+                <Card key={`${appointment.kind}-${appointment.id}`} style={styles.appointmentCard}>
+                  <View style={styles.appointmentTop}>
+                    <View style={styles.avatar}>
+                      <Ionicons name="person-outline" size={18} color={colors.brand} />
+                    </View>
+
+                    <View style={styles.appointmentInfo}>
+                      <Text style={styles.appointmentName}>{appointment.clientName}</Text>
+                      <Text style={styles.appointmentService}>{appointment.service.name}</Text>
+                    </View>
+
+                    <View style={styles.timePill}>
+                      <Text style={styles.timePillText}>{formatTime(appointment.startAt)}</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.separator} />
+
+                  <View style={styles.appointmentBottom}>
+                    <View style={styles.inline}>
+                      <Ionicons name="time-outline" size={14} color={colors.textMuted} />
+                      <Text style={styles.metaText}>
+                        {appointment.service.durationMin} min
+                      </Text>
+                    </View>
+
+                    <Pressable
+                      onPress={() =>
+                        router.push(
+                          `./appointment-detail?id=${appointment.id}&kind=${appointment.kind}`,
+                        )
+                      }
+                    >
+                      <Text style={styles.linkText}>Voir details</Text>
+                    </Pressable>
+                  </View>
+                </Card>
+              ))
+            )}
           </View>
-
-          <LinearGradient
-            colors={['#D4AF6A', '#E2BF7C']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.performanceCard}
-          >
-            <View style={styles.performanceHeader}>
-              <Text style={styles.performanceTitle}>Performance ce mois</Text>
-              <Ionicons name="star-outline" size={18} color={colors.brandForeground} />
-            </View>
-
-            <View style={styles.performanceRow}>
-              <PerformanceMetric label="Clients" value="87" />
-              <PerformanceMetric label="Note moyenne" value="4.9" />
-              <PerformanceMetric label="Heures" value="156h" />
-            </View>
-          </LinearGradient>
         </View>
       </ScrollView>
 
@@ -234,14 +266,19 @@ export default function EmployeeDashboardScreen() {
         footer={
           <>
             <Button title="Annuler" variant="secondary" onPress={resetBlockForm} style={styles.footerButton} />
-            <Button title="Bloquer le creneau" onPress={handleBlockSubmit} style={styles.footerButton} />
+            <Button
+              title={createBlockedSlot.isPending ? 'Enregistrement...' : 'Bloquer le creneau'}
+              onPress={handleBlockSubmit}
+              style={styles.footerButton}
+              disabled={createBlockedSlot.isPending}
+            />
           </>
         }
       >
         <View style={styles.banner}>
           <Ionicons name="alert-circle-outline" size={18} color={colors.premium} />
           <Text style={styles.bannerText}>
-            Une notification sera automatiquement envoyee au professionnel et le calendrier sera mis a jour.
+            Ce creneau sera bloque uniquement pour vous et visible dans votre agenda.
           </Text>
         </View>
 
@@ -288,17 +325,17 @@ export default function EmployeeDashboardScreen() {
         <EmployeePickerField
           label="Service *"
           placeholder="Selectionner un service"
-          value={service}
+          value={serviceName}
           onPress={() => setActivePicker((current) => (current === 'service' ? null : 'service'))}
           icon="chevron-down"
           error={errors.service}
         />
         {activePicker === 'service' ? (
           <EmployeeSelectList
-            options={services}
-            value={service}
+            options={services.map((item) => item.name)}
+            value={serviceName}
             onSelect={(option) => {
-              setService(option)
+              setServiceName(option)
               setActivePicker(null)
             }}
           />
@@ -331,7 +368,6 @@ export default function EmployeeDashboardScreen() {
           inputStyle={styles.multilineInput}
         />
       </EmployeeModal>
-
     </Screen>
   )
 }
@@ -345,18 +381,41 @@ function SummaryStatCard({ label, value }: { label: string; value: string }) {
   )
 }
 
-function PerformanceMetric({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.performanceMetric}>
-      <Text style={styles.performanceMetricLabel}>{label}</Text>
-      <Text style={styles.performanceMetricValue}>{value}</Text>
-    </View>
-  )
+function formatTime(value: string) {
+  return new Date(value).toLocaleTimeString('fr-FR', {
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+function formatFullDate(value: Date) {
+  return value.toLocaleDateString('fr-FR', {
+    weekday: 'long',
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  })
+}
+
+function toUtcIso(date: string, time: string) {
+  const [day, month, year] = date.split('/').map(Number)
+  const [hours, minutes] = time.split(':').map(Number)
+  return new Date(Date.UTC(year, month - 1, day, hours, minutes, 0)).toISOString()
 }
 
 const styles = StyleSheet.create({
   screen: {
     backgroundColor: '#F3F0EB',
+  },
+  loadingScreen: {
+    backgroundColor: '#F3F0EB',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingText: {
+    color: colors.text,
+    ...typography.body,
+    textAlign: 'center',
   },
   content: {
     paddingBottom: spacing.xl,
@@ -452,9 +511,23 @@ const styles = StyleSheet.create({
   sectionMeta: {
     color: colors.textMuted,
     ...typography.small,
+    textTransform: 'capitalize',
   },
   list: {
     gap: spacing.md,
+  },
+  emptyCard: {
+    borderRadius: radius.xl,
+  },
+  emptyTitle: {
+    color: colors.text,
+    ...typography.medium,
+    fontWeight: '700',
+  },
+  emptyText: {
+    marginTop: spacing.sm,
+    color: colors.textMuted,
+    ...typography.body,
   },
   appointmentCard: {
     borderRadius: radius.xl,
@@ -520,55 +593,21 @@ const styles = StyleSheet.create({
     ...typography.small,
     fontWeight: '700',
   },
-  performanceCard: {
-    borderRadius: radius.xl,
-    padding: spacing.lg,
-  },
-  performanceHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: spacing.md,
-  },
-  performanceTitle: {
-    color: colors.brandForeground,
-    ...typography.h3,
-    fontWeight: '800',
-  },
-  performanceRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: spacing.md,
-  },
-  performanceMetric: {
-    flex: 1,
-  },
-  performanceMetricLabel: {
-    color: 'rgba(255,255,255,0.85)',
-    ...typography.small,
-    fontWeight: '600',
-  },
-  performanceMetricValue: {
-    marginTop: spacing.xs,
-    color: colors.brandForeground,
-    ...typography.h2,
-    fontWeight: '800',
-  },
   banner: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: spacing.sm,
     padding: spacing.md,
     borderRadius: radius.lg,
-    backgroundColor: '#FBF5E9',
     borderWidth: 1,
     borderColor: 'rgba(212,175,106,0.4)',
+    backgroundColor: '#FBF5E9',
   },
   bannerText: {
     flex: 1,
     color: colors.text,
-    ...typography.small,
-    lineHeight: 18,
+    ...typography.body,
+    lineHeight: 22,
   },
   multilineInput: {
     minHeight: 88,
@@ -576,8 +615,5 @@ const styles = StyleSheet.create({
   },
   footerButton: {
     flex: 1,
-  },
-  inlinePicker: {
-    marginTop: -4,
   },
 })

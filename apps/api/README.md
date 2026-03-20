@@ -132,3 +132,23 @@ Le script:
 - crée des `SalonReview` (avis clients),
 - renseigne images (`coverImageUrl`, `galleryImageUrls`) et réseaux sociaux (`socialLinks`),
 - backfill aussi les salons actifs existants s'ils n'ont pas encore ces données.
+
+## Beta-ready seed (Client + Employee)
+
+Pour un jeu de données déterministe orienté beta:
+
+```bash
+pnpm --filter api run seed:beta
+```
+
+Comptes créés:
+
+- `client.beta@ambya.com` / `password123`
+- `employee.beta@ambya.com` / `password123`
+- `pro.beta@ambya.com` / `password123`
+
+Le script crée un salon de démonstration, des services catégorisés, un profil client complet, des paiements beta, des rendez-vous dans plusieurs états, un créneau non assigné, un créneau bloqué et des demandes de congés.
+
+Scénario de test manuel:
+
+- voir [docs/beta-client-employee-e2e.md](/c:/Users/Caron/Desktop/LAN%20Consulting/ambya/docs/beta-client-employee-e2e.md)

@@ -12,10 +12,11 @@ import { MeModule } from './me/me.module';
 import { PaymentMethodsModule } from './payment-methods/payment-methods.module';
 import { PaymentsModule } from './payments/payments.module';
 import { DiscoveryModule } from './discovery/discovery.module';
+import { EmployeeModule } from './employee/employee.module';
 
 @Module({
   imports: [AppConfigModule, AppointmentsModule, 
-    AuthModule, MeModule, PaymentMethodsModule, PaymentsModule, DiscoveryModule,
+    AuthModule, MeModule, PaymentMethodsModule, PaymentsModule, DiscoveryModule, EmployeeModule,
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: [

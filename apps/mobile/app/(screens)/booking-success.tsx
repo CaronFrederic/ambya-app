@@ -1,7 +1,6 @@
-// app/(screens)/booking-success.tsx
 import React, { useMemo } from 'react'
 import { View, Text, StyleSheet, Pressable, ScrollView } from 'react-native'
-import { router } from 'expo-router'
+import { router, useLocalSearchParams } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 
 import { Screen } from '../../src/components/Screen'
@@ -17,32 +16,63 @@ function formatFCFA(v: number) {
 }
 
 export default function BookingSuccessScreen() {
+  const params = useLocalSearchParams<{
+    salonName?: string
+    serviceLabel?: string
+    dateIso?: string
+    timeLabel?: string
+    totalAmount?: string
+    paymentStatus?: string
+    paymentMethod?: string
+  }>()
   const { draft } = useBooking()
 
   const totalAmount = useMemo(() => {
+    const parsed = Number(params.totalAmount)
+    if (Number.isFinite(parsed) && parsed > 0) return parsed
     return draft.cart.reduce((sum, item) => sum + item.price * (item.quantity || 1), 0)
-  }, [draft.cart])
+  }, [draft.cart, params.totalAmount])
 
-  // Valeurs fallback (en attendant branchement API)
-  const salonName = draft.salonName ?? 'Salon Élégance'
+  const salonName = params.salonName || draft.salonName || '-'
   const serviceLabel =
-    draft.cart?.length > 0
-      ? draft.cart.map((x) => x.name).slice(0, 2).join(' + ')
-      : 'Coupe + Brushing'
-
-    const dateLabel = draft.date ? `${draft.date.day} ${draft.date.date} Jan 2026` : '-'
-    const timeLabel = draft.time ?? '-'
+    params.serviceLabel ||
+    (draft.cart?.length > 0 ? draft.cart.map((x) => x.name).join(' + ') : '-')
+  const dateLabel = params.dateIso
+    ? new Date(`${params.dateIso}T00:00:00.000Z`).toLocaleDateString('fr-FR', {
+        day: '2-digit',
+        month: 'long',
+        year: 'numeric',
+      })
+    : draft.selectedDateIso
+      ? new Date(`${draft.selectedDateIso}T00:00:00.000Z`).toLocaleDateString('fr-FR', {
+          day: '2-digit',
+          month: 'long',
+          year: 'numeric',
+        })
+      : '-'
+  const timeLabel = params.timeLabel || draft.time || '-'
+  const paymentStatus = params.paymentStatus || 'CREATED'
+  const paymentMethod = params.paymentMethod || 'CASH'
+  const isPaid = paymentStatus === 'SUCCEEDED'
 
   return (
     <Screen style={styles.screen} noPadding>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.top}>
-          <View style={styles.checkCircle}>
-            <Ionicons name="checkmark" size={34} color="#fff" />
+          <View style={[styles.checkCircle, isPaid ? styles.paidCircle : styles.pendingCircle]}>
+            <Ionicons name={isPaid ? 'checkmark' : 'time-outline'} size={34} color="#fff" />
           </View>
 
-          <Text style={styles.title}>Réservation confirmée!</Text>
-          <Text style={styles.subtitle}>Votre rendez-vous a été réservé avec succès</Text>
+          <Text style={styles.title}>
+            {isPaid ? 'Paiement enregistre' : 'Demande de rendez-vous envoyee'}
+          </Text>
+          <Text style={styles.subtitle}>
+            {isPaid
+              ? 'Votre paiement beta interne a bien ete enregistre. Le salon doit encore valider votre rendez-vous.'
+              : paymentMethod === 'CASH'
+                ? 'Votre rendez-vous est en attente de validation par le salon. Le paiement se fera sur place.'
+                : 'Votre rendez-vous est en attente de validation par le salon.'}
+          </Text>
         </View>
 
         <View style={styles.card}>
@@ -68,9 +98,21 @@ export default function BookingSuccessScreen() {
           <Text style={styles.label}>Service</Text>
           <Text style={styles.value}>{serviceLabel}</Text>
 
-          {/* si tu veux afficher le montant */}
+          <Text style={[styles.label, { marginTop: spacing.md }]}>
+            Paiement{' '}
+            <Text style={{ color: colors.brand, fontWeight: '700' }}>
+              {isPaid
+                ? paymentMethod === 'CARD'
+                  ? 'Carte enregistree'
+                  : paymentMethod === 'MOMO'
+                    ? 'Mobile Money enregistre'
+                    : 'Encaisse'
+                : 'A regler'}
+            </Text>
+          </Text>
+
           {!!totalAmount && (
-            <Text style={[styles.label, { marginTop: spacing.md }]}>
+            <Text style={[styles.label, { marginTop: spacing.sm }]}>
               Montant{' '}
               <Text style={{ color: colors.brand, fontWeight: '700' }}>{formatFCFA(totalAmount)}</Text>
             </Text>
@@ -90,7 +132,7 @@ export default function BookingSuccessScreen() {
             onPress={() => router.replace('/(tabs)/home')}
             style={({ pressed }) => [styles.secondaryBtn, pressed && { opacity: 0.9 }]}
           >
-            <Text style={styles.secondaryText}>Retour à l'accueil</Text>
+            <Text style={styles.secondaryText}>Retour a l'accueil</Text>
           </Pressable>
         </View>
 
@@ -102,40 +144,39 @@ export default function BookingSuccessScreen() {
 
 const styles = StyleSheet.create({
   screen: { backgroundColor: colors.background },
-
   content: {
     padding: spacing.lg,
     paddingTop: spacing.xl,
   },
-
   top: {
     alignItems: 'center',
     marginBottom: spacing.lg,
   },
-
   checkCircle: {
     width: 78,
     height: 78,
     borderRadius: radius.full,
-    backgroundColor: '#22C55E',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: spacing.md,
   },
-
+  paidCircle: {
+    backgroundColor: '#22C55E',
+  },
+  pendingCircle: {
+    backgroundColor: '#D49B32',
+  },
   title: {
     color: colors.text,
     ...typography.h2,
     textAlign: 'center',
   },
-
   subtitle: {
     marginTop: spacing.xs,
     color: colors.textMuted,
     ...typography.small,
     textAlign: 'center',
   },
-
   card: {
     backgroundColor: colors.card,
     borderRadius: radius.xl,
@@ -148,49 +189,41 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 6 },
     elevation: 2,
   },
-
   cardMuted: {
     color: colors.textMuted,
     ...typography.small,
     textAlign: 'center',
     marginBottom: 2,
   },
-
   cardTitle: {
     color: colors.text,
     ...typography.h3,
     textAlign: 'center',
     marginBottom: spacing.lg,
   },
-
   splitRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
   },
-
   label: {
     color: colors.textMuted,
     ...typography.small,
     marginBottom: 4,
   },
-
   value: {
     color: colors.text,
     ...typography.body,
     fontWeight: '600',
   },
-
   divider: {
     height: 1,
     backgroundColor: colors.hairline,
     marginVertical: spacing.lg,
   },
-
   actions: {
     marginTop: spacing.lg,
     gap: spacing.md,
   },
-
   primaryBtn: {
     backgroundColor: colors.brand,
     borderRadius: radius.full,
@@ -201,13 +234,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: spacing.sm,
   },
-
   primaryText: {
     color: colors.brandForeground,
     ...typography.body,
     fontWeight: '700',
   },
-
   secondaryBtn: {
     backgroundColor: colors.card,
     borderRadius: radius.full,
@@ -218,10 +249,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-
   secondaryText: {
-    color: colors.brand,
+    color: colors.text,
     ...typography.body,
-    fontWeight: '700',
+    fontWeight: '600',
   },
 })

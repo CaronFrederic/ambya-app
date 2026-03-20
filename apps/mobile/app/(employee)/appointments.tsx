@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react'
+import React, { useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { router } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
@@ -7,13 +7,11 @@ import { Card } from '../../src/components/Card'
 import { Screen } from '../../src/components/Screen'
 import { EmployeeChipTabs } from '../../src/components/employee/EmployeeChipTabs'
 import { EmployeeHeader } from '../../src/components/employee/EmployeeHeader'
-import { useEmployeeFlow } from '../../src/features/employee/EmployeeFlowProvider'
+import { useEmployeeSchedule, type EmployeeScheduleTab } from '../../src/api/employee'
 import { colors, overlays } from '../../src/theme/colors'
 import { radius } from '../../src/theme/radius'
 import { spacing } from '../../src/theme/spacing'
 import { typography } from '../../src/theme/typography'
-
-type AppointmentTab = 'all' | 'upcoming' | 'completed'
 
 const tabOptions = [
   { key: 'all' as const, label: 'Tous' },
@@ -22,13 +20,8 @@ const tabOptions = [
 ]
 
 export default function EmployeeAppointmentsScreen() {
-  const { appointments } = useEmployeeFlow()
-  const [tab, setTab] = useState<AppointmentTab>('all')
-
-  const filteredAppointments = useMemo(() => {
-    if (tab === 'all') return appointments
-    return appointments.filter((item) => item.status === tab)
-  }, [appointments, tab])
+  const [tab, setTab] = useState<EmployeeScheduleTab>('all')
+  const schedule = useEmployeeSchedule(tab)
 
   return (
     <Screen noPadding style={styles.screen}>
@@ -46,93 +39,112 @@ export default function EmployeeAppointmentsScreen() {
         <EmployeeChipTabs options={tabOptions} value={tab} onChange={setTab} />
 
         <View style={styles.list}>
-          {filteredAppointments.map((appointment) => (
-            <Pressable
-              key={appointment.id}
-              onPress={() => router.push(`./appointment-detail?id=${appointment.id}`)}
-            >
-              <Card style={styles.card}>
-                <View style={styles.topRow}>
-                  <View style={styles.identityRow}>
-                    <View style={styles.avatar}>
-                      <Ionicons name="person-outline" size={18} color={colors.brand} />
+          {schedule.isLoading ? (
+            <Text style={styles.feedbackText}>Chargement de votre agenda...</Text>
+          ) : schedule.isError ? (
+            <Text style={styles.feedbackText}>Impossible de charger les rendez-vous.</Text>
+          ) : (schedule.data?.items.length ?? 0) === 0 ? (
+            <Card style={styles.card}>
+              <Text style={styles.name}>Aucun rendez-vous</Text>
+              <Text style={styles.service}>Aucun element ne correspond a ce filtre.</Text>
+            </Card>
+          ) : (
+            schedule.data?.items.map((appointment) => (
+              <Pressable
+                key={`${appointment.kind}-${appointment.id}`}
+                onPress={() =>
+                  router.push(`./appointment-detail?id=${appointment.id}&kind=${appointment.kind}`)
+                }
+              >
+                <Card style={styles.card}>
+                  <View style={styles.topRow}>
+                    <View style={styles.identityRow}>
+                      <View style={styles.avatar}>
+                        <Ionicons name="person-outline" size={18} color={colors.brand} />
+                      </View>
+
+                      <View style={styles.copy}>
+                        <Text style={styles.name}>{appointment.clientName}</Text>
+                        <Text style={styles.service}>{appointment.service.name}</Text>
+                      </View>
                     </View>
 
-                    <View style={styles.copy}>
-                      <Text style={styles.name}>{appointment.clientName}</Text>
-                      <Text style={styles.service}>{appointment.service}</Text>
-                    </View>
-                  </View>
-
-                  <View style={styles.rightGroup}>
-                    <View
-                      style={[
-                        styles.statusPill,
-                        appointment.status === 'completed'
-                          ? styles.completedPill
-                          : styles.upcomingPill,
-                      ]}
-                    >
-                      <Text
+                    <View style={styles.rightGroup}>
+                      <View
                         style={[
-                          styles.statusText,
-                          appointment.status === 'completed'
-                            ? styles.completedText
-                            : styles.upcomingText,
+                          styles.statusPill,
+                          appointment.status === 'COMPLETED'
+                            ? styles.completedPill
+                            : styles.upcomingPill,
                         ]}
                       >
-                        {appointment.status === 'completed' ? 'Termine' : 'A venir'}
+                        <Text
+                          style={[
+                            styles.statusText,
+                            appointment.status === 'COMPLETED'
+                              ? styles.completedText
+                              : styles.upcomingText,
+                          ]}
+                        >
+                          {appointment.status === 'COMPLETED'
+                            ? 'Termine'
+                            : appointment.status === 'CONFIRMED'
+                              ? 'Confirme'
+                              : 'En attente'}
+                        </Text>
+                      </View>
+
+                      {appointment.isPaid ? (
+                        <View style={styles.paidPill}>
+                          <Text style={styles.paidText}>Paye</Text>
+                        </View>
+                      ) : null}
+                    </View>
+                  </View>
+
+                  <View style={styles.metaRow}>
+                    <View style={styles.metaItem}>
+                      <Ionicons name="calendar-outline" size={14} color={colors.textMuted} />
+                      <Text style={styles.metaText}>{formatDate(appointment.startAt)}</Text>
+                    </View>
+
+                    <View style={styles.metaItem}>
+                      <Ionicons name="time-outline" size={14} color={colors.textMuted} />
+                      <Text style={styles.metaText}>{formatTime(appointment.startAt)}</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.metaRow}>
+                    <View style={styles.metaItem}>
+                      <Ionicons
+                        name={appointment.kind === 'blocked_slot' ? 'briefcase-outline' : 'sparkles-outline'}
+                        size={14}
+                        color={colors.textMuted}
+                      />
+                      <Text style={styles.metaText}>
+                        {appointment.kind === 'blocked_slot' ? 'Bloque en salon' : 'Rendez-vous client'}
                       </Text>
                     </View>
-
-                    {appointment.paid ? (
-                      <View style={styles.paidPill}>
-                        <Text style={styles.paidText}>Paye</Text>
-                      </View>
-                    ) : null}
                   </View>
-                </View>
-
-                <View style={styles.metaRow}>
-                  <View style={styles.metaItem}>
-                    <Ionicons name="calendar-outline" size={14} color={colors.textMuted} />
-                    <Text style={styles.metaText}>{appointment.date}</Text>
-                  </View>
-
-                  <View style={styles.metaItem}>
-                    <Ionicons name="time-outline" size={14} color={colors.textMuted} />
-                    <Text style={styles.metaText}>{appointment.time}</Text>
-                  </View>
-                </View>
-
-                {appointment.status === 'completed' ? (
-                  <>
-                    <View style={styles.separator} />
-                    <View style={styles.ratingRow}>
-                      <Text style={styles.ratingLabel}>Evaluation :</Text>
-                      <View style={styles.stars}>
-                        {Array.from({ length: 5 }).map((_, index) => {
-                          const filled = index < (appointment.rating ?? 0)
-                          return (
-                            <Ionicons
-                              key={`${appointment.id}-${index}`}
-                              name={filled ? 'star' : 'star-outline'}
-                              size={16}
-                              color={filled ? '#D4AF6A' : '#D0D0D0'}
-                            />
-                          )
-                        })}
-                      </View>
-                    </View>
-                  </>
-                ) : null}
-              </Card>
-            </Pressable>
-          ))}
+                </Card>
+              </Pressable>
+            ))
+          )}
         </View>
       </ScrollView>
     </Screen>
   )
+}
+
+function formatDate(value: string) {
+  return new Date(value).toLocaleDateString('fr-FR')
+}
+
+function formatTime(value: string) {
+  return new Date(value).toLocaleTimeString('fr-FR', {
+    hour: '2-digit',
+    minute: '2-digit',
+  })
 }
 
 const styles = StyleSheet.create({
@@ -145,6 +157,11 @@ const styles = StyleSheet.create({
   },
   list: {
     gap: spacing.md,
+  },
+  feedbackText: {
+    color: colors.textMuted,
+    ...typography.body,
+    textAlign: 'center',
   },
   card: {
     borderRadius: radius.xl,
@@ -223,6 +240,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: spacing.md,
     marginTop: spacing.md,
+    flexWrap: 'wrap',
   },
   metaItem: {
     flexDirection: 'row',
@@ -232,23 +250,5 @@ const styles = StyleSheet.create({
   metaText: {
     color: colors.textMuted,
     ...typography.small,
-  },
-  separator: {
-    height: 1,
-    backgroundColor: colors.border,
-    marginVertical: spacing.md,
-  },
-  ratingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  ratingLabel: {
-    color: colors.textMuted,
-    ...typography.small,
-  },
-  stars: {
-    flexDirection: 'row',
-    gap: 2,
   },
 })

@@ -9,7 +9,10 @@ import { EmployeeCalendarPicker } from '../../src/components/employee/EmployeeCa
 import { EmployeeHeader } from '../../src/components/employee/EmployeeHeader'
 import { EmployeeModal } from '../../src/components/employee/EmployeeModal'
 import { EmployeePickerField } from '../../src/components/employee/EmployeePickerField'
-import { useEmployeeFlow } from '../../src/features/employee/EmployeeFlowProvider'
+import {
+  useCreateEmployeeLeaveRequest,
+  useEmployeeLeaveRequests,
+} from '../../src/api/employee'
 import { colors } from '../../src/theme/colors'
 import { radius } from '../../src/theme/radius'
 import { spacing } from '../../src/theme/spacing'
@@ -18,7 +21,8 @@ import { typography } from '../../src/theme/typography'
 type PickerType = 'start' | 'end' | null
 
 export default function EmployeeLeaveScreen() {
-  const { leaveRequests, createLeaveRequest } = useEmployeeFlow()
+  const leaveRequests = useEmployeeLeaveRequests()
+  const createLeaveRequest = useCreateEmployeeLeaveRequest()
   const [showModal, setShowModal] = useState(false)
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
@@ -58,17 +62,20 @@ export default function EmployeeLeaveScreen() {
     return Object.keys(nextErrors).length === 0
   }
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!validateForm()) return
 
-    createLeaveRequest({
-      startDate,
-      endDate,
-      reason: reason.trim(),
-    })
-
-    closeModal()
-    Alert.alert('Demande envoyee', 'Votre demande de conges a bien ete enregistree.')
+    try {
+      await createLeaveRequest.mutateAsync({
+        startAt: toStartOfDayIso(startDate),
+        endAt: toEndOfDayIso(endDate),
+        reason: reason.trim(),
+      })
+      closeModal()
+      Alert.alert('Demande envoyee', 'Votre demande de conges a bien ete enregistree.')
+    } catch (error: any) {
+      Alert.alert('Impossible d envoyer la demande', error?.message ?? 'Erreur inconnue')
+    }
   }
 
   return (
@@ -91,32 +98,58 @@ export default function EmployeeLeaveScreen() {
         />
 
         <View style={styles.list}>
-          {leaveRequests.map((leave) => (
-            <Card key={leave.id} style={styles.card}>
-              <View style={styles.cardHeader}>
-                <Text style={styles.cardTitle}>{leave.title}</Text>
-                <View
-                  style={[
-                    styles.statusPill,
-                    leave.status === 'approved' ? styles.approvedPill : styles.pendingPill,
-                  ]}
-                >
-                  <Text
+          {leaveRequests.isLoading ? (
+            <Text style={styles.feedbackText}>Chargement des demandes...</Text>
+          ) : leaveRequests.isError ? (
+            <Text style={styles.feedbackText}>Impossible de charger les conges.</Text>
+          ) : (leaveRequests.data?.items.length ?? 0) === 0 ? (
+            <Card style={styles.card}>
+              <Text style={styles.cardTitle}>Aucune demande de conges</Text>
+              <Text style={styles.period}>Vos futures demandes apparaitront ici.</Text>
+            </Card>
+          ) : (
+            leaveRequests.data?.items.map((leave) => (
+              <Card key={leave.id} style={styles.card}>
+                <View style={styles.cardHeader}>
+                  <Text style={styles.cardTitle}>{leave.reason}</Text>
+                  <View
                     style={[
-                      styles.statusText,
-                      leave.status === 'approved' ? styles.approvedText : styles.pendingText,
+                      styles.statusPill,
+                      leave.status === 'APPROVED'
+                        ? styles.approvedPill
+                        : leave.status === 'REJECTED'
+                          ? styles.rejectedPill
+                          : styles.pendingPill,
                     ]}
                   >
-                    {leave.status === 'approved' ? 'Approuve' : 'En attente'}
-                  </Text>
+                    <Text
+                      style={[
+                        styles.statusText,
+                        leave.status === 'APPROVED'
+                          ? styles.approvedText
+                          : leave.status === 'REJECTED'
+                            ? styles.rejectedText
+                            : styles.pendingText,
+                      ]}
+                    >
+                      {leave.status === 'APPROVED'
+                        ? 'Approuve'
+                        : leave.status === 'REJECTED'
+                          ? 'Refuse'
+                          : 'En attente'}
+                    </Text>
+                  </View>
                 </View>
-              </View>
 
-              <Text style={styles.period}>{leave.period}</Text>
-              <View style={styles.separator} />
-              <Text style={styles.duration}>{leave.duration}</Text>
-            </Card>
-          ))}
+                <Text style={styles.period}>
+                  Du {formatDate(leave.startAt)} au {formatDate(leave.endAt)}
+                </Text>
+                <View style={styles.separator} />
+                <Text style={styles.duration}>{buildDurationLabel(leave.startAt, leave.endAt)}</Text>
+                {leave.managerNote ? <Text style={styles.managerNote}>Note manager: {leave.managerNote}</Text> : null}
+              </Card>
+            ))
+          )}
         </View>
       </ScrollView>
 
@@ -127,7 +160,12 @@ export default function EmployeeLeaveScreen() {
         footer={
           <>
             <Button title="Annuler" variant="secondary" onPress={closeModal} style={styles.footerButton} />
-            <Button title="Envoyer" onPress={handleSubmit} style={styles.footerButton} />
+            <Button
+              title={createLeaveRequest.isPending ? 'Envoi...' : 'Envoyer'}
+              onPress={handleSubmit}
+              style={styles.footerButton}
+              disabled={createLeaveRequest.isPending}
+            />
           </>
         }
       >
@@ -203,6 +241,26 @@ function compareDates(left: string, right: string) {
   return leftDate.getTime() - rightDate.getTime()
 }
 
+function formatDate(value: string) {
+  return new Date(value).toLocaleDateString('fr-FR')
+}
+
+function toStartOfDayIso(value: string) {
+  const [day, month, year] = value.split('/').map(Number)
+  return new Date(Date.UTC(year, month - 1, day, 0, 0, 0)).toISOString()
+}
+
+function toEndOfDayIso(value: string) {
+  const [day, month, year] = value.split('/').map(Number)
+  return new Date(Date.UTC(year, month - 1, day, 23, 59, 59)).toISOString()
+}
+
+function buildDurationLabel(startAt: string, endAt: string) {
+  const delta = new Date(endAt).getTime() - new Date(startAt).getTime()
+  const days = Math.max(1, Math.ceil(delta / (1000 * 60 * 60 * 24)))
+  return `${days} jour${days > 1 ? 's' : ''}`
+}
+
 const styles = StyleSheet.create({
   screen: {
     backgroundColor: '#F3F0EB',
@@ -213,6 +271,11 @@ const styles = StyleSheet.create({
   },
   newRequestButton: {
     height: 48,
+  },
+  feedbackText: {
+    color: colors.textMuted,
+    ...typography.body,
+    textAlign: 'center',
   },
   list: {
     gap: spacing.md,
@@ -243,6 +306,9 @@ const styles = StyleSheet.create({
   approvedPill: {
     backgroundColor: colors.successSoft,
   },
+  rejectedPill: {
+    backgroundColor: '#FDE3E3',
+  },
   statusText: {
     ...typography.small,
     fontWeight: '700',
@@ -252,6 +318,9 @@ const styles = StyleSheet.create({
   },
   approvedText: {
     color: colors.successText,
+  },
+  rejectedText: {
+    color: '#B83737',
   },
   period: {
     marginTop: spacing.sm,
@@ -265,6 +334,11 @@ const styles = StyleSheet.create({
   },
   duration: {
     color: colors.textMuted,
+    ...typography.small,
+  },
+  managerNote: {
+    marginTop: spacing.sm,
+    color: colors.text,
     ...typography.small,
   },
   multilineInput: {

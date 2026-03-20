@@ -7,18 +7,28 @@ import { Button } from '../../src/components/Button'
 import { Card } from '../../src/components/Card'
 import { Screen } from '../../src/components/Screen'
 import { EmployeeHeader } from '../../src/components/employee/EmployeeHeader'
-import { useEmployeeFlow } from '../../src/features/employee/EmployeeFlowProvider'
+import {
+  useCompleteEmployeeScheduleItem,
+  useConfirmEmployeeScheduleItem,
+  useEmployeeScheduleItem,
+  usePayEmployeeScheduleItem,
+} from '../../src/api/employee'
 import { colors, overlays } from '../../src/theme/colors'
 import { radius } from '../../src/theme/radius'
 import { spacing } from '../../src/theme/spacing'
 import { typography } from '../../src/theme/typography'
 
 export default function EmployeeAppointmentDetailScreen() {
-  const params = useLocalSearchParams<{ id?: string }>()
-  const { findAppointment, markAppointmentCompleted, markAppointmentPaid } = useEmployeeFlow()
-  const appointment = findAppointment(String(params.id ?? ''))
+  const params = useLocalSearchParams<{ id?: string; kind?: string }>()
+  const id = typeof params.id === 'string' ? params.id : undefined
+  const kind = typeof params.kind === 'string' ? params.kind : undefined
 
-  if (!appointment) {
+  const detail = useEmployeeScheduleItem(kind, id)
+  const confirmMutation = useConfirmEmployeeScheduleItem()
+  const completeMutation = useCompleteEmployeeScheduleItem()
+  const payMutation = usePayEmployeeScheduleItem()
+
+  if (!kind || !id) {
     return (
       <Screen style={styles.screen}>
         <Text style={styles.missingText}>Rendez-vous introuvable.</Text>
@@ -26,21 +36,61 @@ export default function EmployeeAppointmentDetailScreen() {
     )
   }
 
-  const handleComplete = () => {
-    markAppointmentCompleted(appointment.id)
-    Alert.alert('Rendez-vous termine', 'Le rendez-vous a ete marque comme termine.')
+  if (detail.isLoading) {
+    return (
+      <Screen style={styles.screen}>
+        <Text style={styles.missingText}>Chargement du rendez-vous...</Text>
+      </Screen>
+    )
   }
 
-  const handlePaid = () => {
-    markAppointmentPaid(appointment.id)
-    Alert.alert('Paiement enregistre', 'Le rendez-vous a ete marque comme paye.')
+  if (detail.isError || !detail.data?.item) {
+    return (
+      <Screen style={styles.screen}>
+        <Text style={styles.missingText}>Impossible de charger ce rendez-vous.</Text>
+      </Screen>
+    )
   }
+
+  const appointment = detail.data.item
+
+  const handleConfirm = async () => {
+    try {
+      await confirmMutation.mutateAsync({ kind, id })
+      Alert.alert('Rendez-vous confirme', 'Le rendez-vous a ete pris en charge.')
+    } catch (error: any) {
+      Alert.alert('Action impossible', error?.message ?? 'Erreur inconnue')
+    }
+  }
+
+  const handleComplete = async () => {
+    try {
+      await completeMutation.mutateAsync({ kind, id })
+      Alert.alert('Rendez-vous termine', 'Le rendez-vous a ete marque comme termine.')
+    } catch (error: any) {
+      Alert.alert('Action impossible', error?.message ?? 'Erreur inconnue')
+    }
+  }
+
+  const handlePaid = async () => {
+    try {
+      await payMutation.mutateAsync({ kind, id })
+      Alert.alert('Paiement enregistre', 'Le rendez-vous a ete marque comme paye.')
+    } catch (error: any) {
+      Alert.alert('Action impossible', error?.message ?? 'Erreur inconnue')
+    }
+  }
+
+  const isPending = confirmMutation.isPending || completeMutation.isPending || payMutation.isPending
+  const canConfirm = appointment.kind === 'appointment' && appointment.status === 'PENDING'
+  const canComplete = appointment.status === 'PENDING' || appointment.status === 'CONFIRMED'
+  const canPay = !appointment.isPaid
 
   return (
     <Screen noPadding style={styles.screen}>
       <EmployeeHeader
         title="Detail du rendez-vous"
-        subtitle={`${appointment.clientName} - ${appointment.service}`}
+        subtitle={`${appointment.clientName} - ${appointment.service.name}`}
         canGoBack
       />
 
@@ -52,30 +102,53 @@ export default function EmployeeAppointmentDetailScreen() {
       >
         <Card style={styles.card}>
           <View style={styles.topRow}>
-            <View>
+            <View style={styles.mainCopy}>
               <Text style={styles.clientName}>{appointment.clientName}</Text>
-              <Text style={styles.serviceName}>{appointment.service}</Text>
+              <Text style={styles.serviceName}>{appointment.service.name}</Text>
             </View>
 
             <View style={styles.statusGroup}>
-              <View style={[styles.statusPill, appointment.status === 'completed' ? styles.donePill : styles.upcomingPill]}>
-                <Text style={[styles.statusText, appointment.status === 'completed' ? styles.doneText : styles.upcomingText]}>
-                  {appointment.status === 'completed' ? 'Termine' : 'A venir'}
+              <View
+                style={[
+                  styles.statusPill,
+                  appointment.status === 'COMPLETED' ? styles.donePill : styles.upcomingPill,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.statusText,
+                    appointment.status === 'COMPLETED' ? styles.doneText : styles.upcomingText,
+                  ]}
+                >
+                  {appointment.status === 'COMPLETED'
+                    ? 'Termine'
+                    : appointment.status === 'CONFIRMED'
+                      ? 'Confirme'
+                      : 'En attente'}
                 </Text>
               </View>
 
-              <View style={[styles.statusPill, appointment.paid ? styles.paidPill : styles.unpaidPill]}>
-                <Text style={[styles.statusText, appointment.paid ? styles.paidText : styles.unpaidText]}>
-                  {appointment.paid ? 'Paye' : 'A encaisser'}
+              <View style={[styles.statusPill, appointment.isPaid ? styles.paidPill : styles.unpaidPill]}>
+                <Text style={[styles.statusText, appointment.isPaid ? styles.paidText : styles.unpaidText]}>
+                  {appointment.isPaid ? 'Paye' : 'A encaisser'}
                 </Text>
               </View>
             </View>
           </View>
 
           <View style={styles.metaRow}>
-            <MetaInfo icon="calendar-outline" label={appointment.date} />
-            <MetaInfo icon="time-outline" label={appointment.time} />
-            <MetaInfo icon="wallet-outline" label={appointment.priceLabel} />
+            <MetaInfo icon="calendar-outline" label={formatDate(appointment.startAt)} />
+            <MetaInfo icon="time-outline" label={`${formatTime(appointment.startAt)} - ${formatTime(appointment.endAt)}`} />
+            <MetaInfo icon="wallet-outline" label={formatAmount(appointment.amount)} />
+          </View>
+
+          <View style={styles.separator} />
+
+          <Text style={styles.sectionTitle}>Client</Text>
+          <View style={styles.metaRow}>
+            <MetaInfo icon="person-outline" label={appointment.client.name} />
+            {appointment.client.phone ? <MetaInfo icon="call-outline" label={appointment.client.phone} /> : null}
+            {appointment.client.email ? <MetaInfo icon="mail-outline" label={appointment.client.email} /> : null}
           </View>
 
           {appointment.note ? (
@@ -87,7 +160,7 @@ export default function EmployeeAppointmentDetailScreen() {
           ) : null}
         </Card>
 
-        {appointment.clientInsights.map((section) => (
+        {appointment.insights.map((section) => (
           <Card key={section.title} style={styles.card}>
             <Text style={styles.sectionTitle}>{section.title}</Text>
             <View style={styles.insightList}>
@@ -103,17 +176,37 @@ export default function EmployeeAppointmentDetailScreen() {
 
         <Card style={styles.actionsCard}>
           <Text style={styles.sectionTitle}>Actions</Text>
+          {canConfirm ? (
+            <Button
+              title={confirmMutation.isPending ? 'Confirmation...' : 'Prendre en charge / confirmer'}
+              onPress={handleConfirm}
+              disabled={isPending}
+              style={styles.actionButton}
+            />
+          ) : null}
           <Button
-            title={appointment.status === 'completed' ? 'Rendez-vous deja termine' : 'Marquer comme termine'}
+            title={
+              appointment.status === 'COMPLETED'
+                ? 'Rendez-vous deja termine'
+                : completeMutation.isPending
+                  ? 'Validation...'
+                  : 'Marquer comme termine'
+            }
             onPress={handleComplete}
-            disabled={appointment.status === 'completed'}
+            disabled={isPending || !canComplete}
             style={styles.actionButton}
           />
           <Button
-            title={appointment.paid ? 'Paiement deja enregistre' : 'Marquer comme paye'}
+            title={
+              appointment.isPaid
+                ? 'Paiement deja enregistre'
+                : payMutation.isPending
+                  ? 'Enregistrement...'
+                  : 'Marquer comme paye'
+            }
             onPress={handlePaid}
-            disabled={appointment.paid}
-            variant={appointment.paid ? 'secondary' : 'outline'}
+            disabled={isPending || !canPay}
+            variant={appointment.isPaid ? 'secondary' : 'outline'}
             style={styles.actionButton}
           />
           <Button
@@ -143,6 +236,21 @@ function MetaInfo({
   )
 }
 
+function formatDate(value: string) {
+  return new Date(value).toLocaleDateString('fr-FR')
+}
+
+function formatTime(value: string) {
+  return new Date(value).toLocaleTimeString('fr-FR', {
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+function formatAmount(value: number) {
+  return `${value.toLocaleString('fr-FR')} FCFA`
+}
+
 const styles = StyleSheet.create({
   screen: {
     backgroundColor: '#F3F0EB',
@@ -166,6 +274,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     gap: spacing.sm,
+  },
+  mainCopy: {
+    flex: 1,
   },
   clientName: {
     color: colors.text,
