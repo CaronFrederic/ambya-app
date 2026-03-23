@@ -12,10 +12,19 @@ import { MeModule } from './me/me.module';
 import { PaymentMethodsModule } from './payment-methods/payment-methods.module';
 import { PaymentsModule } from './payments/payments.module';
 import { DiscoveryModule } from './discovery/discovery.module';
+import { UsersModule } from './users/users.module';
+import { SalonsModule } from './salons/salons.module';
+import { EmployeesModule } from './employees/employees.module';
+import { ServicesModule } from './services/services.module';
+import { ExpensesModule } from './expenses/expenses.module';
+import { ExportsModule } from './exports/exports.module';
+import { DashboardModule } from './dashboard/dashboard.module';
+import { ClientsModule } from './clients/clients.module';
+
 
 @Module({
   imports: [AppConfigModule, AppointmentsModule, 
-    AuthModule, MeModule, PaymentMethodsModule, PaymentsModule, DiscoveryModule,
+    AuthModule, MeModule, PaymentMethodsModule, PaymentsModule, DiscoveryModule, UsersModule, SalonsModule, EmployeesModule, ServicesModule,
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: [

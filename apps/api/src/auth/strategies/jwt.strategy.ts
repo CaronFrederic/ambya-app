@@ -3,6 +3,7 @@ import { PassportStrategy } from '@nestjs/passport'
 import { ConfigService } from '@nestjs/config'
 import { ExtractJwt, Strategy } from 'passport-jwt'
 import { UserRole } from '@prisma/client'
+import { JwtPayload } from 'src/common/interfaces/jwt-payload.interface'
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
@@ -16,4 +17,6 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   validate(payload: { sub: string; role: UserRole  }) {
     return { userId: payload.sub, role: payload.role }
   }
+  
+
 }

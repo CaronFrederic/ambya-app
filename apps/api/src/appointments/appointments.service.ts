@@ -16,11 +16,14 @@ import {
   LoyaltyTier,
   AppointmentStatus,
   PaymentStatus,
-  Prisma,
   UserRole,
 } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 
 const CLIENT_CANCELLATION_NOTICE_HOURS = 24;
+
+type TxClient = Prisma.TransactionClient;
+type DbClient = PrismaService | TxClient;
 
 @Injectable()
 export class AppointmentsService {
@@ -180,7 +183,7 @@ export class AppointmentsService {
 
             provider: null,
             providerRef: null,
-            providerData: Prisma.DbNull,
+            providerData: undefined,
 
             platformFeeAmount,
             providerFeeAmount,
@@ -358,7 +361,7 @@ export class AppointmentsService {
           status: PaymentStatus.CREATED,
           provider: null,
           providerRef: null,
-          providerData: Prisma.DbNull,
+          providerData: undefined,
           platformFeeAmount: 0,
           providerFeeAmount: 0,
           netAmount: service.price,
@@ -832,10 +835,10 @@ export class AppointmentsService {
   }
 
   private async getManagedAppointments(
-    user: { userId: string; role: UserRole },
-    groupId: string,
-    prisma: Prisma.TransactionClient | PrismaService = this.prisma,
-  ) {
+  user: { userId: string; role: UserRole },
+  groupId: string,
+  prisma: DbClient = this.prisma,
+){
     const direct = await prisma.appointment.findMany({
       where: this.buildManagedAppointmentWhere(user, {
         id: groupId,
@@ -968,14 +971,14 @@ export class AppointmentsService {
   }
 
   private async resolveEmployeeForSlot(
-    prisma: Prisma.TransactionClient,
-    salonId: string,
-    startAt: Date,
-    endAt: Date,
-    excludedAppointmentIds: string[],
-    requestedEmployeeId?: string | null,
-    allowFallbackToAnyAvailable = false,
-  ) {
+  prisma: Prisma.TransactionClient,
+  salonId: string,
+  startAt: Date,
+  endAt: Date,
+  excludedAppointmentIds: string[],
+  requestedEmployeeId?: string | null,
+  allowFallbackToAnyAvailable = false,
+){
     if (requestedEmployeeId) {
       const conflict = await prisma.appointment.findFirst({
         where: {
@@ -1040,19 +1043,19 @@ export class AppointmentsService {
     throw new BadRequestException('No employee available at the selected time');
   }
 
-  private async rollbackLoyaltyAfterRefund(
-    prisma: Prisma.TransactionClient,
-    clientId: string,
-    appointmentId: string,
-    paymentIntent: {
-      id: string;
-      amount: number;
-      payableAmount: number | null;
-      discountAmount: number;
-      appliedDiscountTier: LoyaltyTier | null;
-    },
-    reason?: string,
-  ) {
+ private async rollbackLoyaltyAfterRefund(
+  prisma: DbClient,
+  clientId: string,
+  appointmentId: string,
+  paymentIntent: {
+    id: string;
+    amount: number;
+    payableAmount: number | null;
+    discountAmount: number;
+    appliedDiscountTier: LoyaltyTier | null;
+  },
+  reason?: string,
+) {
     const payable =
       paymentIntent.payableAmount && paymentIntent.payableAmount > 0
         ? paymentIntent.payableAmount

@@ -1,9 +1,10 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common'
-import { AppointmentStatus, LoyaltyTier, LoyaltyReason, PaymentStatus, Prisma } from '@prisma/client'
+import { AppointmentStatus, LoyaltyTier, LoyaltyReason, PaymentStatus} from '@prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
 import { CreatePaymentIntentDto } from './dto/create-payment-intent.dto'
 import { UpdateIntentStatusDto } from './dto/update-intent-status.dto'
-
+import { Role } from '../common/enums/role.enum';
+import { Prisma } from '@prisma/client';
 @Injectable()
 export class PaymentsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -64,7 +65,7 @@ export class PaymentsService {
         status: PaymentStatus.CREATED,
         provider,
         providerRef: null,
-        providerData: Prisma.DbNull,
+        providerData: undefined,
         platformFeeAmount,
         providerFeeAmount,
         netAmount,
@@ -76,7 +77,7 @@ export class PaymentsService {
   }
 
   async updateStatus(
-    user: { userId: string; role: 'CLIENT' | 'PROFESSIONAL' | 'EMPLOYEE' | 'ADMIN' },
+    user: { userId: string; role: 'CLIENT' | 'PROFESSIONAL' | 'SALON_MANAGER' | 'EMPLOYEE' | 'ADMIN' },
     id: string,
     dto: UpdateIntentStatusDto,
   ) {

@@ -4,6 +4,8 @@ import { ValidationPipe } from '@nestjs/common'
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  app.setGlobalPrefix('api');
   app.enableCors({
     origin: true, // simple pour dev
     credentials: true,
@@ -17,6 +19,6 @@ async function bootstrap() {
   }),
 )
 
-  await app.listen(process.env.PORT ?? 3000);
+  await app.listen(process.env.PORT ?? 3001);
 }
 bootstrap();

@@ -1,19 +1,31 @@
-import { Injectable, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
-import { PrismaClient } from "@prisma/client";
-import { PrismaPg } from "@prisma/adapter-pg";
-import { Pool } from "pg";
-import { ConfigService } from "@nestjs/config";
+
+import {
+  Injectable,
+  INestApplication,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { PrismaClient } from '@prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { Pool } from 'pg';
 
 @Injectable()
-export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
+export class PrismaService
+  extends PrismaClient
+  implements OnModuleInit, OnModuleDestroy
+{
   constructor(private readonly config: ConfigService) {
-    const connectionString = config.get<string>("DATABASE_URL");
+    const connectionString = config.get<string>('DATABASE_URL');
 
     if (!connectionString) {
-      throw new Error("DATABASE_URL is missing. Check apps/api/.env");
+      throw new Error('DATABASE_URL is missing. Check apps/api/.env');
     }
 
-    const pool = new Pool({ connectionString });
+    const pool = new Pool({
+      connectionString,
+    });
+
     const adapter = new PrismaPg(pool);
 
     super({ adapter });
@@ -25,5 +37,11 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
 
   async onModuleDestroy() {
     await this.$disconnect();
+  }
+
+  async enableShutdownHooks(app: INestApplication) {
+    process.on('beforeExit', async () => {
+      await app.close();
+    });
   }
 }
