@@ -1,8 +1,18 @@
-import React, { useState } from "react";
-import { View, Text, StyleSheet, Pressable, ScrollView, SafeAreaView } from "react-native";
+import React, { useEffect, useState } from "react";
+import {
+  View,
+  Text,
+  StyleSheet,
+  Pressable,
+  ScrollView,
+  SafeAreaView,
+  ActivityIndicator,
+  RefreshControl,
+} from "react-native";
 import { router, type Href } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { ProHeader } from "./components/ProHeader";
+import { getDashboardSummary, type DashboardSummary } from "../../src/api/dashboard";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const today = new Date().toLocaleDateString("fr-FR", {
   weekday: "long",
@@ -18,13 +28,35 @@ const COLORS = {
   text: "#3A3A3A",
   white: "#FFFFFF",
 };
+
 type TileProps = {
   title: string;
-  href: Href; // ✅ pas string
+  href: Href;
 };
 
-function Tile(props: TileProps & { subtitle: string; icon: any; tone?: "primary" | "gold" }) {
+type KPIProps = {
+  icon: keyof typeof Ionicons.glyphMap;
+  iconColor: string;
+  bgColor: string;
+  label: string;
+  value: string;
+};
+
+async function getAccessToken(): Promise<string> {
+const token = await AsyncStorage.getItem("accessToken");
+if (!token) {
+throw new Error("Utilisateur non authentifié.");
+}
+return token;
+}
+
+function formatFcfa(value: number) {
+  return `${value.toLocaleString("fr-FR")} FCFA`;
+}
+
+function Tile(props: TileProps & { subtitle: string; icon: keyof typeof Ionicons.glyphMap; tone?: "primary" | "gold" }) {
   const tone = props.tone ?? "primary";
+
   return (
     <Pressable
       onPress={() => router.push(props.href)}
@@ -34,26 +66,30 @@ function Tile(props: TileProps & { subtitle: string; icon: any; tone?: "primary"
         tone === "gold" && { borderColor: COLORS.gold },
       ]}
     >
-      <View style={[styles.cardIconWrap, tone === "gold" && { backgroundColor: `${COLORS.gold}22` }]}>
-        <Ionicons name={props.icon} size={20} color={tone === "gold" ? COLORS.gold : COLORS.primary} />
+      <View
+        style={[
+          styles.cardIconWrap,
+          tone === "gold" && { backgroundColor: `${COLORS.gold}22` },
+        ]}
+      >
+        <Ionicons
+          name={props.icon}
+          size={20}
+          color={tone === "gold" ? COLORS.gold : COLORS.primary}
+        />
       </View>
+
       <View style={{ flex: 1 }}>
         <Text style={styles.cardTitle}>{props.title}</Text>
         <Text style={styles.cardSubtitle}>{props.subtitle}</Text>
       </View>
+
       <Ionicons name="chevron-forward" size={18} color={`${COLORS.text}66`} />
     </Pressable>
   );
 }
-type KPIProps = {
-  icon: any
-  iconColor: string
-  bgColor: string
-  label: string
-  value: string
-}
 
-function TodayAppointmentsBanner() {
+function TodayAppointmentsBanner({ count }: { count: number }) {
   return (
     <View style={styles.bannerWrap}>
       <View style={styles.bannerLeft}>
@@ -62,24 +98,20 @@ function TodayAppointmentsBanner() {
         </View>
 
         <View>
-          <Text style={styles.bannerLabel}>RDV aujourd'hui</Text>
-          <Text style={styles.bannerValue}>12</Text>
+          <Text style={styles.bannerLabel}>RDV aujourd&apos;hui</Text>
+          <Text style={styles.bannerValue}>{count}</Text>
         </View>
       </View>
 
       <Pressable
         onPress={() => router.push("/(professional)/booking-history")}
-        style={({ pressed }) => [
-          styles.bannerButton,
-          pressed && { opacity: 0.9 },
-        ]}
+        style={({ pressed }) => [styles.bannerButton, pressed && { opacity: 0.9 }]}
       >
-        <Text style={styles.bannerButtonText}>Voir l'agenda</Text>
+        <Text style={styles.bannerButtonText}>Voir l&apos;agenda</Text>
       </Pressable>
     </View>
   );
 }
-
 
 function KPI({ icon, iconColor, bgColor, label, value }: KPIProps) {
   return (
@@ -91,7 +123,7 @@ function KPI({ icon, iconColor, bgColor, label, value }: KPIProps) {
       <Text style={styles.kpiLabel}>{label}</Text>
       <Text style={styles.kpiValue}>{value}</Text>
     </View>
-  )
+  );
 }
 
 type QuickActionItem = {
@@ -155,10 +187,7 @@ function QuickActions() {
     <View style={styles.quickActionsWrap}>
       <Pressable
         onPress={() => setIsOpen((prev) => !prev)}
-        style={({ pressed }) => [
-          styles.quickActionsButton,
-          pressed && { opacity: 0.95 },
-        ]}
+        style={({ pressed }) => [styles.quickActionsButton, pressed && { opacity: 0.95 }]}
       >
         <Text style={styles.quickActionsTitle}>Actions rapides</Text>
 
@@ -199,30 +228,82 @@ function QuickActions() {
   );
 }
 
+const EMPTY_SUMMARY: DashboardSummary = {
+  todayAppointments: 0,
+  monthRevenue: 0,
+  monthExpenses: 0,
+  newClients: 0,
+  occupancyRate: 0,
+};
+
 export default function ProDashboard() {
+  const [summary, setSummary] = useState<DashboardSummary>(EMPTY_SUMMARY);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const loadDashboard = async () => {
+    const token = await getAccessToken();
+    const data = await getDashboardSummary(token);
+    setSummary(data);
+  };
+
+  const initialLoad = async () => {
+    try {
+      setLoading(true);
+      await loadDashboard();
+    } catch (error) {
+      console.error("Dashboard load error:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onRefresh = async () => {
+    try {
+      setRefreshing(true);
+      await loadDashboard();
+    } catch (error) {
+      console.error("Dashboard refresh error:", error);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    initialLoad();
+  }, []);
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.bg }}>
-    <View style={styles.header}>
-      <Text style={styles.headerTitle}>Espace Professionnel</Text>
-      <Text style={styles.headerSub}>Accès rapide à la gestion du salon</Text>
-      <Text style={styles.headerDate}>
-  📅 {today.charAt(0).toUpperCase() + today.slice(1)}
-</Text>
-    </View>
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>Espace Professionnel</Text>
+        <Text style={styles.headerSub}>Accès rapide à la gestion du salon</Text>
+        <Text style={styles.headerDate}>
+          📅 {today.charAt(0).toUpperCase() + today.slice(1)}
+        </Text>
+      </View>
 
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 28 }}>
+      {loading ? (
+        <View style={styles.loaderWrap}>
+          <ActivityIndicator size="large" color={COLORS.primary} />
+          <Text style={styles.loaderText}>Chargement du dashboard...</Text>
+        </View>
+      ) : (
+        <ScrollView
+          contentContainerStyle={{ padding: 16, paddingBottom: 28 }}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          }
+        >
+          <TodayAppointmentsBanner count={summary.todayAppointments} />
 
-          <TodayAppointmentsBanner />
-
-
-              {/* KPI */}
           <View style={styles.kpiGrid}>
             <KPI
               icon="cash-outline"
               iconColor="#16A34A"
               bgColor="#DCFCE7"
               label="Revenu cumulé (mois en cours)"
-              value="2 450 000 FCFA"
+              value={formatFcfa(summary.monthRevenue)}
             />
 
             <KPI
@@ -230,7 +311,7 @@ export default function ProDashboard() {
               iconColor="#7C3AED"
               bgColor="#EDE9FE"
               label="% d'occupation"
-              value="85%"
+              value={`${summary.occupancyRate}%`}
             />
 
             <KPI
@@ -238,7 +319,7 @@ export default function ProDashboard() {
               iconColor="#EA580C"
               bgColor="#FFEDD5"
               label="Nouveaux clients"
-              value="3"
+              value={String(summary.newClients)}
             />
 
             <KPI
@@ -246,24 +327,76 @@ export default function ProDashboard() {
               iconColor="#DC2626"
               bgColor="#FEE2E2"
               label="Dépenses cumulées (mois en cours)"
-              value="450 000 FCFA"
+              value={formatFcfa(summary.monthExpenses)}
             />
           </View>
 
           <QuickActions />
-        
-        <Tile title="Caisse & Transactions" subtitle="Suivi des paiements" icon="cash-outline" href="/(professional)/cash-register" />
-        <Tile title="Paramètres du Salon" subtitle="Infos • Photos • Horaires • Paiements • Acompte" icon="settings-outline" href="/(professional)/salon-settings" />
-        <Tile title="Promotions & Offres" subtitle="Créer et piloter vos promos" icon="pricetags-outline" href="/(professional)/promotions" tone="gold" />
-        <Tile title="Carte de Fidélité" subtitle="Gestion du programme de fidélité" icon="gift-outline" href="/(professional)/loyalty" tone="gold" />
-        <Tile title="Historique Réservations" subtitle="Terminé • Annulé • No-show" icon="calendar-outline" href="/(professional)/booking-history" />
-  <Tile title="Fiche Client (exemple)" subtitle="Détails + gestion acompte" icon="person-outline" href="/(professional)/client-details" />
 
-  <Tile title="Gestion des Employés" subtitle="Ajouter, modifier ou supprimer des employés" icon="people-outline" href="/(professional)/EmployeeManagement" />
-  <Tile title="Dépenses & Revenus" subtitle="Gestion des dépenses et revenus du salon" icon="cash-outline" href="/(professional)/ExpenseManagement" />
-  <Tile title="Rapports Comptables" subtitle="Analyse des revenus et dépenses" icon="bar-chart-outline" href="/(professional)/AccountingReports" />
-  <Tile title="Service" subtitle="service & promotions" icon="construct-outline" href="/(professional)/service" />
-</ScrollView>
+          <Tile
+            title="Caisse & Transactions"
+            subtitle="Suivi des paiements"
+            icon="cash-outline"
+            href="/(professional)/cash-register"
+          />
+          <Tile
+            title="Paramètres du Salon"
+            subtitle="Infos • Photos • Horaires • Paiements • Acompte"
+            icon="settings-outline"
+            href="/(professional)/salon-settings"
+          />
+          <Tile
+            title="Promotions & Offres"
+            subtitle="Créer et piloter vos promos"
+            icon="pricetags-outline"
+            href="/(professional)/promotions"
+            tone="gold"
+          />
+          <Tile
+            title="Carte de Fidélité"
+            subtitle="Gestion du programme de fidélité"
+            icon="gift-outline"
+            href="/(professional)/loyalty"
+            tone="gold"
+          />
+          <Tile
+            title="Historique Réservations"
+            subtitle="Terminé • Annulé • No-show"
+            icon="calendar-outline"
+            href="/(professional)/booking-history"
+          />
+          <Tile
+            title="Fiche Client (exemple)"
+            subtitle="Détails + gestion acompte"
+            icon="person-outline"
+            href="/(professional)/client-details"
+          />
+          <Tile
+            title="Gestion des Employés"
+            subtitle="Ajouter, modifier ou supprimer des employés"
+            icon="people-outline"
+            href="/(professional)/EmployeeManagement"
+          />
+          <Tile
+            title="Dépenses & Revenus"
+            subtitle="Gestion des dépenses et revenus du salon"
+            icon="cash-outline"
+            href="/(professional)/ExpenseManagement"
+          />
+          <Tile
+            title="Rapports Comptables"
+            subtitle="Analyse des revenus et dépenses"
+            icon="bar-chart-outline"
+            href="/(professional)/AccountingReports"
+          />
+          <Tile
+            title="Service"
+            subtitle="service & promotions"
+            icon="construct-outline"
+            href="/(professional)/service"
+          />
+        </ScrollView>
+      )}
     </SafeAreaView>
   );
 }
@@ -285,6 +418,24 @@ const styles = StyleSheet.create({
     marginTop: 6,
     fontSize: 13,
   },
+  headerDate: {
+    color: "rgba(255,255,255,0.85)",
+    marginTop: 10,
+    fontSize: 13,
+    fontWeight: "600",
+  },
+
+  loaderWrap: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 12,
+  },
+  loaderText: {
+    color: COLORS.primary,
+    fontWeight: "700",
+  },
+
   card: {
     backgroundColor: COLORS.white,
     borderRadius: 18,
@@ -314,170 +465,148 @@ const styles = StyleSheet.create({
     marginTop: 2,
     fontSize: 12,
   },
-  headerDate: {
-    color: "rgba(255,255,255,0.85)",
-    marginTop: 10,
-    fontSize: 13,
+
+  kpiGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    marginBottom: 18,
+  },
+  kpiCard: {
+    width: "48%",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 18,
+    padding: 14,
+    marginBottom: 12,
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  kpiIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 6,
+  },
+  kpiLabel: {
+    fontSize: 12,
+    color: "rgba(58,58,58,0.6)",
+  },
+  kpiValue: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#3A3A3A",
+  },
+
+  quickActionsWrap: {
+    marginBottom: 16,
+    zIndex: 20,
+  },
+  quickActionsButton: {
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: "rgba(107,39,55,0.20)",
+    borderRadius: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  quickActionsTitle: {
+    color: COLORS.text,
+    fontSize: 16,
     fontWeight: "600",
   },
-  kpiGrid: {
-  flexDirection: "row",
-  flexWrap: "wrap",
-  justifyContent: "space-between",
-  marginBottom: 18,
-},
+  quickActionsDropdown: {
+    marginTop: 8,
+    backgroundColor: COLORS.white,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "rgba(107,39,55,0.10)",
+    overflow: "hidden",
+    shadowColor: "#000",
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  quickActionItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 15,
+    backgroundColor: COLORS.white,
+  },
+  quickActionItemBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(107,39,55,0.05)",
+  },
+  quickActionItemPressed: {
+    backgroundColor: "#FAF7F2",
+  },
+  quickActionIcon: {
+    width: 22,
+    textAlign: "center",
+  },
+  quickActionLabel: {
+    color: COLORS.text,
+    fontSize: 14,
+    fontWeight: "500",
+  },
 
-kpiCard: {
-  width: "48%",
-  backgroundColor: "#FFFFFF",
-  borderRadius: 18,
-  padding: 14,
-  marginBottom: 12,
-  shadowColor: "#000",
-  shadowOpacity: 0.05,
-  shadowRadius: 6,
-  elevation: 2,
-},
-
-kpiIcon: {
-  width: 32,
-  height: 32,
-  borderRadius: 999,
-  alignItems: "center",
-  justifyContent: "center",
-  marginBottom: 6,
-},
-
-kpiLabel: {
-  fontSize: 12,
-  color: "rgba(58,58,58,0.6)",
-},
-
-kpiValue: {
-  fontSize: 16,
-  fontWeight: "700",
-  color: "#3A3A3A",
-},
-quickActionsWrap: {
-  marginBottom: 16,
-  zIndex: 20,
-},
-
-quickActionsButton: {
-  backgroundColor: COLORS.white,
-  borderWidth: 1,
-  borderColor: "rgba(107,39,55,0.20)",
-  borderRadius: 18,
-  paddingHorizontal: 16,
-  paddingVertical: 16,
-  flexDirection: "row",
-  alignItems: "center",
-  justifyContent: "space-between",
-},
-
-quickActionsTitle: {
-  color: COLORS.text,
-  fontSize: 16,
-  fontWeight: "600",
-},
-
-quickActionsDropdown: {
-  marginTop: 8,
-  backgroundColor: COLORS.white,
-  borderRadius: 18,
-  borderWidth: 1,
-  borderColor: "rgba(107,39,55,0.10)",
-  overflow: "hidden",
-  shadowColor: "#000",
-  shadowOpacity: 0.08,
-  shadowRadius: 8,
-  elevation: 3,
-},
-
-quickActionItem: {
-  flexDirection: "row",
-  alignItems: "center",
-  gap: 12,
-  paddingHorizontal: 16,
-  paddingVertical: 15,
-  backgroundColor: COLORS.white,
-},
-
-quickActionItemBorder: {
-  borderBottomWidth: 1,
-  borderBottomColor: "rgba(107,39,55,0.05)",
-},
-
-quickActionItemPressed: {
-  backgroundColor: "#FAF7F2",
-},
-
-quickActionIcon: {
-  width: 22,
-  textAlign: "center",
-},
-
-quickActionLabel: {
-  color: COLORS.text,
-  fontSize: 14,
-  fontWeight: "500",
-},
-bannerWrap: {
-  backgroundColor: COLORS.primary,
-  borderRadius: 22,
-  paddingHorizontal: 16,
-  paddingVertical: 18,
-  marginBottom: 18,
-  flexDirection: "row",
-  alignItems: "center",
-  justifyContent: "space-between",
-  shadowColor: "#000",
-  shadowOpacity: 0.12,
-  shadowRadius: 8,
-  elevation: 4,
-},
-
-bannerLeft: {
-  flexDirection: "row",
-  alignItems: "center",
-  flex: 1,
-},
-
-bannerIconCircle: {
-  width: 48,
-  height: 48,
-  borderRadius: 999,
-  backgroundColor: "rgba(255,255,255,0.18)",
-  alignItems: "center",
-  justifyContent: "center",
-  marginRight: 14,
-},
-
-bannerLabel: {
-  color: "rgba(255,255,255,0.82)",
-  fontSize: 14,
-  fontWeight: "500",
-},
-
-bannerValue: {
-  color: COLORS.white,
-  fontSize: 28,
-  fontWeight: "800",
-  marginTop: 2,
-},
-
-bannerButton: {
-  backgroundColor: COLORS.white,
-  paddingHorizontal: 16,
-  paddingVertical: 10,
-  borderRadius: 999,
-  marginLeft: 12,
-},
-
-bannerButtonText: {
-  color: COLORS.primary,
-  fontSize: 14,
-  fontWeight: "700",
-},
-
+  bannerWrap: {
+    backgroundColor: COLORS.primary,
+    borderRadius: 22,
+    paddingHorizontal: 16,
+    paddingVertical: 18,
+    marginBottom: 18,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    shadowColor: "#000",
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  bannerLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+  },
+  bannerIconCircle: {
+    width: 48,
+    height: 48,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.18)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 14,
+  },
+  bannerLabel: {
+    color: "rgba(255,255,255,0.82)",
+    fontSize: 14,
+    fontWeight: "500",
+  },
+  bannerValue: {
+    color: COLORS.white,
+    fontSize: 28,
+    fontWeight: "800",
+    marginTop: 2,
+  },
+  bannerButton: {
+    backgroundColor: COLORS.white,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 999,
+    marginLeft: 12,
+  },
+  bannerButtonText: {
+    color: COLORS.primary,
+    fontSize: 14,
+    fontWeight: "700",
+  },
 });

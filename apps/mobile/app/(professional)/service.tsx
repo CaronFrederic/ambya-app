@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -10,13 +10,24 @@ import {
   Image,
   Switch,
   Platform,
+  ActivityIndicator,
+  RefreshControl,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import type { Href } from "expo-router";
 
 import { ProHeader } from "./components/ProHeader";
-
+import {
+  activateService,
+  createService,
+  deactivateService,
+  deleteService,
+  getServices,
+  updateService,
+  type ApiService,
+} from "../../src/api/services";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 type ServiceCategory =
   | "Coiffure"
   | "Barbier"
@@ -27,11 +38,11 @@ type ServiceCategory =
   | "Autre";
 
 type Service = {
-  id: number;
+  id: string;
   name: string;
   category: ServiceCategory;
   price: number;
-  duration: number; // minutes
+  duration: number;
   description: string;
   isActive: boolean;
   imageUri?: string | null;
@@ -51,46 +62,57 @@ const COLORS = {
   success: "#16a34a",
 };
 
-export default function ServicesScreen() {
-  const [services, setServices] = useState<Service[]>([
-    {
-      id: 1,
-      name: "Tresses simples",
-      category: "Coiffure",
-      price: 15000,
-      duration: 90,
-      description: "Tresses classiques avec finition soignée.",
-      isActive: true,
-      imageUri: null,
-    },
-    {
-      id: 2,
-      name: "Coupe homme",
-      category: "Barbier",
-      price: 8000,
-      duration: 30,
-      description: "Coupe nette + contours.",
-      isActive: true,
-      imageUri: null,
-    },
-    {
-      id: 3,
-      name: "Massage relaxant",
-      category: "Massage",
-      price: 18000,
-      duration: 60,
-      description: "Massage détente corps complet.",
-      isActive: false,
-      imageUri: null,
-    },
-  ]);
+async function getAccessToken(): Promise<string> {
+  const token = await AsyncStorage.getItem("accessToken");
+  if (!token) {
+    throw new Error("Utilisateur non authentifié.");
+  }
+  return token;
+}
 
+function normalizeCategory(value?: string | null): ServiceCategory {
+  const allowed: ServiceCategory[] = [
+    "Coiffure",
+    "Barbier",
+    "Massage",
+    "Manucure",
+    "Pédicure",
+    "Maquillage",
+    "Autre",
+  ];
+
+  if (value && allowed.includes(value as ServiceCategory)) {
+    return value as ServiceCategory;
+  }
+
+  return "Autre";
+}
+
+function mapApiServiceToUi(service: ApiService): Service {
+  return {
+    id: service.id,
+    name: service.name,
+    category: normalizeCategory(service.category),
+    price: service.price,
+    duration: service.durationMin,
+    description: service.description ?? "",
+    isActive: service.isActive && service.status === "ACTIVE",
+    imageUri: null,
+  };
+}
+
+export default function ServicesScreen() {
+  const [services, setServices] = useState<Service[]>([]);
   const [showModal, setShowModal] = useState(false);
-  const [deleteId, setDeleteId] = useState<number | null>(null);
-  const [editingId, setEditingId] = useState<number | null>(null);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   const [toastVisible, setToastVisible] = useState(false);
   const [toastMsg, setToastMsg] = useState("");
+
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   const [form, setForm] = useState<{
     name: string;
@@ -135,6 +157,38 @@ export default function ServicesScreen() {
     setEditingId(null);
   };
 
+  const loadServices = async () => {
+    const token = await getAccessToken();
+    const data = await getServices(token);
+    setServices(data.map(mapApiServiceToUi));
+  };
+
+  const initialLoad = async () => {
+    try {
+      setLoading(true);
+      await loadServices();
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Erreur de chargement.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onRefresh = async () => {
+    try {
+      setRefreshing(true);
+      await loadServices();
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Erreur de rafraîchissement.");
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    initialLoad();
+  }, []);
+
   const openCreate = () => {
     resetForm();
     setShowModal(true);
@@ -154,7 +208,7 @@ export default function ServicesScreen() {
     setShowModal(true);
   };
 
-  const saveService = () => {
+  const saveService = async () => {
     const price = Number(form.price || 0);
     const duration = Number(form.duration || 0);
 
@@ -173,48 +227,64 @@ export default function ServicesScreen() {
       return;
     }
 
-    if (editingId) {
-      setServices((prev) =>
-        prev.map((s) =>
-          s.id === editingId
-            ? {
-                ...s,
-                name: form.name.trim(),
-                category: form.category,
-                price,
-                duration,
-                description: form.description.trim(),
-                isActive: form.isActive,
-                imageUri: form.imageUri,
-              }
-            : s
-        )
-      );
-      toast("Service modifié ✅");
-    } else {
-      const newService: Service = {
-        id: Math.max(0, ...services.map((s) => s.id)) + 1,
-        name: form.name.trim(),
-        category: form.category,
-        price,
-        duration,
-        description: form.description.trim(),
-        isActive: form.isActive,
-        imageUri: form.imageUri,
-      };
-      setServices((prev) => [newService, ...prev]);
-      toast("Service ajouté ✅");
-    }
+    try {
+      setSubmitting(true);
+      const token = await getAccessToken();
 
-    setShowModal(false);
-    resetForm();
+      if (editingId) {
+        await updateService(token, editingId, {
+          name: form.name.trim(),
+          category: form.category,
+          price,
+          durationMin: duration,
+          description: form.description.trim(),
+        });
+
+        if (form.isActive) {
+          await activateService(token, editingId);
+        } else {
+          await deactivateService(token, editingId);
+        }
+
+        toast("Service modifié ✅");
+      } else {
+        const created = await createService(token, {
+          name: form.name.trim(),
+          category: form.category,
+          price,
+          durationMin: duration,
+          description: form.description.trim(),
+        });
+
+        if (!form.isActive) {
+          await deactivateService(token, created.id);
+        }
+
+        toast("Service ajouté ✅");
+      }
+
+      await loadServices();
+      setShowModal(false);
+      resetForm();
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Erreur lors de l'enregistrement.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (!deleteId) return;
-    setServices((prev) => prev.filter((s) => s.id !== deleteId));
-    setDeleteId(null);
-    toast("Service supprimé 🗑️");
+
+    try {
+      const token = await getAccessToken();
+      await deleteService(token, deleteId);
+      await loadServices();
+      setDeleteId(null);
+      toast("Service supprimé 🗑️");
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Erreur lors de la suppression.");
+    }
   };
 
   const pickImage = async () => {
@@ -236,10 +306,22 @@ export default function ServicesScreen() {
     }
   };
 
-  const toggleServiceStatus = (id: number) => {
-    setServices((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, isActive: !s.isActive } : s))
-    );
+  const toggleServiceStatus = async (id: string, isActive: boolean) => {
+    try {
+      const token = await getAccessToken();
+
+      if (isActive) {
+        await deactivateService(token, id);
+        toast("Service désactivé");
+      } else {
+        await activateService(token, id);
+        toast("Service activé");
+      }
+
+      await loadServices();
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Erreur lors du changement de statut.");
+    }
   };
 
   return (
@@ -250,146 +332,146 @@ export default function ServicesScreen() {
         backTo={DASHBOARD_HREF}
       />
 
-      <ScrollView
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Stats */}
-        <View style={styles.statsRow}>
-          <View style={styles.statCard}>
-            <Text style={styles.statValue}>{totalServices}</Text>
-            <Text style={styles.statLabel}>Services</Text>
-          </View>
-
-          <View style={styles.statCard}>
-            <Text style={[styles.statValue, { color: COLORS.success }]}>
-              {activeServices}
-            </Text>
-            <Text style={styles.statLabel}>Actifs</Text>
-          </View>
+      {loading ? (
+        <View style={styles.loaderWrap}>
+          <ActivityIndicator size="large" color={COLORS.brand} />
+          <Text style={styles.loaderText}>Chargement des services...</Text>
         </View>
+      ) : (
+        <ScrollView
+          contentContainerStyle={styles.content}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          }
+        >
+          <View style={styles.statsRow}>
+            <View style={styles.statCard}>
+              <Text style={styles.statValue}>{totalServices}</Text>
+              <Text style={styles.statLabel}>Services</Text>
+            </View>
 
-        {/* Add */}
-        <Pressable onPress={openCreate} style={styles.primaryBtn}>
-          <Ionicons name="add" size={18} color="#fff" />
-          <Text style={styles.primaryBtnText}>Ajouter un service</Text>
-        </Pressable>
+            <View style={styles.statCard}>
+              <Text style={[styles.statValue, { color: COLORS.success }]}>
+                {activeServices}
+              </Text>
+              <Text style={styles.statLabel}>Actifs</Text>
+            </View>
+          </View>
 
-        {/* List */}
-        <View style={{ gap: 12 }}>
-          {services.map((service) => (
-            <View key={service.id} style={styles.card}>
-              <View style={{ flexDirection: "row", gap: 12 }}>
-                <View style={styles.imageBox}>
-                  {service.imageUri ? (
-                    <Image
-                      source={{ uri: service.imageUri }}
-                      style={styles.image}
-                    />
-                  ) : (
-                    <Ionicons
-                      name="image-outline"
-                      size={24}
-                      color="rgba(107,39,55,0.6)"
-                    />
-                  )}
-                </View>
+          <Pressable onPress={openCreate} style={styles.primaryBtn}>
+            <Ionicons name="add" size={18} color="#fff" />
+            <Text style={styles.primaryBtnText}>Ajouter un service</Text>
+          </Pressable>
 
-                <View style={{ flex: 1 }}>
-                  <View style={styles.topRow}>
-                    <View style={styles.categoryPill}>
-                      <Text style={styles.categoryPillText}>
-                        {service.category}
-                      </Text>
-                    </View>
+          <View style={{ gap: 12 }}>
+            {services.map((service) => (
+              <View key={service.id} style={styles.card}>
+                <View style={{ flexDirection: "row", gap: 12 }}>
+                  <View style={styles.imageBox}>
+                    {service.imageUri ? (
+                      <Image source={{ uri: service.imageUri }} style={styles.image} />
+                    ) : (
+                      <Ionicons
+                        name="image-outline"
+                        size={24}
+                        color="rgba(107,39,55,0.6)"
+                      />
+                    )}
+                  </View>
 
-                    <View
-                      style={[
-                        styles.statusPill,
-                        {
-                          backgroundColor: service.isActive
-                            ? "#dcfce7"
-                            : "#f3f4f6",
-                        },
-                      ]}
-                    >
-                      <Text
+                  <View style={{ flex: 1 }}>
+                    <View style={styles.topRow}>
+                      <View style={styles.categoryPill}>
+                        <Text style={styles.categoryPillText}>{service.category}</Text>
+                      </View>
+
+                      <View
                         style={[
-                          styles.statusText,
+                          styles.statusPill,
                           {
-                            color: service.isActive
-                              ? COLORS.success
-                              : "rgba(58,58,58,0.65)",
+                            backgroundColor: service.isActive ? "#dcfce7" : "#f3f4f6",
                           },
                         ]}
                       >
-                        {service.isActive ? "Actif" : "Inactif"}
+                        <Text
+                          style={[
+                            styles.statusText,
+                            {
+                              color: service.isActive
+                                ? COLORS.success
+                                : "rgba(58,58,58,0.65)",
+                            },
+                          ]}
+                        >
+                          {service.isActive ? "Actif" : "Inactif"}
+                        </Text>
+                      </View>
+                    </View>
+
+                    <Text style={styles.serviceName}>{service.name}</Text>
+                    <Text style={styles.serviceDesc}>{service.description}</Text>
+
+                    <View style={styles.metaRow}>
+                      <Text style={styles.metaText}>
+                        {service.price.toLocaleString()} FCFA
                       </Text>
+                      <Text style={styles.metaDot}>•</Text>
+                      <Text style={styles.metaText}>{service.duration} min</Text>
                     </View>
                   </View>
+                </View>
 
-                  <Text style={styles.serviceName}>{service.name}</Text>
-                  <Text style={styles.serviceDesc}>{service.description}</Text>
-
-                  <View style={styles.metaRow}>
-                    <Text style={styles.metaText}>
-                      {service.price.toLocaleString()} FCFA
+                <View style={styles.cardActions}>
+                  <Pressable
+                    style={styles.actionBtn}
+                    onPress={() => toggleServiceStatus(service.id, service.isActive)}
+                  >
+                    <Ionicons
+                      name={
+                        service.isActive
+                          ? "pause-circle-outline"
+                          : "play-circle-outline"
+                      }
+                      size={16}
+                      color={service.isActive ? "#f59e0b" : COLORS.success}
+                    />
+                    <Text style={styles.actionText}>
+                      {service.isActive ? "Désactiver" : "Activer"}
                     </Text>
-                    <Text style={styles.metaDot}>•</Text>
-                    <Text style={styles.metaText}>{service.duration} min</Text>
-                  </View>
+                  </Pressable>
+
+                  <Pressable style={styles.actionBtn} onPress={() => openEdit(service)}>
+                    <Ionicons
+                      name="create-outline"
+                      size={16}
+                      color={COLORS.brand}
+                    />
+                    <Text style={styles.actionText}>Modifier</Text>
+                  </Pressable>
+
+                  <Pressable
+                    style={styles.actionBtn}
+                    onPress={() => setDeleteId(service.id)}
+                  >
+                    <Ionicons
+                      name="trash-outline"
+                      size={16}
+                      color={COLORS.danger}
+                    />
+                    <Text style={[styles.actionText, { color: COLORS.danger }]}>
+                      Supprimer
+                    </Text>
+                  </Pressable>
                 </View>
               </View>
+            ))}
+          </View>
 
-              <View style={styles.cardActions}>
-                <Pressable
-                  style={styles.actionBtn}
-                  onPress={() => toggleServiceStatus(service.id)}
-                >
-                  <Ionicons
-                    name={service.isActive ? "pause-circle-outline" : "play-circle-outline"}
-                    size={16}
-                    color={service.isActive ? "#f59e0b" : COLORS.success}
-                  />
-                  <Text style={styles.actionText}>
-                    {service.isActive ? "Désactiver" : "Activer"}
-                  </Text>
-                </Pressable>
+          <View style={{ height: 28 }} />
+        </ScrollView>
+      )}
 
-                <Pressable
-                  style={styles.actionBtn}
-                  onPress={() => openEdit(service)}
-                >
-                  <Ionicons
-                    name="create-outline"
-                    size={16}
-                    color={COLORS.brand}
-                  />
-                  <Text style={styles.actionText}>Modifier</Text>
-                </Pressable>
-
-                <Pressable
-                  style={styles.actionBtn}
-                  onPress={() => setDeleteId(service.id)}
-                >
-                  <Ionicons
-                    name="trash-outline"
-                    size={16}
-                    color={COLORS.danger}
-                  />
-                  <Text style={[styles.actionText, { color: COLORS.danger }]}>
-                    Supprimer
-                  </Text>
-                </Pressable>
-              </View>
-            </View>
-          ))}
-        </View>
-
-        <View style={{ height: 28 }} />
-      </ScrollView>
-
-      {/* Toast */}
       <Modal visible={toastVisible} transparent animationType="fade">
         <View style={styles.toastWrap}>
           <View style={styles.toast}>
@@ -399,7 +481,6 @@ export default function ServicesScreen() {
         </View>
       </Modal>
 
-      {/* Add / Edit Modal */}
       <Modal
         visible={showModal}
         transparent
@@ -446,12 +527,7 @@ export default function ServicesScreen() {
                       onPress={() => setForm((p) => ({ ...p, category: cat }))}
                       style={[styles.chip, active && styles.chipActive]}
                     >
-                      <Text
-                        style={[
-                          styles.chipText,
-                          active && styles.chipTextActive,
-                        ]}
-                      >
+                      <Text style={[styles.chipText, active && styles.chipTextActive]}>
                         {cat}
                       </Text>
                     </Pressable>
@@ -480,9 +556,7 @@ export default function ServicesScreen() {
               <Text style={styles.label}>Description</Text>
               <TextInput
                 value={form.description}
-                onChangeText={(v) =>
-                  setForm((p) => ({ ...p, description: v }))
-                }
+                onChangeText={(v) => setForm((p) => ({ ...p, description: v }))}
                 placeholder="Décris brièvement la prestation..."
                 multiline
                 style={[styles.input, { height: 96, textAlignVertical: "top" }]}
@@ -504,9 +578,7 @@ export default function ServicesScreen() {
                     </Pressable>
 
                     <Pressable
-                      onPress={() =>
-                        setForm((p) => ({ ...p, imageUri: null }))
-                      }
+                      onPress={() => setForm((p) => ({ ...p, imageUri: null }))}
                       style={[styles.dangerBtn, { flex: 1 }]}
                     >
                       <Ionicons name="trash-outline" size={16} color="#fff" />
@@ -550,19 +622,25 @@ export default function ServicesScreen() {
                   style={[
                     styles.primaryBtn,
                     { flex: 1, paddingVertical: 12 },
+                    submitting && { opacity: 0.6 },
                     (!form.name.trim() ||
                       !Number(form.price || 0) ||
                       !Number(form.duration || 0)) && { opacity: 0.55 },
                   ]}
                   disabled={
+                    submitting ||
                     !form.name.trim() ||
                     !Number(form.price || 0) ||
                     !Number(form.duration || 0)
                   }
                 >
-                  <Text style={styles.primaryBtnText}>
-                    {editingId ? "Mettre à jour" : "Enregistrer"}
-                  </Text>
+                  {submitting ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text style={styles.primaryBtnText}>
+                      {editingId ? "Mettre à jour" : "Enregistrer"}
+                    </Text>
+                  )}
                 </Pressable>
               </View>
 
@@ -572,7 +650,6 @@ export default function ServicesScreen() {
         </View>
       </Modal>
 
-      {/* Delete confirm */}
       <Modal
         visible={deleteId !== null}
         transparent
@@ -611,6 +688,17 @@ export default function ServicesScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.bg },
+
+  loaderWrap: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 12,
+  },
+  loaderText: {
+    color: COLORS.brand,
+    fontWeight: "700",
+  },
 
   content: { padding: 18, paddingBottom: 28, gap: 12 },
 
