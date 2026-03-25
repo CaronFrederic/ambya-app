@@ -7,7 +7,7 @@ export type EmployeeScheduleStatus =
   | 'COMPLETED'
   | 'CANCELLED'
 
-export type EmployeePaymentStatus = 'CREATED' | 'SUCCEEDED'
+export type EmployeePaymentStatus = 'CREATED' | 'SUCCEEDED' | 'REFUNDED'
 
 export type EmployeeService = {
   id: string
@@ -280,6 +280,23 @@ export function usePayEmployeeScheduleItem() {
   })
 }
 
+export function useCancelEmployeeScheduleItem() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({ kind, id }: { kind: string; id: string }) => {
+      const res = await api.patch(`/employee/schedule-items/${kind}/${id}/cancel`)
+      return res.data
+    },
+    onSuccess: async (_data, variables) => {
+      await invalidateEmployeeQueries(queryClient)
+      await queryClient.invalidateQueries({
+        queryKey: ['employee', 'schedule-item', variables.kind, variables.id],
+      })
+    },
+  })
+}
+
 export function useClaimEmployeeSlot() {
   const queryClient = useQueryClient()
 
@@ -322,6 +339,37 @@ export function useCreateEmployeeLeaveRequest() {
   })
 }
 
+export function useUpdateEmployeeLeaveRequest() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({
+      id,
+      ...payload
+    }: CreateLeaveRequestPayload & { id: string }) => {
+      const res = await api.patch(`/employee/leave-requests/${id}`, payload)
+      return res.data
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['employee', 'leave-requests'] })
+    },
+  })
+}
+
+export function useCancelEmployeeLeaveRequest() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({ id }: { id: string }) => {
+      const res = await api.delete(`/employee/leave-requests/${id}`)
+      return res.data
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['employee', 'leave-requests'] })
+    },
+  })
+}
+
 export function useUpdateEmployeeProfile() {
   const queryClient = useQueryClient()
 
@@ -330,7 +378,8 @@ export function useUpdateEmployeeProfile() {
       const res = await api.patch<EmployeeProfileResponse>('/employee/profile', payload)
       return res.data
     },
-    onSuccess: async () => {
+    onSuccess: async (data) => {
+      queryClient.setQueryData(['employee', 'profile'], data)
       await queryClient.invalidateQueries({ queryKey: ['employee', 'profile'] })
       await queryClient.invalidateQueries({ queryKey: ['employee', 'dashboard'] })
     },

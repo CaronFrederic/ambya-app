@@ -26,6 +26,15 @@ function getNextDays(count: number) {
   return items
 }
 
+function formatProfessionalLabel(professional: {
+  displayName: string
+  primarySpecialtyLabel?: string | null
+}) {
+  return professional.primarySpecialtyLabel
+    ? `${professional.displayName} - ${professional.primarySpecialtyLabel}`
+    : professional.displayName
+}
+
 export default function ScheduleScreen() {
   const { draft, patch } = useBooking()
 
@@ -60,7 +69,10 @@ export default function ScheduleScreen() {
       date: day ? { day: day.label, date: Number(day.iso.slice(-2)) } : undefined,
       time: selectedTime ?? undefined,
       selectedEmployeeId: selectedEmployeeId ?? undefined,
-      professionalName: professionals.find((p) => p.id === selectedEmployeeId)?.displayName,
+      professionalName: (() => {
+        const professional = professionals.find((p) => p.id === selectedEmployeeId)
+        return professional ? formatProfessionalLabel(professional) : undefined
+      })(),
     })
     router.push('/(screens)/payment')
   }
@@ -117,7 +129,7 @@ export default function ScheduleScreen() {
                 const active = selectedEmployeeId === p.id
                 return (
                   <Pressable key={p.id} onPress={() => setSelectedEmployeeId(active ? null : p.id)} style={[styles.proCard, active ? styles.proCardActive : styles.proCardIdle]}>
-                    <Text style={styles.proName}>{p.displayName}</Text>
+                    <Text style={styles.proName}>{formatProfessionalLabel(p)}</Text>
                     <Text style={styles.proStatus}>{active ? 'Sélectionné' : 'Disponible'}</Text>
                   </Pressable>
                 )

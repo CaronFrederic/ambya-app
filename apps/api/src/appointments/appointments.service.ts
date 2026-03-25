@@ -17,8 +17,14 @@ import {
   AppointmentStatus,
   PaymentStatus,
   Prisma,
+  ServiceCategory,
   UserRole,
 } from '@prisma/client';
+import {
+  employeeCanPerformCategory,
+  getEmployeeSpecialtyLabels,
+  getPrimaryEmployeeSpecialtyLabel,
+} from '../common/employee-specialties';
 
 const CLIENT_CANCELLATION_NOTICE_HOURS = 24;
 
@@ -64,7 +70,16 @@ export class AppointmentsService {
           service: {
             select: { id: true, name: true, durationMin: true, price: true },
           },
-          employee: { select: { id: true, displayName: true } },
+          employee: {
+            select: {
+              id: true,
+              displayName: true,
+              specialties: {
+                select: { specialty: true },
+                orderBy: { specialty: 'asc' },
+              },
+            },
+          },
           paymentIntents: {
             orderBy: { createdAt: 'desc' },
             take: 1,
@@ -102,7 +117,7 @@ export class AppointmentsService {
 
     const service = await this.prisma.service.findFirst({
       where: { id: dto.serviceId, salonId: dto.salonId, isActive: true },
-      select: { id: true, durationMin: true, price: true },
+      select: { id: true, durationMin: true, price: true, category: true },
     });
     if (!service) {
       throw new BadRequestException('Service not found for this salon');
@@ -118,6 +133,18 @@ export class AppointmentsService {
     }
 
     const endAt = new Date(startAt.getTime() + service.durationMin * 60_000);
+
+    if (dto.employeeId) {
+      await this.resolveEmployeeForSlot(
+        this.prisma,
+        dto.salonId,
+        startAt,
+        endAt,
+        [],
+        service.category,
+        dto.employeeId,
+      );
+    }
 
     // ---- PaymentIntent (beta) with fixed discount ----
     const currency = 'XAF';
@@ -164,7 +191,16 @@ export class AppointmentsService {
             service: {
               select: { id: true, name: true, durationMin: true, price: true },
             },
-            employee: { select: { id: true, displayName: true } },
+            employee: {
+              select: {
+                id: true,
+                displayName: true,
+                specialties: {
+                  select: { specialty: true },
+                  orderBy: { specialty: 'asc' },
+                },
+              },
+            },
           },
         });
 
@@ -223,7 +259,7 @@ export class AppointmentsService {
       salonId: dto.salonId,
       isActive: true,
     },
-    select: { id: true, name: true, durationMin: true, price: true },
+    select: { id: true, name: true, durationMin: true, price: true, category: true },
   });
 
   if (services.length === 0) {
@@ -242,7 +278,14 @@ export class AppointmentsService {
 
   const employees = await this.prisma.employee.findMany({
     where: { salonId: dto.salonId, isActive: true },
-    select: { id: true, displayName: true },
+    select: {
+      id: true,
+      displayName: true,
+      specialties: {
+        select: { specialty: true },
+        orderBy: { specialty: 'asc' },
+      },
+    },
   });
 
   if (employees.length === 0) {
@@ -269,7 +312,15 @@ export class AppointmentsService {
       include: {
         salon: { select: { id: true; name: true } };
         service: { select: { id: true; name: true; durationMin: true; price: true } };
-        employee: { select: { id: true; displayName: true } };
+        employee: {
+          select: {
+            id: true;
+            displayName: true;
+            specialties: {
+              select: { specialty: true };
+            };
+          };
+        };
       };
     }>[] = [];
 
@@ -282,47 +333,15 @@ export class AppointmentsService {
         cursorStart.getTime() + service.durationMin * 60_000,
       );
 
-      const overlaps = await tx.appointment.findMany({
-        where: {
-          salonId: dto.salonId,
-          status: {
-            in: [AppointmentStatus.PENDING, AppointmentStatus.CONFIRMED],
-          },
-          startAt: { lt: endAt },
-          endAt: { gt: cursorStart },
-        },
-        select: { employeeId: true },
-      });
-
-      const busyEmployeeIds = new Set(
-        overlaps
-          .map((appointment) => appointment.employeeId)
-          .filter((employeeId): employeeId is string => Boolean(employeeId)),
+      const assignedEmployeeId = await this.resolveEmployeeForSlot(
+        tx,
+        dto.salonId,
+        cursorStart,
+        endAt,
+        [],
+        service.category,
+        dto.employeeId ?? null,
       );
-
-      let assignedEmployeeId: string;
-
-      if (dto.employeeId) {
-        if (busyEmployeeIds.has(dto.employeeId)) {
-          throw new BadRequestException(
-            'Selected employee is not available at this time',
-          );
-        }
-
-        assignedEmployeeId = dto.employeeId;
-      } else {
-        const availableEmployee = employees.find(
-          (employee) => !busyEmployeeIds.has(employee.id),
-        );
-
-        if (!availableEmployee) {
-          throw new BadRequestException(
-            'No employee available at the selected time',
-          );
-        }
-
-        assignedEmployeeId = availableEmployee.id;
-      }
 
       const noteWithGroup = dto.note
         ? `[BOOKING_GROUP:${bookingGroupId}] ${dto.note}`
@@ -344,7 +363,16 @@ export class AppointmentsService {
           service: {
             select: { id: true, name: true, durationMin: true, price: true },
           },
-          employee: { select: { id: true, displayName: true } },
+          employee: {
+            select: {
+              id: true,
+              displayName: true,
+              specialties: {
+                select: { specialty: true },
+                orderBy: { specialty: 'asc' },
+              },
+            },
+          },
         },
       });
 
@@ -417,6 +445,9 @@ export class AppointmentsService {
         salonId: true,
         clientId: true,
         employeeId: true,
+        startAt: true,
+        endAt: true,
+        service: { select: { category: true } },
         salon: { select: { ownerId: true } },
       },
     });
@@ -442,7 +473,16 @@ export class AppointmentsService {
           service: {
             select: { id: true, name: true, durationMin: true, price: true },
           },
-          employee: { select: { id: true, displayName: true } },
+          employee: {
+            select: {
+              id: true,
+              displayName: true,
+              specialties: {
+                select: { specialty: true },
+                orderBy: { specialty: 'asc' },
+              },
+            },
+          },
           paymentIntents: {
             orderBy: { createdAt: 'desc' },
             take: 1,
@@ -466,15 +506,40 @@ export class AppointmentsService {
     if (!emp)
       throw new BadRequestException('Employee not found for this salon');
 
+    await this.resolveEmployeeForSlot(
+      this.prisma,
+      appt.salonId,
+      appt.startAt,
+      appt.endAt,
+      [appt.id],
+      appt.service.category,
+      dto.employeeId,
+    );
+
     return this.prisma.appointment.update({
       where: { id: appointmentId },
       data: { employeeId: dto.employeeId },
       include: {
         salon: { select: { id: true, name: true } },
         service: {
-          select: { id: true, name: true, durationMin: true, price: true },
+          select: {
+            id: true,
+            name: true,
+            category: true,
+            durationMin: true,
+            price: true,
+          },
         },
-        employee: { select: { id: true, displayName: true } },
+        employee: {
+          select: {
+            id: true,
+            displayName: true,
+            specialties: {
+              select: { specialty: true },
+              orderBy: { specialty: 'asc' },
+            },
+          },
+        },
         paymentIntents: {
           orderBy: { createdAt: 'desc' },
           take: 1,
@@ -500,7 +565,14 @@ export class AppointmentsService {
 
     const employees = await this.prisma.employee.findMany({
       where: { salonId: primary.salonId, isActive: true },
-      select: { id: true, displayName: true },
+      select: {
+        id: true,
+        displayName: true,
+        specialties: {
+          select: { specialty: true },
+          orderBy: { specialty: 'asc' },
+        },
+      },
       orderBy: { displayName: 'asc' },
     });
 
@@ -519,7 +591,7 @@ export class AppointmentsService {
         employee: appointment.employee,
         paymentIntent: appointment.paymentIntents[0] ?? null,
       })),
-      employees,
+      employees: employees.map((employee) => this.mapEmployeeSummary(employee)),
     };
   }
 
@@ -580,6 +652,7 @@ export class AppointmentsService {
           cursor,
           nextEnd,
           appointments.map((item) => item.id),
+          appointment.service.category,
           employeeId,
           targetEmployeeId === undefined && timeChanged,
         );
@@ -860,9 +933,24 @@ export class AppointmentsService {
       include: {
         salon: { select: { id: true, name: true } },
         service: {
-          select: { id: true, name: true, durationMin: true, price: true },
+          select: {
+            id: true,
+            name: true,
+            category: true,
+            durationMin: true,
+            price: true,
+          },
         },
-        employee: { select: { id: true, displayName: true } },
+        employee: {
+          select: {
+            id: true,
+            displayName: true,
+            specialties: {
+              select: { specialty: true },
+              orderBy: { specialty: 'asc' },
+            },
+          },
+        },
         paymentIntents: {
           orderBy: { createdAt: 'desc' },
           take: 1,
@@ -892,9 +980,24 @@ export class AppointmentsService {
       include: {
         salon: { select: { id: true, name: true } },
         service: {
-          select: { id: true, name: true, durationMin: true, price: true },
+          select: {
+            id: true,
+            name: true,
+            category: true,
+            durationMin: true,
+            price: true,
+          },
         },
-        employee: { select: { id: true, displayName: true } },
+        employee: {
+          select: {
+            id: true,
+            displayName: true,
+            specialties: {
+              select: { specialty: true },
+              orderBy: { specialty: 'asc' },
+            },
+          },
+        },
         paymentIntents: {
           orderBy: { createdAt: 'desc' },
           take: 1,
@@ -984,30 +1087,47 @@ export class AppointmentsService {
   }
 
   private async resolveEmployeeForSlot(
-    prisma: Prisma.TransactionClient,
+    prisma: Prisma.TransactionClient | PrismaService,
     salonId: string,
     startAt: Date,
     endAt: Date,
     excludedAppointmentIds: string[],
+    serviceCategory: ServiceCategory,
     requestedEmployeeId?: string | null,
     allowFallbackToAnyAvailable = false,
   ) {
     if (requestedEmployeeId) {
-      const conflict = await prisma.appointment.findFirst({
-        where: {
-          salonId,
-          employeeId: requestedEmployeeId,
-          id: { notIn: excludedAppointmentIds },
-          status: {
-            in: [AppointmentStatus.PENDING, AppointmentStatus.CONFIRMED],
+      const employee = await prisma.employee.findFirst({
+        where: { id: requestedEmployeeId, salonId, isActive: true },
+        select: {
+          id: true,
+          specialties: {
+            select: { specialty: true },
+            orderBy: { specialty: 'asc' },
           },
-          startAt: { lt: endAt },
-          endAt: { gt: startAt },
         },
-        select: { id: true },
       });
 
-      if (conflict) {
+      if (!employee) {
+        throw new BadRequestException('Employee not found for this salon');
+      }
+
+      if (!employeeCanPerformCategory(employee.specialties, serviceCategory)) {
+        if (!allowFallbackToAnyAvailable) {
+          throw new BadRequestException(
+            'Selected employee cannot perform this service',
+          );
+        }
+      } else if (
+        await this.hasEmployeeSchedulingConflict(
+          prisma,
+          salonId,
+          requestedEmployeeId,
+          startAt,
+          endAt,
+          { excludeAppointmentIds: excludedAppointmentIds },
+        )
+      ) {
         if (allowFallbackToAnyAvailable) {
           // Keep the booking modifiable when the chosen time is valid for the salon
           // but the original employee is no longer free.
@@ -1023,26 +1143,31 @@ export class AppointmentsService {
 
     const employees = await prisma.employee.findMany({
       where: { salonId, isActive: true },
-      select: { id: true },
+      select: {
+        id: true,
+        specialties: {
+          select: { specialty: true },
+          orderBy: { specialty: 'asc' },
+        },
+      },
       orderBy: { displayName: 'asc' },
     });
 
     for (const employee of employees) {
-      const conflict = await prisma.appointment.findFirst({
-        where: {
-          salonId,
-          employeeId: employee.id,
-          id: { notIn: excludedAppointmentIds },
-          status: {
-            in: [AppointmentStatus.PENDING, AppointmentStatus.CONFIRMED],
-          },
-          startAt: { lt: endAt },
-          endAt: { gt: startAt },
-        },
-        select: { id: true },
-      });
+      if (!employeeCanPerformCategory(employee.specialties, serviceCategory)) {
+        continue;
+      }
 
-      if (!conflict) {
+      const hasConflict = await this.hasEmployeeSchedulingConflict(
+        prisma,
+        salonId,
+        employee.id,
+        startAt,
+        endAt,
+        { excludeAppointmentIds: excludedAppointmentIds },
+      );
+
+      if (!hasConflict) {
         return employee.id;
       }
     }
@@ -1054,6 +1179,76 @@ export class AppointmentsService {
     }
 
     throw new BadRequestException('No employee available at the selected time');
+  }
+
+  private async hasEmployeeSchedulingConflict(
+    prisma: Prisma.TransactionClient | PrismaService,
+    salonId: string,
+    employeeId: string,
+    startAt: Date,
+    endAt: Date,
+    options?: { excludeAppointmentIds?: string[]; excludeBlockedSlotId?: string },
+  ) {
+    const [appointmentConflict, blockedSlotConflict, leaveConflict] =
+      await Promise.all([
+        prisma.appointment.findFirst({
+          where: {
+            salonId,
+            employeeId,
+            id:
+              options?.excludeAppointmentIds?.length
+                ? { notIn: options.excludeAppointmentIds }
+                : undefined,
+            status: {
+              in: [AppointmentStatus.PENDING, AppointmentStatus.CONFIRMED],
+            },
+            startAt: { lt: endAt },
+            endAt: { gt: startAt },
+          },
+          select: { id: true },
+        }),
+        prisma.employeeBlockedSlot.findFirst({
+          where: {
+            salonId,
+            employeeId,
+            id: options?.excludeBlockedSlotId
+              ? { not: options.excludeBlockedSlotId }
+              : undefined,
+            status: {
+              in: [AppointmentStatus.PENDING, AppointmentStatus.CONFIRMED],
+            },
+            startAt: { lt: endAt },
+            endAt: { gt: startAt },
+          },
+          select: { id: true },
+        }),
+        prisma.leaveRequest.findFirst({
+          where: {
+            employeeId,
+            status: 'APPROVED',
+            startAt: { lt: endAt },
+            endAt: { gt: startAt },
+          },
+          select: { id: true },
+        }),
+      ]);
+
+    return Boolean(appointmentConflict || blockedSlotConflict || leaveConflict);
+  }
+
+  private mapEmployeeSummary(employee: {
+    id: string;
+    displayName: string;
+    specialties: Array<{ specialty: any }>;
+  }) {
+    return {
+      id: employee.id,
+      displayName: employee.displayName,
+      specialties: getEmployeeSpecialtyLabels(employee.specialties),
+      primarySpecialtyLabel: getPrimaryEmployeeSpecialtyLabel(
+        employee.specialties,
+      ),
+    };
   }
 
   private async rollbackLoyaltyAfterRefund(

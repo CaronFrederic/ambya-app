@@ -47,6 +47,15 @@ function getNextDays(count: number, fromIso?: string) {
   return items;
 }
 
+function formatEmployeeLabel(employee: {
+  displayName: string;
+  primarySpecialtyLabel?: string | null;
+}) {
+  return employee.primarySpecialtyLabel
+    ? `${employee.displayName} - ${employee.primarySpecialtyLabel}`
+    : employee.displayName;
+}
+
 function formatCurrency(amount: number) {
   return `${amount.toLocaleString("fr-FR")} FCFA`;
 }
@@ -434,7 +443,7 @@ export default function AppointmentDetailsScreen() {
                           ]}
                         >
                           <Text style={styles.serviceName}>
-                            {employee.displayName}
+                            {formatEmployeeLabel(employee)}
                           </Text>
                           <Text style={styles.metaText}>
                             Disponible sur ce créneau

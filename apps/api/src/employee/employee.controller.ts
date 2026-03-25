@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common'
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common'
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
 import { CurrentUser } from '../auth/decorators/current-user.decorator'
 import type { JwtUser } from '../auth/decorators/current-user.decorator'
@@ -62,6 +62,15 @@ export class EmployeeController {
     return this.employeeService.payScheduleItem(user, kind, id)
   }
 
+  @Patch('schedule-items/:kind/:id/cancel')
+  cancelScheduleItem(
+    @CurrentUser() user: JwtUser,
+    @Param('kind') kind: string,
+    @Param('id') id: string,
+  ) {
+    return this.employeeService.cancelScheduleItem(user, kind, id)
+  }
+
   @Get('available-slots')
   listAvailableSlots(@CurrentUser() user: JwtUser) {
     return this.employeeService.listAvailableSlots(user)
@@ -91,6 +100,23 @@ export class EmployeeController {
     @Body() dto: CreateLeaveRequestDto,
   ) {
     return this.employeeService.createLeaveRequest(user, dto)
+  }
+
+  @Patch('leave-requests/:id')
+  updateLeaveRequest(
+    @CurrentUser() user: JwtUser,
+    @Param('id') id: string,
+    @Body() dto: CreateLeaveRequestDto,
+  ) {
+    return this.employeeService.updateLeaveRequest(user, id, dto)
+  }
+
+  @Delete('leave-requests/:id')
+  cancelLeaveRequest(
+    @CurrentUser() user: JwtUser,
+    @Param('id') id: string,
+  ) {
+    return this.employeeService.cancelLeaveRequest(user, id)
   }
 
   @Get('profile')

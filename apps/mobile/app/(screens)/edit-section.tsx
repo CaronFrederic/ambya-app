@@ -17,7 +17,7 @@ import { useQueryClient } from '@tanstack/react-query'
 
 import { Screen } from '../../src/components/Screen'
 import { Button } from '../../src/components/Button'
-import { useMeSummary } from '../../src/api/me'
+import { fetchMeSummary, useMeSummary } from '../../src/api/me'
 
 import { colors, overlays } from '../../src/theme/colors'
 import { spacing } from '../../src/theme/spacing'
@@ -325,6 +325,8 @@ export default function EditSectionScreen() {
       setSaving(true)
       await patchMeProfile(token, payload)
 
+      const nextSummary = await fetchMeSummary()
+      qc.setQueryData(['me', 'summary'], nextSummary)
       await qc.invalidateQueries({ queryKey: ['me', 'summary'] })
       await refetch()
 

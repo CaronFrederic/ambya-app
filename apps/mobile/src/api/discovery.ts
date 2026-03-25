@@ -19,6 +19,18 @@ export type HomePayload = {
     country: string | null;
     rating: number;
     duration: string;
+    distanceKm?: number | null;
+  }>;
+  mapSalons: Array<{
+    id: string;
+    name: string;
+    city: string | null;
+    country: string | null;
+    rating: number;
+    duration: string;
+    distanceKm?: number | null;
+    latitude: number;
+    longitude: number;
   }>;
 };
 
@@ -64,7 +76,12 @@ export type SalonDetailsPayload = {
     comment: string;
     createdAt: string;
   }>;
-  employees: Array<{ id: string; displayName: string }>;
+  employees: Array<{
+    id: string;
+    displayName: string;
+    specialties: string[];
+    primarySpecialtyLabel?: string | null;
+  }>;
   openingHours: Array<{
     day: string;
     open: string | null;
@@ -92,6 +109,8 @@ export type SalonAvailabilityPayload = {
   professionals: Array<{
     id: string;
     displayName: string;
+    specialties: string[];
+    primarySpecialtyLabel?: string | null;
     slots: Array<{ time: string; available: boolean }>;
   }>;
 };
@@ -100,11 +119,27 @@ export function useHomeDiscovery(params?: {
   city?: string;
   country?: string;
   category?: string;
+  nearMe?: boolean;
+  latitude?: number | null;
+  longitude?: number | null;
 }) {
   return useQuery({
     queryKey: ["discover", "home", params],
     queryFn: async () => {
-      const res = await api.get<HomePayload>("/discover/home", { params });
+      const res = await api.get<HomePayload>("/discover/home", {
+        params: {
+          ...params,
+          nearMe: params?.nearMe ? "true" : undefined,
+          latitude:
+            typeof params?.latitude === "number"
+              ? String(params.latitude)
+              : undefined,
+          longitude:
+            typeof params?.longitude === "number"
+              ? String(params.longitude)
+              : undefined,
+        },
+      });
       return res.data;
     },
     staleTime: 1000 * 60,

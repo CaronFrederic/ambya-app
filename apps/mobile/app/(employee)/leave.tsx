@@ -10,8 +10,10 @@ import { EmployeeHeader } from '../../src/components/employee/EmployeeHeader'
 import { EmployeeModal } from '../../src/components/employee/EmployeeModal'
 import { EmployeePickerField } from '../../src/components/employee/EmployeePickerField'
 import {
+  useCancelEmployeeLeaveRequest,
   useCreateEmployeeLeaveRequest,
   useEmployeeLeaveRequests,
+  useUpdateEmployeeLeaveRequest,
 } from '../../src/api/employee'
 import { colors } from '../../src/theme/colors'
 import { radius } from '../../src/theme/radius'
@@ -23,7 +25,10 @@ type PickerType = 'start' | 'end' | null
 export default function EmployeeLeaveScreen() {
   const leaveRequests = useEmployeeLeaveRequests()
   const createLeaveRequest = useCreateEmployeeLeaveRequest()
+  const updateLeaveRequest = useUpdateEmployeeLeaveRequest()
+  const cancelLeaveRequest = useCancelEmployeeLeaveRequest()
   const [showModal, setShowModal] = useState(false)
+  const [editingLeaveId, setEditingLeaveId] = useState<string | null>(null)
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [reason, setReason] = useState('')
@@ -32,6 +37,7 @@ export default function EmployeeLeaveScreen() {
 
   const closeModal = () => {
     setShowModal(false)
+    setEditingLeaveId(null)
     setStartDate('')
     setEndDate('')
     setReason('')
@@ -66,16 +72,70 @@ export default function EmployeeLeaveScreen() {
     if (!validateForm()) return
 
     try {
-      await createLeaveRequest.mutateAsync({
-        startAt: toStartOfDayIso(startDate),
-        endAt: toEndOfDayIso(endDate),
-        reason: reason.trim(),
-      })
+      if (editingLeaveId) {
+        await updateLeaveRequest.mutateAsync({
+          id: editingLeaveId,
+          startAt: toStartOfDayIso(startDate),
+          endAt: toEndOfDayIso(endDate),
+          reason: reason.trim(),
+        })
+      } else {
+        await createLeaveRequest.mutateAsync({
+          startAt: toStartOfDayIso(startDate),
+          endAt: toEndOfDayIso(endDate),
+          reason: reason.trim(),
+        })
+      }
       closeModal()
-      Alert.alert('Demande envoyee', 'Votre demande de conges a bien ete enregistree.')
+      Alert.alert(
+        editingLeaveId ? 'Demande modifiee' : 'Demande envoyee',
+        editingLeaveId
+          ? 'Votre demande de conges a bien ete mise a jour.'
+          : 'Votre demande de conges a bien ete enregistree.',
+      )
     } catch (error: any) {
-      Alert.alert('Impossible d envoyer la demande', error?.message ?? 'Erreur inconnue')
+      Alert.alert(
+        editingLeaveId ? 'Impossible de modifier la demande' : 'Impossible d envoyer la demande',
+        error?.message ?? 'Erreur inconnue',
+      )
     }
+  }
+
+  const openCreateModal = () => {
+    closeModal()
+    setShowModal(true)
+  }
+
+  const openEditModal = (leave: { id: string; startAt: string; endAt: string; reason: string }) => {
+    setEditingLeaveId(leave.id)
+    setStartDate(toDateInputValue(leave.startAt))
+    setEndDate(toDateInputValue(leave.endAt))
+    setReason(leave.reason)
+    setErrors({})
+    setActivePicker(null)
+    setShowModal(true)
+  }
+
+  const handleCancelLeave = (leaveId: string) => {
+    Alert.alert(
+      'Annuler cette demande',
+      'Cette demande de conges en attente sera supprimee.',
+      [
+        { text: 'Retour', style: 'cancel' },
+        {
+          text: 'Annuler la demande',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await cancelLeaveRequest.mutateAsync({ id: leaveId })
+              Alert.alert('Demande annulee', 'La demande de conges a bien ete annulee.')
+            } catch (error: any) {
+              Alert.alert('Action impossible', error?.message ?? 'Erreur inconnue')
+            }
+          },
+        },
+      ],
+    )
   }
 
   return (
@@ -93,7 +153,7 @@ export default function EmployeeLeaveScreen() {
       >
         <Button
           title="Nouvelle demande"
-          onPress={() => setShowModal(true)}
+          onPress={openCreateModal}
           style={styles.newRequestButton}
         />
 
@@ -147,6 +207,22 @@ export default function EmployeeLeaveScreen() {
                 <View style={styles.separator} />
                 <Text style={styles.duration}>{buildDurationLabel(leave.startAt, leave.endAt)}</Text>
                 {leave.managerNote ? <Text style={styles.managerNote}>Note manager: {leave.managerNote}</Text> : null}
+                {leave.status === 'PENDING' ? (
+                  <View style={styles.cardActions}>
+                    <Button
+                      title="Modifier"
+                      variant="outline"
+                      onPress={() => openEditModal(leave)}
+                      style={styles.cardActionButton}
+                    />
+                    <Button
+                      title="Annuler"
+                      variant="secondary"
+                      onPress={() => handleCancelLeave(leave.id)}
+                      style={styles.cardActionButton}
+                    />
+                  </View>
+                ) : null}
               </Card>
             ))
           )}
@@ -155,16 +231,22 @@ export default function EmployeeLeaveScreen() {
 
       <EmployeeModal
         visible={showModal}
-        title="Nouvelle demande de conges"
+        title={editingLeaveId ? 'Modifier la demande' : 'Nouvelle demande de conges'}
         onClose={closeModal}
         footer={
           <>
             <Button title="Annuler" variant="secondary" onPress={closeModal} style={styles.footerButton} />
             <Button
-              title={createLeaveRequest.isPending ? 'Envoi...' : 'Envoyer'}
+              title={
+                createLeaveRequest.isPending || updateLeaveRequest.isPending
+                  ? 'Enregistrement...'
+                  : editingLeaveId
+                    ? 'Mettre a jour'
+                    : 'Envoyer'
+              }
               onPress={handleSubmit}
               style={styles.footerButton}
-              disabled={createLeaveRequest.isPending}
+              disabled={createLeaveRequest.isPending || updateLeaveRequest.isPending}
             />
           </>
         }
@@ -255,6 +337,14 @@ function toEndOfDayIso(value: string) {
   return new Date(Date.UTC(year, month - 1, day, 23, 59, 59)).toISOString()
 }
 
+function toDateInputValue(value: string) {
+  const date = new Date(value)
+  const day = String(date.getUTCDate()).padStart(2, '0')
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0')
+  const year = date.getUTCFullYear()
+  return `${day}/${month}/${year}`
+}
+
 function buildDurationLabel(startAt: string, endAt: string) {
   const delta = new Date(endAt).getTime() - new Date(startAt).getTime()
   const days = Math.max(1, Math.ceil(delta / (1000 * 60 * 60 * 24)))
@@ -340,6 +430,14 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
     color: colors.text,
     ...typography.small,
+  },
+  cardActions: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.md,
+  },
+  cardActionButton: {
+    flex: 1,
   },
   multilineInput: {
     minHeight: 88,

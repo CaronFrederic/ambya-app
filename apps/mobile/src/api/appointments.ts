@@ -10,7 +10,12 @@ export type AppointmentListResponse = {
     note?: string | null;
     salon: { id: string; name: string };
     service: { id: string; name: string; durationMin: number; price: number };
-    employee?: { id: string; displayName: string } | null;
+    employee?: {
+      id: string;
+      displayName: string;
+      specialties?: string[];
+      primarySpecialtyLabel?: string | null;
+    } | null;
     paymentIntents?: Array<{
       id: string;
       status: string;
@@ -34,7 +39,12 @@ export type AppointmentGroupDetails = {
     refundRate: number;
     refundLabel: string;
   };
-  employees: Array<{ id: string; displayName: string }>;
+  employees: Array<{
+    id: string;
+    displayName: string;
+    specialties: string[];
+    primarySpecialtyLabel?: string | null;
+  }>;
   items: Array<{
     id: string;
     status: string;
@@ -42,7 +52,12 @@ export type AppointmentGroupDetails = {
     endAt: string;
     note?: string | null;
     service: { id: string; name: string; durationMin: number; price: number };
-    employee?: { id: string; displayName: string } | null;
+    employee?: {
+      id: string;
+      displayName: string;
+      specialties?: string[];
+      primarySpecialtyLabel?: string | null;
+    } | null;
     paymentIntent?: {
       id: string;
       status: string;

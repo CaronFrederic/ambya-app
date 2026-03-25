@@ -8,6 +8,7 @@ import { Card } from '../../src/components/Card'
 import { Screen } from '../../src/components/Screen'
 import { EmployeeHeader } from '../../src/components/employee/EmployeeHeader'
 import {
+  useCancelEmployeeScheduleItem,
   useCompleteEmployeeScheduleItem,
   useConfirmEmployeeScheduleItem,
   useEmployeeScheduleItem,
@@ -27,6 +28,7 @@ export default function EmployeeAppointmentDetailScreen() {
   const confirmMutation = useConfirmEmployeeScheduleItem()
   const completeMutation = useCompleteEmployeeScheduleItem()
   const payMutation = usePayEmployeeScheduleItem()
+  const cancelMutation = useCancelEmployeeScheduleItem()
 
   if (!kind || !id) {
     return (
@@ -81,10 +83,40 @@ export default function EmployeeAppointmentDetailScreen() {
     }
   }
 
-  const isPending = confirmMutation.isPending || completeMutation.isPending || payMutation.isPending
+  const handleCancel = async () => {
+    Alert.alert(
+      'Annuler ce rendez-vous',
+      'Le rendez-vous client sera annule et ne pourra plus etre pris en charge depuis cet agenda.',
+      [
+        { text: 'Retour', style: 'cancel' },
+        {
+          text: 'Annuler le rendez-vous',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await cancelMutation.mutateAsync({ kind, id })
+              Alert.alert('Rendez-vous annule', 'Le rendez-vous a bien ete annule.')
+              router.back()
+            } catch (error: any) {
+              Alert.alert('Action impossible', error?.message ?? 'Erreur inconnue')
+            }
+          },
+        },
+      ],
+    )
+  }
+
+  const isPending =
+    confirmMutation.isPending ||
+    completeMutation.isPending ||
+    payMutation.isPending ||
+    cancelMutation.isPending
   const canConfirm = appointment.kind === 'appointment' && appointment.status === 'PENDING'
   const canComplete = appointment.status === 'PENDING' || appointment.status === 'CONFIRMED'
   const canPay = !appointment.isPaid
+  const canCancel =
+    appointment.kind === 'appointment' &&
+    (appointment.status === 'PENDING' || appointment.status === 'CONFIRMED')
 
   return (
     <Screen noPadding style={styles.screen}>
@@ -209,6 +241,15 @@ export default function EmployeeAppointmentDetailScreen() {
             variant={appointment.isPaid ? 'secondary' : 'outline'}
             style={styles.actionButton}
           />
+          {canCancel ? (
+            <Button
+              title={cancelMutation.isPending ? 'Annulation...' : 'Annuler le rendez-vous'}
+              onPress={handleCancel}
+              disabled={isPending}
+              variant="secondary"
+              style={styles.actionButton}
+            />
+          ) : null}
           <Button
             title="Retour a l agenda"
             onPress={() => router.back()}

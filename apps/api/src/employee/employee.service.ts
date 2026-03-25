@@ -16,8 +16,13 @@ import { ListEmployeeScheduleQueryDto } from './dto/list-employee-schedule-query
 import { CreateBlockedSlotDto } from './dto/create-blocked-slot.dto'
 import { CreateLeaveRequestDto } from './dto/create-leave-request.dto'
 import { UpdateEmployeeProfileDto } from './dto/update-employee-profile.dto'
+import {
+  employeeCanPerformCategory,
+  getEmployeeSpecialtyLabels,
+} from '../common/employee-specialties'
 
 type ScheduleKind = 'appointment' | 'blocked_slot'
+type InsightSectionKey = 'hair' | 'nails' | 'face' | 'body' | 'fitness'
 
 @Injectable()
 export class EmployeeService {
@@ -95,6 +100,10 @@ export class EmployeeService {
       }),
     ])
 
+    const compatibleServices = services.filter((service) =>
+      employeeCanPerformCategory(employee.specialties, service.category),
+    )
+
     const items = [
       ...appointments.map((item) => this.mapAppointmentSummary(item)),
       ...blockedSlots.map((item) => this.mapBlockedSlotSummary(item)),
@@ -115,14 +124,14 @@ export class EmployeeService {
       profile: {
         firstName: employee.firstName ?? this.extractNameParts(employee.displayName).firstName,
         lastName: employee.lastName ?? this.extractNameParts(employee.displayName).lastName,
-        role: 'Employe',
+        role: this.getEmployeeRoleLabel(employee.specialties),
         salon: employee.salon.name,
       },
       metrics: {
         todayCount: todayItems.length,
         weekCount: weekItems.length,
       },
-      services,
+      services: compatibleServices,
       todayItems,
     }
   }
@@ -350,6 +359,9 @@ export class EmployeeService {
       appointment.status !== AppointmentStatus.CONFIRMED
     ) {
       throw new BadRequestException('Appointment cannot be confirmed')
+    }
+    if (!employeeCanPerformCategory(employee.specialties, appointment.service.category)) {
+      throw new BadRequestException('Appointment does not match employee specialties')
     }
 
     await this.ensureNoConflict(
@@ -673,6 +685,145 @@ export class EmployeeService {
     return { item: this.mapAppointmentSummary(refreshed) }
   }
 
+  async cancelScheduleItem(user: JwtUser, kind: string, id: string) {
+    const employee = await this.getEmployeeContext(user)
+    const scheduleKind = this.parseScheduleKind(kind)
+
+    if (scheduleKind === 'blocked_slot') {
+      const blockedSlot = await this.prisma.employeeBlockedSlot.findFirst({
+        where: { id, employeeId: employee.id },
+        include: {
+          service: {
+            select: {
+              id: true,
+              name: true,
+              category: true,
+              durationMin: true,
+              price: true,
+            },
+          },
+        },
+      })
+
+      if (!blockedSlot) throw new NotFoundException('Schedule item not found')
+      if (
+        blockedSlot.status !== AppointmentStatus.PENDING &&
+        blockedSlot.status !== AppointmentStatus.CONFIRMED
+      ) {
+        throw new BadRequestException('Schedule item cannot be cancelled')
+      }
+
+      const cancelled = await this.prisma.employeeBlockedSlot.update({
+        where: { id: blockedSlot.id },
+        data: { status: AppointmentStatus.CANCELLED },
+        include: {
+          service: {
+            select: {
+              id: true,
+              name: true,
+              category: true,
+              durationMin: true,
+              price: true,
+            },
+          },
+        },
+      })
+
+      return { item: this.mapBlockedSlotSummary(cancelled) }
+    }
+
+    const appointment = await this.prisma.appointment.findFirst({
+      where: {
+        id,
+        salonId: employee.salonId,
+      },
+      include: {
+        service: {
+          select: {
+            id: true,
+            name: true,
+            category: true,
+            durationMin: true,
+            price: true,
+          },
+        },
+        client: {
+          select: {
+            id: true,
+            email: true,
+            phone: true,
+            clientProfile: { select: { nickname: true } },
+          },
+        },
+        paymentIntents: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          select: { id: true, status: true },
+        },
+      },
+    })
+
+    if (!appointment) throw new NotFoundException('Schedule item not found')
+    if (appointment.employeeId && appointment.employeeId !== employee.id) {
+      throw new ForbiddenException('Appointment is assigned to another employee')
+    }
+    if (
+      appointment.status !== AppointmentStatus.PENDING &&
+      appointment.status !== AppointmentStatus.CONFIRMED
+    ) {
+      throw new BadRequestException('Appointment cannot be cancelled')
+    }
+
+    const cancelled = await this.prisma.$transaction(async (tx) => {
+      await tx.appointment.update({
+        where: { id: appointment.id },
+        data: {
+          status: AppointmentStatus.CANCELLED,
+          employeeId: appointment.employeeId ? employee.id : null,
+        },
+      })
+
+      const paymentIntent = appointment.paymentIntents[0]
+      if (paymentIntent?.status === PaymentStatus.SUCCEEDED) {
+        await tx.paymentIntent.update({
+          where: { id: paymentIntent.id },
+          data: { status: PaymentStatus.REFUNDED },
+        })
+      }
+
+      return tx.appointment.findFirst({
+        where: { id: appointment.id },
+        include: {
+          service: {
+            select: {
+              id: true,
+              name: true,
+              category: true,
+              durationMin: true,
+              price: true,
+            },
+          },
+          client: {
+            select: {
+              id: true,
+              email: true,
+              phone: true,
+              clientProfile: { select: { nickname: true } },
+            },
+          },
+          paymentIntents: {
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+            select: { id: true, status: true },
+          },
+        },
+      })
+    })
+
+    if (!cancelled) throw new NotFoundException('Schedule item not found')
+    return { item: this.mapAppointmentSummary(cancelled) }
+  }
+
   async listAvailableSlots(user: JwtUser) {
     const employee = await this.getEmployeeContext(user)
     const appointments = await this.prisma.appointment.findMany({
@@ -703,6 +854,9 @@ export class EmployeeService {
       },
       orderBy: { startAt: 'asc' },
     })
+    const compatibleAppointments = appointments.filter((appointment) =>
+      employeeCanPerformCategory(employee.specialties, appointment.service.category),
+    )
 
     const items: Array<{
       id: string
@@ -721,7 +875,7 @@ export class EmployeeService {
       amount: number
       isClaimable: boolean
     }> = []
-    for (const appointment of appointments) {
+    for (const appointment of compatibleAppointments) {
       const hasConflict = await this.hasEmployeeConflict(
         employee.id,
         employee.salonId,
@@ -780,6 +934,9 @@ export class EmployeeService {
       },
     })
     if (!appointment) throw new NotFoundException('Available slot not found')
+    if (!employeeCanPerformCategory(employee.specialties, appointment.service.category)) {
+      throw new BadRequestException('Appointment does not match employee specialties')
+    }
 
     await this.ensureNoConflict(
       employee.id,
@@ -846,6 +1003,9 @@ export class EmployeeService {
       },
     })
     if (!service) throw new BadRequestException('Service not found')
+    if (!employeeCanPerformCategory(employee.specialties, service.category)) {
+      throw new BadRequestException('Service does not match employee specialties')
+    }
 
     const endAt = new Date(startAt.getTime() + service.durationMin * 60_000)
     await this.ensureNoConflict(employee.id, employee.salonId, startAt, endAt)
@@ -924,6 +1084,63 @@ export class EmployeeService {
     return { item }
   }
 
+  async updateLeaveRequest(user: JwtUser, leaveRequestId: string, dto: CreateLeaveRequestDto) {
+    const employee = await this.getEmployeeContext(user)
+    const startAt = new Date(dto.startAt)
+    const endAt = new Date(dto.endAt)
+
+    if (Number.isNaN(startAt.getTime()) || Number.isNaN(endAt.getTime())) {
+      throw new BadRequestException('Invalid leave dates')
+    }
+    if (endAt < startAt) {
+      throw new BadRequestException('endAt must be after startAt')
+    }
+
+    const leaveRequest = await this.prisma.leaveRequest.findFirst({
+      where: {
+        id: leaveRequestId,
+        employeeId: employee.id,
+      },
+    })
+
+    if (!leaveRequest) throw new NotFoundException('Leave request not found')
+    if (leaveRequest.status !== 'PENDING') {
+      throw new BadRequestException('Only pending leave requests can be modified')
+    }
+
+    const item = await this.prisma.leaveRequest.update({
+      where: { id: leaveRequest.id },
+      data: {
+        startAt,
+        endAt,
+        reason: dto.reason.trim(),
+      },
+    })
+
+    return { item }
+  }
+
+  async cancelLeaveRequest(user: JwtUser, leaveRequestId: string) {
+    const employee = await this.getEmployeeContext(user)
+    const leaveRequest = await this.prisma.leaveRequest.findFirst({
+      where: {
+        id: leaveRequestId,
+        employeeId: employee.id,
+      },
+    })
+
+    if (!leaveRequest) throw new NotFoundException('Leave request not found')
+    if (leaveRequest.status !== 'PENDING') {
+      throw new BadRequestException('Only pending leave requests can be cancelled')
+    }
+
+    await this.prisma.leaveRequest.delete({
+      where: { id: leaveRequest.id },
+    })
+
+    return { success: true, id: leaveRequest.id }
+  }
+
   async getProfile(user: JwtUser) {
     const employee = await this.prisma.employee.findFirst({
       where: { userId: user.userId },
@@ -940,6 +1157,10 @@ export class EmployeeService {
             name: true,
           },
         },
+        specialties: {
+          select: { specialty: true },
+          orderBy: { specialty: 'asc' },
+        },
       },
     })
     if (!employee) throw new ForbiddenException('Employee account required')
@@ -951,7 +1172,7 @@ export class EmployeeService {
         lastName: employee.lastName ?? fallback.lastName,
         email: employee.user.email,
         phone: employee.user.phone,
-        role: 'Employe',
+        role: this.getEmployeeRoleLabel(employee.specialties),
         salon: employee.salon.name,
       },
     }
@@ -964,6 +1185,10 @@ export class EmployeeService {
         user: true,
         salon: {
           select: { name: true },
+        },
+        specialties: {
+          select: { specialty: true },
+          orderBy: { specialty: 'asc' },
         },
       },
     })
@@ -1026,6 +1251,10 @@ export class EmployeeService {
           salon: {
             select: { name: true },
           },
+          specialties: {
+            select: { specialty: true },
+            orderBy: { specialty: 'asc' },
+          },
         },
       })
     })
@@ -1036,7 +1265,7 @@ export class EmployeeService {
         lastName: updated.lastName ?? '',
         email: updated.user.email,
         phone: updated.user.phone,
-        role: 'Employe',
+        role: this.getEmployeeRoleLabel(updated.specialties),
         salon: updated.salon.name,
       },
     }
@@ -1055,6 +1284,10 @@ export class EmployeeService {
             id: true,
             name: true,
           },
+        },
+        specialties: {
+          select: { specialty: true },
+          orderBy: { specialty: 'asc' },
         },
       },
     })
@@ -1096,7 +1329,7 @@ export class EmployeeService {
     endAt: Date,
     options?: { excludeAppointmentId?: string; excludeBlockedSlotId?: string },
   ) {
-    const [appointmentConflict, blockedSlotConflict] = await Promise.all([
+    const [appointmentConflict, blockedSlotConflict, leaveConflict] = await Promise.all([
       this.prisma.appointment.findFirst({
         where: {
           salonId,
@@ -1123,9 +1356,18 @@ export class EmployeeService {
         },
         select: { id: true },
       }),
+      this.prisma.leaveRequest.findFirst({
+        where: {
+          employeeId,
+          status: 'APPROVED',
+          startAt: { lt: endAt },
+          endAt: { gt: startAt },
+        },
+        select: { id: true },
+      }),
     ])
 
-    return Boolean(appointmentConflict || blockedSlotConflict)
+    return Boolean(appointmentConflict || blockedSlotConflict || leaveConflict)
   }
 
   private matchesEmployeeTab(
@@ -1135,6 +1377,11 @@ export class EmployeeService {
     if (tab === 'all') return true
     if (tab === 'completed') return status === AppointmentStatus.COMPLETED
     return status !== AppointmentStatus.COMPLETED
+  }
+
+  private getEmployeeRoleLabel(specialties: Array<{ specialty: any }>) {
+    const labels = getEmployeeSpecialtyLabels(specialties)
+    return labels.length ? labels.join(', ') : 'Employe'
   }
 
   private mapAppointmentSummary(appointment: any) {
@@ -1151,7 +1398,7 @@ export class EmployeeService {
       startAt: appointment.startAt.toISOString(),
       endAt: appointment.endAt.toISOString(),
       amount: appointment.service.price,
-      note: appointment.note ?? null,
+      note: this.sanitizeAppointmentNote(appointment.note),
     }
   }
 
@@ -1245,27 +1492,31 @@ export class EmployeeService {
         : {}
 
     const sections: Array<{ title: string; items: string[] }> = []
-    const addSection = (title: string, value: unknown) => {
-      const items = this.flattenProfileValue(value)
+    const addSection = (
+      title: string,
+      sectionKey: InsightSectionKey,
+      value: unknown,
+    ) => {
+      const items = this.flattenProfileValue(sectionKey, value)
       if (items.length > 0) {
         sections.push({ title, items })
       }
     }
 
     if (category === ServiceCategory.HAIR || category === ServiceCategory.BARBER) {
-      addSection('Profil cheveux', data.hair)
+      addSection('Profil cheveux', 'hair', data.hair)
     }
     if (category === ServiceCategory.NAILS) {
-      addSection('Profil ongles', data.nails)
+      addSection('Profil ongles', 'nails', data.nails)
     }
     if (category === ServiceCategory.FACE) {
-      addSection('Profil visage', data.face)
+      addSection('Profil visage', 'face', data.face)
     }
     if (category === ServiceCategory.BODY) {
-      addSection('Profil bien-etre', data.body)
+      addSection('Profil bien-etre', 'body', data.body)
     }
     if (category === ServiceCategory.FITNESS) {
-      addSection('Profil fitness', data.fitness)
+      addSection('Profil fitness', 'fitness', data.fitness)
     }
 
     const important: string[] = []
@@ -1278,27 +1529,240 @@ export class EmployeeService {
     return sections
   }
 
-  private flattenProfileValue(value: unknown): string[] {
+  private flattenProfileValue(
+    sectionKey: InsightSectionKey,
+    value: unknown,
+  ): string[] {
     if (!value || typeof value !== 'object') return []
 
     const items: string[] = []
     for (const [key, rawValue] of Object.entries(value as Record<string, unknown>)) {
       if (Array.isArray(rawValue)) {
         const values = rawValue
-          .map((item) => this.humanizeValue(item))
+          .map((item) => this.mapInsightValue(sectionKey, key, item))
           .filter(Boolean)
         if (values.length > 0) {
-          items.push(`${this.humanizeLabel(key)}: ${values.join(', ')}`)
+          items.push(
+            `${this.mapInsightLabel(sectionKey, key)}: ${values.join(', ')}`,
+          )
         }
         continue
       }
 
       if (typeof rawValue === 'string' && rawValue.trim()) {
-        items.push(`${this.humanizeLabel(key)}: ${this.humanizeValue(rawValue)}`)
+        items.push(
+          `${this.mapInsightLabel(sectionKey, key)}: ${this.mapInsightValue(
+            sectionKey,
+            key,
+            rawValue,
+          )}`,
+        )
       }
     }
 
     return items
+  }
+
+  private sanitizeAppointmentNote(note?: string | null) {
+    if (!note?.trim()) return null
+    const sanitized = note
+      .replace(/\[BOOKING_GROUP:[^\]]+\]\s*/g, '')
+      .trim()
+    return sanitized.length > 0 ? sanitized : null
+  }
+
+  private mapInsightLabel(sectionKey: InsightSectionKey, key: string) {
+    const labels: Record<InsightSectionKey, Record<string, string>> = {
+      hair: {
+        hairTypes: 'Type de cheveux',
+        hairTexture: 'Texture',
+        hairLength: 'Longueur',
+        hairConcerns: 'Preoccupations',
+      },
+      nails: {
+        nailTypes: 'Type',
+        nailStates: 'Etat',
+        nailConcerns: 'Preoccupations',
+      },
+      face: {
+        faceSkin: 'Type de peau',
+        faceConcerns: 'Preoccupations',
+      },
+      body: {
+        bodySkin: 'Type de peau (corps)',
+        tensionZones: 'Zones de tension',
+        wellbeingConcerns: 'Preoccupations',
+        massageSensitiveZones: 'Zones sensibles massage',
+      },
+      fitness: {
+        activityLevel: "Niveau d'activite",
+        fitnessGoals: 'Objectifs',
+        fitnessConcerns: 'Preoccupations',
+      },
+    }
+
+    return labels[sectionKey][key] ?? this.humanizeLabel(key)
+  }
+
+  private mapInsightValue(
+    sectionKey: InsightSectionKey,
+    key: string,
+    value: unknown,
+  ) {
+    if (typeof value !== 'string') return ''
+
+    const dictionaries: Record<InsightSectionKey, Record<string, Record<string, string>>> = {
+      hair: {
+        hairTypes: {
+          straight: 'Raides',
+          wavy: 'Ondules',
+          curly: 'Boucles',
+          coily: 'Crepus',
+          locks: 'Locks',
+          extensions: 'Extensions',
+          other: 'Autres',
+        },
+        hairTexture: {
+          thin: 'Fins',
+          medium: 'Moyens',
+          thick: 'Epais',
+          very_thick: 'Tres epais',
+          na: 'Je ne sais pas',
+        },
+        hairLength: {
+          very_short: 'Tres courts',
+          short: 'Courts',
+          medium: 'Mi-longs',
+          long: 'Longs',
+          na: 'Je ne sais pas',
+        },
+        hairConcerns: {
+          fall: 'Chute',
+          dry: 'Secheresse',
+          break: 'Casse',
+          frizz: 'Frisottis',
+          dandruff: 'Pellicules',
+          growth: 'Croissance',
+          volume: 'Manque de volume',
+          scalp_sensitive: 'Sensibilite du cuir chevelu',
+          na: 'Je ne sais pas',
+        },
+      },
+      nails: {
+        nailTypes: {
+          smooth: 'Lisses',
+          ridged: 'Stries',
+          delicate: 'Delicats',
+          irregular: 'Irreguliers',
+          hard: 'Durs',
+          fragile: 'Fragiles',
+          na: 'Je ne sais pas',
+        },
+        nailStates: {
+          brittle: 'Cassants',
+          soft: 'Mous',
+          split: 'Se dedoublent',
+          irritated: 'Irrites',
+          normal: 'Normaux',
+          na: 'Je ne sais pas',
+        },
+        nailConcerns: {
+          cuticles: 'Cuticules',
+          dehydration: 'Deshydratation',
+          heaviness: 'Lourdeur',
+          short: 'Ongles courts',
+          bitten: 'Ongles ronges',
+          product_allergy: 'Allergies produits',
+          na: 'Je ne sais pas',
+        },
+      },
+      face: {
+        faceSkin: {
+          dry: 'Seche',
+          combo: 'Mixte',
+          oily: 'Grasse',
+          sensitive: 'Sensible',
+          normal: 'Normale',
+          na: 'Je ne sais pas',
+        },
+        faceConcerns: {
+          acne: 'Acne',
+          redness: 'Rougeurs',
+          spots: 'Taches',
+          sensitivity: 'Sensibilite',
+          dehydration: 'Deshydratation',
+          aging: 'Rides et vieillissement',
+          texture: 'Texture',
+          dull: "Manque d'eclat",
+          na: 'Je ne sais pas',
+        },
+      },
+      body: {
+        bodySkin: {
+          normal: 'Normale',
+          dry: 'Seche',
+          sensitive: 'Sensible',
+          na: 'Je ne sais pas',
+        },
+        tensionZones: {
+          neck: 'Nuque',
+          shoulders: 'Epaules',
+          back: 'Dos',
+          lower_back: 'Lombaires',
+          arms: 'Bras',
+          legs: 'Jambes',
+          feet: 'Pieds',
+          na: 'Je ne sais pas',
+        },
+        wellbeingConcerns: {
+          stress: 'Stress',
+          muscle_pain: 'Douleurs musculaires',
+          circulation: 'Circulation',
+          detox: 'Detox',
+          water_retention: "Retention d'eau",
+          relax: 'Relaxation',
+          na: 'Je ne sais pas',
+        },
+        massageSensitiveZones: {
+          neck: 'Nuque',
+          shoulders: 'Epaules',
+          back: 'Dos',
+          lower_back: 'Lombaires',
+          arms: 'Bras',
+          legs: 'Jambes',
+          feet: 'Pieds',
+          na: 'Je ne sais pas',
+        },
+      },
+      fitness: {
+        activityLevel: {
+          sedentary: 'Sedentaire',
+          occasional: 'Occasionnel',
+          regular: 'Regulier',
+          sporty: 'Sportif',
+          na: 'Je ne sais pas',
+        },
+        fitnessGoals: {
+          muscle: 'Prise de muscle',
+          weight_loss: 'Perte de poids',
+          endurance: 'Endurance',
+          fitness: 'Condition generale',
+          back_in_shape: 'Remise en forme',
+          na: 'Je ne sais pas',
+        },
+        fitnessConcerns: {
+          joint_pain: 'Douleurs articulaires',
+          low_cardio: 'Cardio faible',
+          breath: 'Essoufflement',
+          slow_recovery: 'Recuperation lente',
+          fatigue: 'Fatigue',
+          posture: 'Posture / mobilite',
+          na: 'Je ne sais pas',
+        },
+      },
+    }
+
+    return dictionaries[sectionKey][key]?.[value] ?? this.humanizeValue(value)
   }
 
   private humanizeLabel(value: string) {

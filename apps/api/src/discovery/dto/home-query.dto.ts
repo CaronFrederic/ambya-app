@@ -16,4 +16,12 @@ export class HomeQueryDto {
   @IsOptional()
   @IsBooleanString()
   nearMe?: string
+
+  @IsOptional()
+  @IsString()
+  latitude?: string
+
+  @IsOptional()
+  @IsString()
+  longitude?: string
 }

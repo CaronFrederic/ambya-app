@@ -1,6 +1,7 @@
 import 'dotenv/config'
 import {
   AppointmentStatus,
+  EmployeeSpecialty,
   LeaveRequestStatus,
   LoyaltyTier,
   PaymentStatus,
@@ -139,6 +140,18 @@ async function main() {
       isActive: true,
     },
   })
+
+  await syncEmployeeSpecialties(employee.id, [
+    EmployeeSpecialty.HAIR_STYLIST,
+    EmployeeSpecialty.BARBER,
+  ])
+
+  await syncEmployeeSpecialties(secondEmployee.id, [
+    EmployeeSpecialty.ESTHETICIAN,
+    EmployeeSpecialty.MANICURIST,
+    EmployeeSpecialty.MASSAGE_THERAPIST,
+    EmployeeSpecialty.FITNESS_COACH,
+  ])
 
   await prisma.clientProfile.upsert({
     where: { userId: client.id },
@@ -285,6 +298,7 @@ async function main() {
   const faceService = services.face
   const bodyService = services.body
   const nailsService = services.nails
+  const barberService = services.barber
 
   const groupedAppointment1 = await prisma.appointment.create({
     data: {
@@ -304,7 +318,7 @@ async function main() {
       salonId: salon.id,
       clientId: client.id,
       serviceId: faceService.id,
-      employeeId: employee.id,
+      employeeId: secondEmployee.id,
       status: AppointmentStatus.PENDING,
       startAt: addMinutes(tomorrowAt10, hairService.durationMin),
       endAt: addMinutes(addMinutes(tomorrowAt10, hairService.durationMin), faceService.durationMin),
@@ -347,11 +361,11 @@ async function main() {
     data: {
       salonId: salon.id,
       clientId: client.id,
-      serviceId: nailsService.id,
+      serviceId: barberService.id,
       employeeId: null,
       status: AppointmentStatus.PENDING,
       startAt: tomorrowAt15,
-      endAt: addMinutes(tomorrowAt15, nailsService.durationMin),
+      endAt: addMinutes(tomorrowAt15, barberService.durationMin),
       note: '[BOOKING_GROUP:beta-available-slot] Creneau disponible employee',
     },
   })
@@ -361,14 +375,14 @@ async function main() {
       userId: client.id,
       salonId: salon.id,
       appointmentId: availableAppointment.id,
-      amount: nailsService.price,
+      amount: barberService.price,
       discountAmount: 0,
-      payableAmount: nailsService.price,
+      payableAmount: barberService.price,
       currency: 'XAF',
       status: PaymentStatus.CREATED,
       platformFeeAmount: 0,
       providerFeeAmount: 0,
-      netAmount: nailsService.price,
+      netAmount: barberService.price,
     },
   })
 
@@ -376,12 +390,12 @@ async function main() {
     data: {
       salonId: salon.id,
       clientId: client.id,
-      serviceId: bodyService.id,
+      serviceId: barberService.id,
       employeeId: employee.id,
       status: AppointmentStatus.CONFIRMED,
       startAt: tomorrowAt17,
-      endAt: addMinutes(tomorrowAt17, bodyService.durationMin),
-      note: '[BOOKING_GROUP:beta-confirmed] Massage confirme',
+      endAt: addMinutes(tomorrowAt17, barberService.durationMin),
+      note: '[BOOKING_GROUP:beta-confirmed] Barbier confirme',
     },
   })
 
@@ -390,9 +404,9 @@ async function main() {
       userId: client.id,
       salonId: salon.id,
       appointmentId: confirmedAppointment.id,
-      amount: bodyService.price,
+      amount: barberService.price,
       discountAmount: 0,
-      payableAmount: bodyService.price,
+      payableAmount: barberService.price,
       currency: 'XAF',
       status: PaymentStatus.SUCCEEDED,
       provider: 'INTERNAL_BETA',
@@ -400,7 +414,7 @@ async function main() {
       providerData: { source: 'seed_beta' },
       platformFeeAmount: 0,
       providerFeeAmount: 0,
-      netAmount: bodyService.price,
+      netAmount: barberService.price,
     },
   })
 
@@ -516,6 +530,18 @@ async function ensureBetaSchemaCompat() {
       IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'LeaveRequestStatus') THEN
         CREATE TYPE "LeaveRequestStatus" AS ENUM ('PENDING', 'APPROVED', 'REJECTED');
       END IF;
+
+      IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'EmployeeSpecialty') THEN
+        CREATE TYPE "EmployeeSpecialty" AS ENUM (
+          'HAIR_STYLIST',
+          'ESTHETICIAN',
+          'BARBER',
+          'MASSAGE_THERAPIST',
+          'MANICURIST',
+          'FITNESS_COACH',
+          'OTHER'
+        );
+      END IF;
     END $$;
   `)
 
@@ -528,6 +554,12 @@ async function ensureBetaSchemaCompat() {
   await prisma.$executeRawUnsafe(`
     ALTER TABLE "Service"
       ADD COLUMN IF NOT EXISTS "category" "ServiceCategory" NOT NULL DEFAULT 'OTHER';
+  `)
+
+  await prisma.$executeRawUnsafe(`
+    ALTER TABLE "Salon"
+      ADD COLUMN IF NOT EXISTS "latitude" DOUBLE PRECISION,
+      ADD COLUMN IF NOT EXISTS "longitude" DOUBLE PRECISION;
   `)
 
   await prisma.$executeRawUnsafe(`
@@ -564,6 +596,21 @@ async function ensureBetaSchemaCompat() {
       CONSTRAINT "LeaveRequest_pkey" PRIMARY KEY ("id")
     );
   `)
+
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "EmployeeSpecialtyAssignment" (
+      "id" TEXT NOT NULL,
+      "employeeId" TEXT NOT NULL,
+      "specialty" "EmployeeSpecialty" NOT NULL,
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT "EmployeeSpecialtyAssignment_pkey" PRIMARY KEY ("id")
+    );
+  `)
+
+  await prisma.$executeRawUnsafe(`
+    CREATE UNIQUE INDEX IF NOT EXISTS "EmployeeSpecialtyAssignment_employeeId_specialty_key"
+      ON "EmployeeSpecialtyAssignment"("employeeId", "specialty");
+  `)
 }
 
 async function ensureSalon(ownerId: string) {
@@ -579,6 +626,8 @@ async function ensureSalon(ownerId: string) {
         address: '12 Boulevard Triomphal',
         city: 'Libreville',
         country: 'Gabon',
+        latitude: 0.4162,
+        longitude: 9.4673,
         phone: '+24170000100',
         coverImageUrl:
           'https://images.unsplash.com/photo-1560066984-138dadb4c035?auto=format&fit=crop&w=1200&q=80',
@@ -603,6 +652,8 @@ async function ensureSalon(ownerId: string) {
       address: '12 Boulevard Triomphal',
       city: 'Libreville',
       country: 'Gabon',
+      latitude: 0.4162,
+      longitude: 9.4673,
       phone: '+24170000100',
       coverImageUrl:
         'https://images.unsplash.com/photo-1560066984-138dadb4c035?auto=format&fit=crop&w=1200&q=80',
@@ -654,6 +705,14 @@ async function ensureServices(salonId: string) {
       description: 'Manucure complete.',
     },
     {
+      key: 'barber',
+      name: 'Barbe Precision',
+      category: ServiceCategory.BARBER,
+      price: 13000,
+      durationMin: 30,
+      description: 'Taille et entretien de la barbe.',
+    },
+    {
       key: 'fitness',
       name: 'Coaching Flash',
       category: ServiceCategory.FITNESS,
@@ -689,6 +748,23 @@ async function ensureServices(salonId: string) {
   )
 
   return Object.fromEntries(entries) as Record<(typeof definitions)[number]['key'], Awaited<ReturnType<typeof prisma.service.upsert>>>
+}
+
+async function syncEmployeeSpecialties(
+  employeeId: string,
+  specialties: EmployeeSpecialty[],
+) {
+  await prisma.employeeSpecialtyAssignment.deleteMany({
+    where: { employeeId },
+  })
+
+  await prisma.employeeSpecialtyAssignment.createMany({
+    data: specialties.map((specialty) => ({
+      employeeId,
+      specialty,
+    })),
+    skipDuplicates: true,
+  })
 }
 
 async function upsertPaymentMethod(

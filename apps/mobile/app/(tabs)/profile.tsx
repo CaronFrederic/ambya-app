@@ -7,7 +7,7 @@ import {
   Pressable,
   RefreshControl,
 } from 'react-native'
-import { router } from 'expo-router'
+import { router, useFocusEffect } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import { LinearGradient } from 'expo-linear-gradient'
 import * as SecureStore from 'expo-secure-store'
@@ -82,6 +82,14 @@ export default function ProfileScreen() {
     isRefetching,
   } = useMeSummary(!!token)
 
+  useFocusEffect(
+    React.useCallback(() => {
+      if (token) {
+        void refetch()
+      }
+    }, [refetch, token]),
+  )
+
   const profile = summary?.profile
   const user = summary?.user
   const loyalty = summary?.loyalty
@@ -105,6 +113,8 @@ export default function ProfileScreen() {
    * On reconstruit un objet "data" au format attendu par ton UI (rows)
    */
   const data = useMemo(() => {
+    const asArray = (value: unknown) => (Array.isArray(value) ? value : [])
+
     return {
       general: {
         nickname: profile?.nickname ?? null,
@@ -131,10 +141,12 @@ export default function ProfileScreen() {
         concerns: q?.face?.faceConcerns ?? [],
       },
       wellness: {
-        bodySkinType: q?.body?.bodySkin ?? null,
-        tensionZones: q?.body?.tensionZones ?? [],
-        concerns: q?.body?.wellbeingConcerns ?? [],
-        sensitiveMassageZones: (q?.body?.massageSensitiveZones ?? []).join(', '),
+        bodySkinType: q?.body?.bodySkin ?? q?.body?.skinType ?? null,
+        tensionZones: asArray(q?.body?.tensionZones ?? q?.body?.focusAreas),
+        concerns: asArray(q?.body?.wellbeingConcerns ?? q?.body?.concerns),
+        sensitiveMassageZones: asArray(
+          q?.body?.massageSensitiveZones ?? q?.body?.sensitiveZones,
+        ),
       },
       fitness: {
         activityLevel: q?.fitness?.activityLevel ?? null,
@@ -280,12 +292,18 @@ export default function ProfileScreen() {
     <Screen noPadding style={{ backgroundColor: colors.background }}>
       {/* HEADER */}
       <View style={styles.header}>
+        <View style={styles.headerTopRow}>
         <Pressable onPress={() => router.back()} style={styles.headerBack} hitSlop={10}>
           <Ionicons name="arrow-back" size={22} color={colors.brandForeground} />
         </Pressable>
+          <View style={styles.headerBackSpacer} />
+        </View>
+
+        <View style={styles.headerCopy}>
 
         <Text style={styles.headerTitle}>Mon Profil</Text>
-        <Text style={styles.headerSubtitle}>Compte, préférences et sécurité</Text>
+      </View>
+
       </View>
 
       {/* TABS */}
@@ -555,8 +573,11 @@ const styles = StyleSheet.create({
     paddingTop: spacing.xl,
     paddingBottom: spacing.lg,
     paddingHorizontal: spacing.lg,
-    borderBottomLeftRadius: radius.xl,
-    borderBottomRightRadius: radius.xl,
+  },
+  headerTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   headerBack: {
     width: 38,
@@ -565,26 +586,32 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: overlays.white06,
-    marginBottom: spacing.sm,
   },
-  headerTitle: { color: colors.brandForeground, ...typography.h1, fontWeight: '800' },
-  headerSubtitle: { marginTop: 6, color: 'rgba(255,255,255,0.85)', ...typography.small },
+  headerBackSpacer: {
+    width: 38,
+    height: 38,
+  },
+  headerCopy: {
+    marginTop: spacing.md,
+  },
+  headerTitle: { color: colors.brandForeground, ...typography.h2, fontWeight: '700' },
 
   tabsWrap: {
     paddingHorizontal: spacing.lg,
-    marginTop: -18,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
   tabsPill: {
-    backgroundColor: colors.card,
-    borderRadius: radius.full,
-    padding: 6,
     flexDirection: 'row',
-    gap: 6,
-    borderWidth: 1,
-    borderColor: overlays.brand20,
+    gap: spacing.sm,
   },
   tabBtn: {
-    flex: 1,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: overlays.brand10,
+    paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
     borderRadius: radius.full,
     alignItems: 'center',

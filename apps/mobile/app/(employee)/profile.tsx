@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { Alert, Pressable, ScrollView, StyleSheet, Text } from 'react-native'
-import { router } from 'expo-router'
+import { router, useFocusEffect } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import * as SecureStore from 'expo-secure-store'
 import { useQueryClient } from '@tanstack/react-query'
@@ -38,6 +38,12 @@ export default function EmployeeProfileScreen() {
     setPhone(profileQuery.data.profile.phone ?? '')
   }, [isEditing, profileQuery.data?.profile])
 
+  useFocusEffect(
+    React.useCallback(() => {
+      void profileQuery.refetch()
+    }, [profileQuery.refetch]),
+  )
+
   const onLogout = async () => {
     await SecureStore.deleteItemAsync('accessToken')
     await SecureStore.deleteItemAsync('userRole')
@@ -54,6 +60,7 @@ export default function EmployeeProfileScreen() {
         email: email.trim(),
         phone: phone.trim(),
       })
+      await profileQuery.refetch()
       setIsEditing(false)
       Alert.alert('Profil mis a jour', 'Vos informations ont bien ete enregistrees.')
     } catch (error: any) {

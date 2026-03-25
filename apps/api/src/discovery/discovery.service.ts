@@ -4,10 +4,20 @@ import { PrismaService } from '../prisma/prisma.service';
 import { HomeQueryDto } from './dto/home-query.dto';
 import { SearchQueryDto } from './dto/search-query.dto';
 import { SalonAvailabilityQueryDto } from './dto/salon-availability-query.dto';
+import {
+  employeeCanPerformCategory,
+  getEmployeeSpecialtyLabels,
+  getPrimaryEmployeeSpecialtyLabel,
+} from '../common/employee-specialties';
 
 type Slot = {
   time: string;
   available: boolean;
+};
+
+type Coordinates = {
+  latitude: number;
+  longitude: number;
 };
 
 @Injectable()
@@ -16,14 +26,21 @@ export class DiscoveryService {
 
   async home(query: HomeQueryDto) {
     const where: any = { isActive: true };
+    const clientCoordinates = this.parseCoordinates(
+      query.latitude,
+      query.longitude,
+    );
 
     const salons = await this.prisma.salon.findMany({
       where,
       select: {
         id: true,
         name: true,
+        address: true,
         city: true,
         country: true,
+        latitude: true,
+        longitude: true,
         services: {
           where: { isActive: true },
           select: { id: true, name: true, category: true, durationMin: true, price: true },
@@ -60,15 +77,26 @@ export class DiscoveryService {
       .map((salon) => ({
         id: salon.id,
         name: salon.name,
+        address: salon.address,
         city: salon.city,
         country: salon.country,
         rating: this.estimateRating(salon.appointments.length),
         duration: salon.services[0]
           ? `${salon.services[0].durationMin} min`
           : '30 min',
+        coordinates: this.resolveSalonCoordinates(salon),
         geoRank: this.computeGeoRank(salon, query.city, query.country),
+        distanceKm: this.computeDistanceKm(
+          clientCoordinates,
+          this.resolveSalonCoordinates(salon),
+        ),
       }))
       .sort((a, b) => {
+        if (query.nearMe === 'true' && a.distanceKm !== b.distanceKm) {
+          if (a.distanceKm === null) return 1;
+          if (b.distanceKm === null) return -1;
+          return a.distanceKm - b.distanceKm;
+        }
         if (a.geoRank !== b.geoRank) return a.geoRank - b.geoRank;
         return b.rating - a.rating;
       })
@@ -91,10 +119,27 @@ export class DiscoveryService {
         };
       });
 
+    const mapSalons = topRatedSalons
+      .filter((salon) => salon.coordinates)
+      .map((salon) => ({
+        id: salon.id,
+        name: salon.name,
+        city: salon.city,
+        country: salon.country,
+        rating: salon.rating,
+        duration: salon.duration,
+        distanceKm: salon.distanceKm,
+        latitude: salon.coordinates!.latitude,
+        longitude: salon.coordinates!.longitude,
+      }));
+
     return {
       categories,
       offers,
-      topRatedSalons: topRatedSalons.map(({ geoRank, ...salon }) => salon),
+      topRatedSalons: topRatedSalons.map(
+        ({ geoRank, coordinates, ...salon }) => salon,
+      ),
+      mapSalons,
     };
   }
 
@@ -127,8 +172,11 @@ export class DiscoveryService {
       select: {
         id: true,
         name: true,
+        address: true,
         city: true,
         country: true,
+        latitude: true,
+        longitude: true,
         appointments: {
           where: { status: { in: ['COMPLETED', 'CONFIRMED'] } },
           select: { id: true },
@@ -154,6 +202,7 @@ export class DiscoveryService {
       .map((salon) => ({
         id: salon.id,
         name: salon.name,
+        address: salon.address,
         city: salon.city,
         country: salon.country,
         rating: this.estimateRating(salon.appointments.length),
@@ -208,7 +257,14 @@ export class DiscoveryService {
         },
         employees: {
           where: { isActive: true },
-          select: { id: true, displayName: true },
+          select: {
+            id: true,
+            displayName: true,
+            specialties: {
+              select: { specialty: true },
+              orderBy: { specialty: 'asc' },
+            },
+          },
           orderBy: { displayName: 'asc' },
         },
         appointments: {
@@ -306,7 +362,14 @@ export class DiscoveryService {
           )
         : this.defaultGallery(),
       socialLinks: this.normalizeSocialLinks(salon.socialLinks, salon.name),
-      employees: salon.employees,
+      employees: salon.employees.map((employee) => ({
+        id: employee.id,
+        displayName: employee.displayName,
+        specialties: getEmployeeSpecialtyLabels(employee.specialties),
+        primarySpecialtyLabel: getPrimaryEmployeeSpecialtyLabel(
+          employee.specialties,
+        ),
+      })),
       openingHours: this.defaultOpeningHours(),
       conditions: this.defaultConditions(),
       responseTimeMin: this.estimateResponseTimeMin(salon.employees.length),
@@ -324,7 +387,14 @@ export class DiscoveryService {
         id: true,
         employees: {
           where: { isActive: true },
-          select: { id: true, displayName: true },
+          select: {
+            id: true,
+            displayName: true,
+            specialties: {
+              select: { specialty: true },
+              orderBy: { specialty: 'asc' },
+            },
+          },
           orderBy: { displayName: 'asc' },
         },
       },
@@ -339,7 +409,7 @@ export class DiscoveryService {
     const selectedServices = serviceIds.length
       ? await this.prisma.service.findMany({
           where: { id: { in: serviceIds }, salonId, isActive: true },
-          select: { durationMin: true },
+          select: { id: true, durationMin: true, category: true },
         })
       : [];
 
@@ -350,47 +420,110 @@ export class DiscoveryService {
     const dayStart = new Date(`${query.date}T08:00:00.000Z`);
     const dayEnd = new Date(`${query.date}T18:00:00.000Z`);
 
-    const appointments = await this.prisma.appointment.findMany({
-      where: {
-        salonId,
-        startAt: { gte: dayStart, lt: dayEnd },
-        status: { in: ['PENDING', 'CONFIRMED'] },
-      },
-      select: {
-        employeeId: true,
-        startAt: true,
-        endAt: true,
-      },
-    });
+    const [appointments, blockedSlots, leaveRequests] = await Promise.all([
+      this.prisma.appointment.findMany({
+        where: {
+          salonId,
+          startAt: { gte: dayStart, lt: dayEnd },
+          status: { in: ['PENDING', 'CONFIRMED'] },
+        },
+        select: {
+          employeeId: true,
+          startAt: true,
+          endAt: true,
+        },
+      }),
+      this.prisma.employeeBlockedSlot.findMany({
+        where: {
+          salonId,
+          startAt: { gte: dayStart, lt: dayEnd },
+          status: { in: ['PENDING', 'CONFIRMED'] },
+        },
+        select: {
+          employeeId: true,
+          startAt: true,
+          endAt: true,
+        },
+      }),
+      this.prisma.leaveRequest.findMany({
+        where: {
+          employee: { salonId },
+          status: 'APPROVED',
+          startAt: { lt: dayEnd },
+          endAt: { gt: dayStart },
+        },
+        select: {
+          employeeId: true,
+          startAt: true,
+          endAt: true,
+        },
+      }),
+    ]);
 
     const slots = this.generateSlots(dayStart, dayEnd, totalDurationMin);
+    const employeeAppointmentEvents = appointments.reduce<
+      Array<{ employeeId: string; startAt: Date; endAt: Date }>
+    >((acc, appointment) => {
+      if (appointment.employeeId) {
+        acc.push({
+          employeeId: appointment.employeeId,
+          startAt: appointment.startAt,
+          endAt: appointment.endAt,
+        });
+      }
+      return acc;
+    }, []);
 
-    const professionals = salon.employees.map((employee) => {
-      const employeeAppointments = appointments.filter(
-        (appointment) => appointment.employeeId === employee.id,
-      );
-      const availability = slots.map((slot) => ({
-        time: slot.time,
-        available: !employeeAppointments.some((appointment) =>
-          this.overlaps(
-            slot.start,
-            slot.end,
-            appointment.startAt,
-            appointment.endAt,
+    const employeeEvents = this.groupEventsByEmployee([
+      ...employeeAppointmentEvents,
+      ...blockedSlots.map((slot) => ({
+        employeeId: slot.employeeId,
+        startAt: slot.startAt,
+        endAt: slot.endAt,
+      })),
+      ...leaveRequests.map((leave) => ({
+        employeeId: leave.employeeId,
+        startAt: leave.startAt,
+        endAt: leave.endAt,
+      })),
+    ]);
+
+    const professionals = salon.employees
+      .filter(
+        (employee) =>
+          selectedServices.length === 0 ||
+          selectedServices.every((service) =>
+            employeeCanPerformCategory(employee.specialties, service.category),
           ),
-        ),
-      }));
+      )
+      .map((employee) => {
+        const availability = slots.map((slot) => ({
+          time: slot.time,
+          available: this.canEmployeeCoverServicesAtSlot(
+            employee,
+            slot.start,
+            selectedServices,
+            employeeEvents,
+          ),
+        }));
 
-      return {
-        id: employee.id,
-        displayName: employee.displayName,
-        slots: availability,
-      };
-    });
+        return {
+          id: employee.id,
+          displayName: employee.displayName,
+          specialties: getEmployeeSpecialtyLabels(employee.specialties),
+          primarySpecialtyLabel: getPrimaryEmployeeSpecialtyLabel(
+            employee.specialties,
+          ),
+          slots: availability,
+        };
+      });
 
     const globalSlots: Slot[] = slots.map((slot) => {
-      const available = professionals.some((professional) =>
-        professional.slots.some((s) => s.time === slot.time && s.available),
+      const available = this.canAnyTeamCoverServicesAtSlot(
+        salon.employees,
+        slot.start,
+        selectedServices,
+        employeeEvents,
       );
       return { time: slot.time, available };
     });
@@ -423,6 +556,140 @@ export class DiscoveryService {
 
   private overlaps(aStart: Date, aEnd: Date, bStart: Date, bEnd: Date) {
     return aStart < bEnd && bStart < aEnd;
+  }
+
+  private groupEventsByEmployee(
+    events: Array<{ employeeId: string; startAt: Date; endAt: Date }>,
+  ) {
+    const grouped = new Map<
+      string,
+      Array<{ startAt: Date; endAt: Date }>
+    >();
+
+    for (const event of events) {
+      const current = grouped.get(event.employeeId) ?? [];
+      current.push({ startAt: event.startAt, endAt: event.endAt });
+      grouped.set(event.employeeId, current);
+    }
+
+    return grouped;
+  }
+
+  private buildServiceSegments(
+    slotStart: Date,
+    services: Array<{ durationMin: number; category: ServiceCategory }>,
+    fallbackDurationMin: number,
+  ) {
+    if (!services.length) {
+      return [
+        {
+          startAt: slotStart,
+          endAt: new Date(slotStart.getTime() + fallbackDurationMin * 60_000),
+          category: null as ServiceCategory | null,
+        },
+      ];
+    }
+
+    const segments: Array<{
+      startAt: Date;
+      endAt: Date;
+      category: ServiceCategory | null;
+    }> = [];
+    let cursor = new Date(slotStart);
+
+    for (const service of services) {
+      const endAt = new Date(cursor.getTime() + service.durationMin * 60_000);
+      segments.push({
+        startAt: cursor,
+        endAt,
+        category: service.category,
+      });
+      cursor = endAt;
+    }
+
+    return segments;
+  }
+
+  private employeeHasConflictAtSegment(
+    employeeId: string,
+    startAt: Date,
+    endAt: Date,
+    employeeEvents: Map<string, Array<{ startAt: Date; endAt: Date }>>,
+  ) {
+    const events = employeeEvents.get(employeeId) ?? [];
+    return events.some((event) =>
+      this.overlaps(startAt, endAt, event.startAt, event.endAt),
+    );
+  }
+
+  private canEmployeeCoverServicesAtSlot(
+    employee: {
+      id: string;
+      specialties: Array<{ specialty: any }>;
+    },
+    slotStart: Date,
+    services: Array<{ durationMin: number; category: ServiceCategory }>,
+    employeeEvents: Map<string, Array<{ startAt: Date; endAt: Date }>>,
+  ) {
+    const totalDurationMin =
+      services.reduce((sum, service) => sum + service.durationMin, 0) || 30;
+    const segments = this.buildServiceSegments(
+      slotStart,
+      services,
+      totalDurationMin,
+    );
+
+    return segments.every((segment) => {
+      if (
+        segment.category &&
+        !employeeCanPerformCategory(employee.specialties, segment.category)
+      ) {
+        return false;
+      }
+
+      return !this.employeeHasConflictAtSegment(
+        employee.id,
+        segment.startAt,
+        segment.endAt,
+        employeeEvents,
+      );
+    });
+  }
+
+  private canAnyTeamCoverServicesAtSlot(
+    employees: Array<{
+      id: string;
+      specialties: Array<{ specialty: any }>;
+    }>,
+    slotStart: Date,
+    services: Array<{ durationMin: number; category: ServiceCategory }>,
+    employeeEvents: Map<string, Array<{ startAt: Date; endAt: Date }>>,
+  ) {
+    const totalDurationMin =
+      services.reduce((sum, service) => sum + service.durationMin, 0) || 30;
+    const segments = this.buildServiceSegments(
+      slotStart,
+      services,
+      totalDurationMin,
+    );
+
+    return segments.every((segment) =>
+      employees.some((employee) => {
+        if (
+          segment.category &&
+          !employeeCanPerformCategory(employee.specialties, segment.category)
+        ) {
+          return false;
+        }
+
+        return !this.employeeHasConflictAtSegment(
+          employee.id,
+          segment.startAt,
+          segment.endAt,
+          employeeEvents,
+        );
+      }),
+    );
   }
 
   private defaultGallery() {
@@ -552,5 +819,74 @@ export class DiscoveryService {
     if (n.includes('maquill') || n.includes('visage') || n.includes('skin'))
       return 'Soin du visage';
     return 'Autres';
+  }
+
+  private parseCoordinates(latitude?: string, longitude?: string) {
+    const lat = latitude ? Number(latitude) : NaN;
+    const lng = longitude ? Number(longitude) : NaN;
+
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      return null;
+    }
+
+    return { latitude: lat, longitude: lng };
+  }
+
+  private resolveSalonCoordinates(salon: {
+    address?: string | null;
+    city: string | null;
+    country: string | null;
+    latitude?: number | null;
+    longitude?: number | null;
+  }): Coordinates | null {
+    if (
+      typeof salon.latitude === 'number' &&
+      Number.isFinite(salon.latitude) &&
+      typeof salon.longitude === 'number' &&
+      Number.isFinite(salon.longitude)
+    ) {
+      return {
+        latitude: salon.latitude,
+        longitude: salon.longitude,
+      };
+    }
+
+    const key = `${salon.city ?? ''}|${salon.country ?? ''}`
+      .trim()
+      .toLowerCase();
+
+    const knownCityCoordinates: Record<string, Coordinates> = {
+      'libreville|gabon': { latitude: 0.4162, longitude: 9.4673 },
+      'lambaréné|gabon': { latitude: -0.7001, longitude: 10.2406 },
+      'lambarene|gabon': { latitude: -0.7001, longitude: 10.2406 },
+      'port-gentil|gabon': { latitude: -0.7193, longitude: 8.7815 },
+      'port gentil|gabon': { latitude: -0.7193, longitude: 8.7815 },
+      'franceville|gabon': { latitude: -1.6333, longitude: 13.5836 },
+      'owendo|gabon': { latitude: 0.3009, longitude: 9.4896 },
+      'akanda|gabon': { latitude: 0.5667, longitude: 9.55 },
+    };
+
+    return knownCityCoordinates[key] ?? null;
+  }
+
+  private computeDistanceKm(
+    from: Coordinates | null,
+    to: Coordinates | null,
+  ): number | null {
+    if (!from || !to) return null;
+
+    const toRadians = (value: number) => (value * Math.PI) / 180;
+    const earthRadiusKm = 6371;
+    const dLat = toRadians(to.latitude - from.latitude);
+    const dLng = toRadians(to.longitude - from.longitude);
+    const lat1 = toRadians(from.latitude);
+    const lat2 = toRadians(to.latitude);
+
+    const a =
+      Math.sin(dLat / 2) ** 2 +
+      Math.sin(dLng / 2) ** 2 * Math.cos(lat1) * Math.cos(lat2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+    return Number((earthRadiusKm * c).toFixed(1));
   }
 }

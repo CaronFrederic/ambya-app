@@ -23,8 +23,9 @@ Comptes de test:
 Le seed `seed:beta` crée:
 
 - un salon de démo `Ambya Beta Studio`
-- 2 employés
+- 2 employés avec spécialités réelles
 - plusieurs services catégorisés `hair`, `face`, `body`, `nails`, `fitness`
+- un service `barber` pour tester l'assignation par spécialité
 - un profil client complet avec questionnaire et informations utiles
 - moyens de paiement client `CARD` et `MOMO`
 - fidélité client
@@ -41,9 +42,11 @@ Le seed `seed:beta` crée:
 3. Ouvrir la fiche salon et contrôler:
    - galerie
    - services
+   - employées avec spécialité affichée
    - avis
 4. Ajouter une ou plusieurs prestations au panier.
 5. Choisir un créneau disponible.
+   - vérifier qu'un employé n'est sélectionnable que s'il couvre toutes les prestations du panier
 6. Tester les 3 modes de paiement:
    - `Carte`: réservation créée avec paiement beta interne réussi
    - `Mobile Money`: réservation créée avec paiement beta interne réussi
@@ -74,13 +77,14 @@ Le seed `seed:beta` crée:
    - commentaires
    - profil cheveux
 6. Aller dans `Créneaux disponibles`.
-7. Prendre en charge le rendez-vous non assigné.
-8. Revenir dans `Mes rendez-vous` et vérifier qu’il apparaît dans l’agenda employé.
-9. Depuis le dashboard, bloquer un créneau au nom d’une cliente walk-in.
-10. Vérifier ce créneau bloqué dans l’agenda.
-11. Aller dans `Demandes de congés`.
-12. Vérifier l’historique existant puis créer une nouvelle demande.
-13. Aller dans `Profil`, modifier prénom/nom/email/téléphone, puis vérifier la persistance.
+7. Vérifier que seuls les rendez-vous compatibles avec les spécialités de l'employé sont listés.
+8. Prendre en charge le rendez-vous non assigné compatible.
+9. Revenir dans `Mes rendez-vous` et vérifier qu’il apparaît dans l’agenda employé.
+10. Depuis le dashboard, bloquer un créneau au nom d’une cliente walk-in.
+11. Vérifier ce créneau bloqué dans l’agenda.
+12. Aller dans `Demandes de congés`.
+13. Vérifier l’historique existant puis créer une nouvelle demande.
+14. Aller dans `Profil`, modifier prénom/nom/email/téléphone, puis vérifier la persistance.
 
 ## Résultat attendu
 
@@ -90,4 +94,5 @@ La beta est considérée valide si:
 - aucune vue Employee principale n’utilise de mock local
 - le parcours Client reste navigable sans assistance
 - le parcours Employee permet réellement les actions métier prévues
+- les contraintes de spécialité sont respectées dans la réservation et la prise en charge
 - les statuts `PENDING`, `CONFIRMED`, `COMPLETED`, `paid/unpaid` évoluent correctement

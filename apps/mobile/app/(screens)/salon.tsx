@@ -32,6 +32,15 @@ function formatFCFA(v: number) {
   return `${v.toLocaleString("fr-FR")} FCFA`;
 }
 
+function formatEmployeeLabel(employee: {
+  displayName: string;
+  primarySpecialtyLabel?: string | null;
+}) {
+  return employee.primarySpecialtyLabel
+    ? `${employee.displayName} - ${employee.primarySpecialtyLabel}`
+    : employee.displayName;
+}
+
 export default function SalonDetailScreen() {
   const params = useLocalSearchParams<{
     salonId?: string;
@@ -332,7 +341,7 @@ export default function SalonDetailScreen() {
                 <View style={styles.aboutCard}>
                   {(data?.employees ?? []).map((employee) => (
                     <Text key={employee.id} style={styles.conditionText}>
-                      • {employee.displayName}
+                      • {formatEmployeeLabel(employee)}
                     </Text>
                   ))}
                 </View>

@@ -38,6 +38,16 @@ enum ServiceCategory {
   OTHER
 }
 
+enum EmployeeSpecialty {
+  HAIR_STYLIST
+  ESTHETICIAN
+  BARBER
+  MASSAGE_THERAPIST
+  MANICURIST
+  FITNESS_COACH
+  OTHER
+}
+
 enum LeaveRequestStatus {
   PENDING
   APPROVED
@@ -81,6 +91,8 @@ model Salon {
   address          String?
   city             String?
   country          String?
+  latitude         Float?
+  longitude        Float?
   phone            String?
   coverImageUrl    String?
   galleryImageUrls Json?
@@ -122,12 +134,27 @@ model Employee {
   appointments Appointment[]
   blockedSlots EmployeeBlockedSlot[]
   leaveRequests LeaveRequest[]
+  specialties EmployeeSpecialtyAssignment[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([salonId])
   @@index([isActive])
+}
+
+model EmployeeSpecialtyAssignment {
+  id String @id @default(cuid())
+
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  specialty EmployeeSpecialty
+
+  createdAt DateTime @default(now())
+
+  @@unique([employeeId, specialty])
+  @@index([specialty])
 }
 
 model Service {
