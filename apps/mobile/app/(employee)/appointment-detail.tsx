@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { Button } from '../../src/components/Button'
 import { Card } from '../../src/components/Card'
 import { Screen } from '../../src/components/Screen'
+import { FeedbackState } from '../../src/components/FeedbackState'
 import { EmployeeHeader } from '../../src/components/employee/EmployeeHeader'
 import {
   useCancelEmployeeScheduleItem,
@@ -33,7 +34,11 @@ export default function EmployeeAppointmentDetailScreen() {
   if (!kind || !id) {
     return (
       <Screen style={styles.screen}>
-        <Text style={styles.missingText}>Rendez-vous introuvable.</Text>
+        <FeedbackState
+          icon="alert-circle-outline"
+          title="Rendez-vous introuvable"
+          description="Ce rendez-vous n’est plus disponible."
+        />
       </Screen>
     )
   }
@@ -41,7 +46,11 @@ export default function EmployeeAppointmentDetailScreen() {
   if (detail.isLoading) {
     return (
       <Screen style={styles.screen}>
-        <Text style={styles.missingText}>Chargement du rendez-vous...</Text>
+        <FeedbackState
+          icon="time-outline"
+          title="Chargement du rendez-vous"
+          description="Nous préparons les informations client et prestation."
+        />
       </Screen>
     )
   }
@@ -49,7 +58,13 @@ export default function EmployeeAppointmentDetailScreen() {
   if (detail.isError || !detail.data?.item) {
     return (
       <Screen style={styles.screen}>
-        <Text style={styles.missingText}>Impossible de charger ce rendez-vous.</Text>
+        <FeedbackState
+          icon="alert-circle-outline"
+          title="Impossible de charger ce rendez-vous"
+          description="Réessayez dans un instant."
+          actionLabel="Réessayer"
+          onAction={() => void detail.refetch()}
+        />
       </Screen>
     )
   }
@@ -59,7 +74,7 @@ export default function EmployeeAppointmentDetailScreen() {
   const handleConfirm = async () => {
     try {
       await confirmMutation.mutateAsync({ kind, id })
-      Alert.alert('Rendez-vous confirme', 'Le rendez-vous a ete pris en charge.')
+      Alert.alert('Rendez-vous confirmé', 'Le rendez-vous a été pris en charge.')
     } catch (error: any) {
       Alert.alert('Action impossible', error?.message ?? 'Erreur inconnue')
     }
@@ -68,7 +83,7 @@ export default function EmployeeAppointmentDetailScreen() {
   const handleComplete = async () => {
     try {
       await completeMutation.mutateAsync({ kind, id })
-      Alert.alert('Rendez-vous termine', 'Le rendez-vous a ete marque comme termine.')
+      Alert.alert('Rendez-vous terminé', 'Le rendez-vous a été marqué comme terminé.')
     } catch (error: any) {
       Alert.alert('Action impossible', error?.message ?? 'Erreur inconnue')
     }
@@ -77,7 +92,7 @@ export default function EmployeeAppointmentDetailScreen() {
   const handlePaid = async () => {
     try {
       await payMutation.mutateAsync({ kind, id })
-      Alert.alert('Paiement enregistre', 'Le rendez-vous a ete marque comme paye.')
+      Alert.alert('Paiement enregistré', 'Le rendez-vous a été marqué comme payé.')
     } catch (error: any) {
       Alert.alert('Action impossible', error?.message ?? 'Erreur inconnue')
     }
@@ -86,7 +101,7 @@ export default function EmployeeAppointmentDetailScreen() {
   const handleCancel = async () => {
     Alert.alert(
       'Annuler ce rendez-vous',
-      'Le rendez-vous client sera annule et ne pourra plus etre pris en charge depuis cet agenda.',
+      'Le rendez-vous client sera annulé et ne pourra plus être pris en charge depuis cet agenda.',
       [
         { text: 'Retour', style: 'cancel' },
         {
@@ -95,7 +110,7 @@ export default function EmployeeAppointmentDetailScreen() {
           onPress: async () => {
             try {
               await cancelMutation.mutateAsync({ kind, id })
-              Alert.alert('Rendez-vous annule', 'Le rendez-vous a bien ete annule.')
+              Alert.alert('Rendez-vous annulé', 'Le rendez-vous a bien été annulé.')
               router.back()
             } catch (error: any) {
               Alert.alert('Action impossible', error?.message ?? 'Erreur inconnue')
@@ -121,7 +136,7 @@ export default function EmployeeAppointmentDetailScreen() {
   return (
     <Screen noPadding style={styles.screen}>
       <EmployeeHeader
-        title="Detail du rendez-vous"
+        title="Détail du rendez-vous"
         subtitle={`${appointment.clientName} - ${appointment.service.name}`}
         canGoBack
       />
@@ -153,16 +168,16 @@ export default function EmployeeAppointmentDetailScreen() {
                   ]}
                 >
                   {appointment.status === 'COMPLETED'
-                    ? 'Termine'
+                    ? 'Terminé'
                     : appointment.status === 'CONFIRMED'
-                      ? 'Confirme'
+                      ? 'Confirmé'
                       : 'En attente'}
                 </Text>
               </View>
 
               <View style={[styles.statusPill, appointment.isPaid ? styles.paidPill : styles.unpaidPill]}>
                 <Text style={[styles.statusText, appointment.isPaid ? styles.paidText : styles.unpaidText]}>
-                  {appointment.isPaid ? 'Paye' : 'A encaisser'}
+                  {appointment.isPaid ? 'Payé' : 'À encaisser'}
                 </Text>
               </View>
             </View>
@@ -219,10 +234,10 @@ export default function EmployeeAppointmentDetailScreen() {
           <Button
             title={
               appointment.status === 'COMPLETED'
-                ? 'Rendez-vous deja termine'
+                ? 'Rendez-vous déjà terminé'
                 : completeMutation.isPending
                   ? 'Validation...'
-                  : 'Marquer comme termine'
+                  : 'Marquer comme terminé'
             }
             onPress={handleComplete}
             disabled={isPending || !canComplete}
@@ -231,10 +246,10 @@ export default function EmployeeAppointmentDetailScreen() {
           <Button
             title={
               appointment.isPaid
-                ? 'Paiement deja enregistre'
+                ? 'Paiement déjà enregistré'
                 : payMutation.isPending
                   ? 'Enregistrement...'
-                  : 'Marquer comme paye'
+                  : 'Marquer comme payé'
             }
             onPress={handlePaid}
             disabled={isPending || !canPay}
@@ -251,7 +266,7 @@ export default function EmployeeAppointmentDetailScreen() {
             />
           ) : null}
           <Button
-            title="Retour a l agenda"
+            title="Retour à l’agenda"
             onPress={() => router.back()}
             variant="secondary"
             style={styles.actionButton}
@@ -299,11 +314,6 @@ const styles = StyleSheet.create({
   content: {
     padding: spacing.lg,
     gap: spacing.md,
-  },
-  missingText: {
-    color: colors.text,
-    ...typography.body,
-    textAlign: 'center',
   },
   card: {
     borderRadius: radius.xl,

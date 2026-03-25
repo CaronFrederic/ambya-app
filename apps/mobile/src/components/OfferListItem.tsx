@@ -9,9 +9,10 @@ import { typography } from '../theme/typography'
 type Props = {
   title: string
   salonName: string
-  discountPercent: number // ex: 30 pour -30%
-  price: number // prix promo
-  originalPrice?: number // prix barré
+  discountPercent: number
+  highlightLabel?: string
+  price: number
+  originalPrice?: number
   onPress?: () => void
 }
 
@@ -23,16 +24,19 @@ export function OfferListItem({
   title,
   salonName,
   discountPercent,
+  highlightLabel,
   price,
   originalPrice,
   onPress,
 }: Props) {
   const hasOriginal = typeof originalPrice === 'number' && originalPrice > price
+  const badgeText =
+    discountPercent > 0 ? `-${discountPercent}%` : (highlightLabel ?? 'Selection')
 
   return (
     <Pressable onPress={onPress} style={styles.card}>
       <View style={styles.thumb}>
-        <Text style={styles.thumbText}>{`-${discountPercent}%`}</Text>
+        <Text style={styles.thumbText}>{badgeText}</Text>
       </View>
 
       <View style={styles.content}>
@@ -46,15 +50,17 @@ export function OfferListItem({
 
         <View style={styles.priceRow}>
           <Text style={styles.price}>{formatFCFA(price)}</Text>
-          {hasOriginal && (
+          {hasOriginal ? (
             <Text style={styles.originalPrice}>{formatFCFA(originalPrice!)}</Text>
-          )}
+          ) : null}
         </View>
       </View>
 
       <View style={styles.right}>
         <View style={styles.badge}>
-          <Text style={styles.badgeText}>{`-${discountPercent}\n%`}</Text>
+          <Text style={styles.badgeText}>
+            {discountPercent > 0 ? `-${discountPercent}\n%` : badgeText}
+          </Text>
         </View>
         <Ionicons name="chevron-forward" size={18} color="rgba(107,39,55,0.35)" />
       </View>
@@ -88,12 +94,14 @@ const styles = StyleSheet.create({
     borderColor: overlays.brand20,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: spacing.xs,
   },
 
   thumbText: {
     ...typography.small,
     fontWeight: '700',
     color: colors.brandForeground,
+    textAlign: 'center',
   },
 
   content: {
@@ -144,12 +152,13 @@ const styles = StyleSheet.create({
   },
 
   badge: {
-    width: 40,
+    minWidth: 40,
     height: 40,
     borderRadius: radius.full,
     backgroundColor: colors.promo,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: 6,
   },
 
   badgeText: {

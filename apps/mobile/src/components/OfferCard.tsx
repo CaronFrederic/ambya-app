@@ -7,14 +7,20 @@ import { radius } from '../theme/radius'
 import { typography } from '../theme/typography'
 
 type Props = {
-  discount: string
+  badgeLabel: string
   service: string
   salon: string
   onPress?: () => void
   width?: number
 }
 
-export function OfferCard({ discount, service, salon, onPress, width = 240 }: Props) {
+export function OfferCard({
+  badgeLabel,
+  service,
+  salon,
+  onPress,
+  width = 240,
+}: Props) {
   return (
     <Pressable onPress={onPress} style={[styles.pressable, { width }]}>
       <LinearGradient
@@ -23,10 +29,10 @@ export function OfferCard({ discount, service, salon, onPress, width = 240 }: Pr
         end={{ x: 1, y: 0 }}
         style={styles.card}
       >
-        <Text style={styles.discount}>{discount}</Text>
+        <Text style={styles.badgeLabel}>{badgeLabel}</Text>
         <Text style={styles.service}>{service}</Text>
         <Text style={styles.salon}>{salon}</Text>
-        <Text style={styles.cta}>Cliquez pour réserver →</Text>
+        <Text style={styles.cta}>Cliquez pour reserver -&gt;</Text>
       </LinearGradient>
     </Pressable>
   )
@@ -41,7 +47,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.xl,
     padding: spacing.lg,
   },
-  discount: {
+  badgeLabel: {
     color: colors.brandForeground,
     ...typography.small,
     fontWeight: '600',

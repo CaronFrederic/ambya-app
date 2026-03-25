@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+﻿import React, { useEffect, useMemo, useState } from "react";
 import {
   Alert,
   Pressable,
@@ -144,7 +144,7 @@ export default function Home() {
     } catch {
       Alert.alert(
         "Position indisponible",
-        "Impossible de récupérer votre position pour le moment.",
+        "Impossible de recuperer votre position pour le moment.",
       );
     }
   }
@@ -189,7 +189,7 @@ export default function Home() {
                     : styles.nearButtonTextIdle,
                 ]}
               >
-                Près
+                Pres
               </Text>
             </Pressable>
           </View>
@@ -238,7 +238,7 @@ export default function Home() {
         </View>
 
         <View style={styles.body}>
-          <SectionTitle title="Offres du moment" />
+          <SectionTitle title="Selections du moment" />
           {isLoading ? (
             <Text style={styles.loading}>Chargement...</Text>
           ) : (
@@ -250,7 +250,7 @@ export default function Home() {
               {offers.map((offer) => (
                 <OfferCard
                   key={`${offer.salonId}-${offer.serviceId}`}
-                  discount={`-${offer.discountPercent}%`}
+                  badgeLabel={offer.highlightLabel ?? "Selection"}
                   service={offer.serviceName}
                   salon={offer.salonName}
                   width={190}
@@ -302,7 +302,7 @@ export default function Home() {
                       </Text>
                       {typeof salon.distanceKm === "number" ? (
                         <Text style={styles.salonMarkerMeta}>
-                          à {salon.distanceKm.toFixed(1)} km
+                          a {salon.distanceKm.toFixed(1)} km
                         </Text>
                       ) : null}
                     </Pressable>
@@ -312,7 +312,7 @@ export default function Home() {
             </View>
           ) : null}
 
-          <SectionTitle title="Les mieux notés" />
+          <SectionTitle title="Les mieux notes" />
           <View style={styles.list}>
             {topRated.map((salon) => (
               <SalonListItem
@@ -345,7 +345,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.background,
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
-    paddingBottom: spacing.md,
+    paddingBottom: spacing.lg,
     gap: spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
@@ -394,6 +394,8 @@ const styles = StyleSheet.create({
     backgroundColor: "#F7F3EE",
     borderRadius: radius.full,
     paddingHorizontal: spacing.lg,
+    marginTop: spacing.xs,
+    marginBottom: spacing.xs,
     height: 46,
     borderWidth: 1,
     borderColor: overlays.brand10,
@@ -405,7 +407,12 @@ const styles = StyleSheet.create({
     color: "rgba(107,39,55,0.55)",
     ...typography.small,
   },
-  chipsRow: { gap: spacing.sm },
+  chipsRow: {
+    gap: spacing.sm,
+    paddingTop: spacing.xs,
+    paddingBottom: spacing.sm,
+    paddingRight: spacing.sm,
+  },
   chip: {
     paddingHorizontal: spacing.md,
     paddingVertical: 10,
@@ -484,3 +491,4 @@ const styles = StyleSheet.create({
     fontWeight: "500",
   },
 });
+

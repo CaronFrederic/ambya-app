@@ -19,6 +19,12 @@ enum UserRole {
   ADMIN
 }
 
+enum AdminScope {
+  SUPER_ADMIN
+  SUPPORT
+  OPS
+}
+
 enum AppointmentStatus {
   PENDING
   CONFIRMED
@@ -67,6 +73,7 @@ model User {
 
   // Employee profile (role EMPLOYEE)
   employeeProfile Employee?
+  adminProfile    AdminProfile?
 
   // Client appointments
   appointments Appointment[] @relation("AppointmentClient")
@@ -82,6 +89,23 @@ model User {
 
   @@index([role])
   @@index([isActive])
+}
+
+model AdminProfile {
+  id String @id @default(cuid())
+
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  firstName String?
+  lastName  String?
+  scope     AdminScope @default(SUPPORT)
+  notes     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([scope])
 }
 
 model Salon {
@@ -446,4 +470,28 @@ model PaymentIntent {
   @@index([salonId, createdAt])
   @@index([appointmentId])
   @@index([status])
+}
+
+model AuditLog {
+  id String @id @default(cuid())
+
+  actionType      String
+  entityType      String
+  entityId        String?
+  actorUserId     String?
+  actorRole       UserRole?
+  actorAdminScope AdminScope?
+  requestId       String?
+  route           String?
+  method          String?
+  oldValue        Json?
+  newValue        Json?
+  metadata        Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([actionType, createdAt])
+  @@index([entityType, createdAt])
+  @@index([actorUserId, createdAt])
+  @@index([createdAt])
 }

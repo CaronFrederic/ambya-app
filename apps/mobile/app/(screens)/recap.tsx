@@ -33,7 +33,6 @@ export default function RecapScreen() {
 
   return (
     <Screen noPadding style={styles.screen}>
-      {/* Header bordeaux */}
       <View style={styles.header}>
         <View style={styles.headerRow}>
           <Ionicons
@@ -105,7 +104,6 @@ export default function RecapScreen() {
         </View>
       </ScrollView>
 
-      {/* Bottom actions */}
       <View style={styles.bottomBar}>
         <Button
           title="Modifier services"

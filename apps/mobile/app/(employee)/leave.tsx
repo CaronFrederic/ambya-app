@@ -5,6 +5,7 @@ import { Button } from '../../src/components/Button'
 import { Card } from '../../src/components/Card'
 import { Input } from '../../src/components/Input'
 import { Screen } from '../../src/components/Screen'
+import { FeedbackState } from '../../src/components/FeedbackState'
 import { EmployeeCalendarPicker } from '../../src/components/employee/EmployeeCalendarPicker'
 import { EmployeeHeader } from '../../src/components/employee/EmployeeHeader'
 import { EmployeeModal } from '../../src/components/employee/EmployeeModal'
@@ -49,15 +50,15 @@ export default function EmployeeLeaveScreen() {
     const nextErrors: { startDate?: string; endDate?: string; reason?: string } = {}
 
     if (!isValidDateValue(startDate)) {
-      nextErrors.startDate = 'Selectionnez une date de debut valide.'
+      nextErrors.startDate = 'Sélectionnez une date de début valide.'
     }
 
     if (!isValidDateValue(endDate)) {
-      nextErrors.endDate = 'Selectionnez une date de fin valide.'
+      nextErrors.endDate = 'Sélectionnez une date de fin valide.'
     }
 
     if (isValidDateValue(startDate) && isValidDateValue(endDate) && compareDates(startDate, endDate) > 0) {
-      nextErrors.endDate = 'La date de fin doit etre apres la date de debut.'
+      nextErrors.endDate = 'La date de fin doit être après la date de début.'
     }
 
     if (!reason.trim()) {
@@ -88,14 +89,14 @@ export default function EmployeeLeaveScreen() {
       }
       closeModal()
       Alert.alert(
-        editingLeaveId ? 'Demande modifiee' : 'Demande envoyee',
+        editingLeaveId ? 'Demande modifiée' : 'Demande envoyée',
         editingLeaveId
-          ? 'Votre demande de conges a bien ete mise a jour.'
-          : 'Votre demande de conges a bien ete enregistree.',
+          ? 'Votre demande de congés a bien été mise à jour.'
+          : 'Votre demande de congés a bien été enregistrée.',
       )
     } catch (error: any) {
       Alert.alert(
-        editingLeaveId ? 'Impossible de modifier la demande' : 'Impossible d envoyer la demande',
+        editingLeaveId ? 'Impossible de modifier la demande' : 'Impossible d’envoyer la demande',
         error?.message ?? 'Erreur inconnue',
       )
     }
@@ -119,7 +120,7 @@ export default function EmployeeLeaveScreen() {
   const handleCancelLeave = (leaveId: string) => {
     Alert.alert(
       'Annuler cette demande',
-      'Cette demande de conges en attente sera supprimee.',
+      'Cette demande de congés en attente sera supprimée.',
       [
         { text: 'Retour', style: 'cancel' },
         {
@@ -128,7 +129,7 @@ export default function EmployeeLeaveScreen() {
           onPress: async () => {
             try {
               await cancelLeaveRequest.mutateAsync({ id: leaveId })
-              Alert.alert('Demande annulee', 'La demande de conges a bien ete annulee.')
+              Alert.alert('Demande annulée', 'La demande de congés a bien été annulée.')
             } catch (error: any) {
               Alert.alert('Action impossible', error?.message ?? 'Erreur inconnue')
             }
@@ -140,10 +141,7 @@ export default function EmployeeLeaveScreen() {
 
   return (
     <Screen noPadding style={styles.screen}>
-      <EmployeeHeader
-        title="Demandes de conges"
-        subtitle="Gerez vos conges"
-      />
+      <EmployeeHeader title="Demandes de congés" subtitle="Gérez vos congés" />
 
       <ScrollView
         showsVerticalScrollIndicator={false}
@@ -151,22 +149,29 @@ export default function EmployeeLeaveScreen() {
         keyboardDismissMode="interactive"
         contentContainerStyle={styles.content}
       >
-        <Button
-          title="Nouvelle demande"
-          onPress={openCreateModal}
-          style={styles.newRequestButton}
-        />
+        <Button title="Nouvelle demande" onPress={openCreateModal} style={styles.newRequestButton} />
 
         <View style={styles.list}>
           {leaveRequests.isLoading ? (
-            <Text style={styles.feedbackText}>Chargement des demandes...</Text>
+            <FeedbackState
+              icon="time-outline"
+              title="Chargement des demandes"
+              description="Vos demandes de congés arrivent."
+            />
           ) : leaveRequests.isError ? (
-            <Text style={styles.feedbackText}>Impossible de charger les conges.</Text>
+            <FeedbackState
+              icon="alert-circle-outline"
+              title="Impossible de charger les congés"
+              description="Réessayez dans un instant."
+              actionLabel="Réessayer"
+              onAction={() => void leaveRequests.refetch()}
+            />
           ) : (leaveRequests.data?.items.length ?? 0) === 0 ? (
-            <Card style={styles.card}>
-              <Text style={styles.cardTitle}>Aucune demande de conges</Text>
-              <Text style={styles.period}>Vos futures demandes apparaitront ici.</Text>
-            </Card>
+            <FeedbackState
+              icon="document-text-outline"
+              title="Aucune demande de congés"
+              description="Vos futures demandes apparaîtront ici."
+            />
           ) : (
             leaveRequests.data?.items.map((leave) => (
               <Card key={leave.id} style={styles.card}>
@@ -193,9 +198,9 @@ export default function EmployeeLeaveScreen() {
                       ]}
                     >
                       {leave.status === 'APPROVED'
-                        ? 'Approuve'
+                        ? 'Approuvé'
                         : leave.status === 'REJECTED'
-                          ? 'Refuse'
+                          ? 'Refusé'
                           : 'En attente'}
                     </Text>
                   </View>
@@ -206,7 +211,7 @@ export default function EmployeeLeaveScreen() {
                 </Text>
                 <View style={styles.separator} />
                 <Text style={styles.duration}>{buildDurationLabel(leave.startAt, leave.endAt)}</Text>
-                {leave.managerNote ? <Text style={styles.managerNote}>Note manager: {leave.managerNote}</Text> : null}
+                {leave.managerNote ? <Text style={styles.managerNote}>Note manager : {leave.managerNote}</Text> : null}
                 {leave.status === 'PENDING' ? (
                   <View style={styles.cardActions}>
                     <Button
@@ -231,7 +236,7 @@ export default function EmployeeLeaveScreen() {
 
       <EmployeeModal
         visible={showModal}
-        title={editingLeaveId ? 'Modifier la demande' : 'Nouvelle demande de conges'}
+        title={editingLeaveId ? 'Modifier la demande' : 'Nouvelle demande de congés'}
         onClose={closeModal}
         footer={
           <>
@@ -241,7 +246,7 @@ export default function EmployeeLeaveScreen() {
                 createLeaveRequest.isPending || updateLeaveRequest.isPending
                   ? 'Enregistrement...'
                   : editingLeaveId
-                    ? 'Mettre a jour'
+                    ? 'Mettre à jour'
                     : 'Envoyer'
               }
               onPress={handleSubmit}
@@ -252,7 +257,7 @@ export default function EmployeeLeaveScreen() {
         }
       >
         <EmployeePickerField
-          label="Date de debut"
+          label="Date de début"
           placeholder="jj/mm/aaaa"
           value={startDate}
           onPress={() => setActivePicker((current) => (current === 'start' ? null : 'start'))}
@@ -297,7 +302,7 @@ export default function EmployeeLeaveScreen() {
 
         <Input
           label="Motif"
-          placeholder="Conges annuels, evenement familial..."
+          placeholder="Congés annuels, événement familial..."
           value={reason}
           onChangeText={setReason}
           multiline
@@ -361,11 +366,6 @@ const styles = StyleSheet.create({
   },
   newRequestButton: {
     height: 48,
-  },
-  feedbackText: {
-    color: colors.textMuted,
-    ...typography.body,
-    textAlign: 'center',
   },
   list: {
     gap: spacing.md,

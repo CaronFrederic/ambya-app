@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+﻿import React, { useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -64,6 +64,15 @@ export default function SalonDetailScreen() {
   const addressLine = [data?.address, data?.city, data?.country]
     .filter(Boolean)
     .join(", ");
+  const socialLinks = data?.socialLinks ?? {};
+  const hasSocialLinks = Boolean(
+    socialLinks.instagram ||
+      socialLinks.facebook ||
+      socialLinks.tiktok ||
+      socialLinks.website,
+  );
+  const openingHours = data?.openingHours ?? [];
+  const conditions = data?.conditions ?? [];
 
   const openLink = (url?: string) => {
     if (!url) return;
@@ -176,7 +185,7 @@ export default function SalonDetailScreen() {
             </Pressable>
 
             <View style={styles.heroBottomRow}>
-              <Text style={styles.heroLabel}>Intérieur du salon</Text>
+              <Text style={styles.heroLabel}>Interieur du salon</Text>
               <Text style={styles.heroCount}>
                 {Math.min(activeImageIndex + 1, Math.max(gallery.length, 1))} /{" "}
                 {Math.max(gallery.length, 1)}
@@ -213,38 +222,62 @@ export default function SalonDetailScreen() {
 
           <View style={styles.metaSocialRow}>
             <Text style={styles.metaText}>
-              {"⭐"} {data?.rating?.toFixed(1) ?? "4.5"} ({data?.reviewCount ?? 0}+)
+              {data?.reviewCount
+                ? `★ ${data.rating.toFixed(1)} (${data.reviewCount})`
+                : 'Nouveau salon - aucun avis pour le moment'}
             </Text>
-            <View style={styles.socialRow}>
-              <Pressable
-                style={styles.socialBtn}
-                onPress={() => openLink(data?.socialLinks?.instagram)}
-              >
-                <Ionicons
-                  name="logo-instagram"
-                  size={16}
-                  color={colors.brand}
-                />
-              </Pressable>
-              <Pressable
-                style={styles.socialBtn}
-                onPress={() => openLink(data?.socialLinks?.facebook)}
-              >
-                <Ionicons name="logo-facebook" size={16} color={colors.brand} />
-              </Pressable>
-              <Pressable
-                style={styles.socialBtn}
-                onPress={() => openLink(data?.socialLinks?.tiktok)}
-              >
-                <Ionicons name="logo-tiktok" size={16} color={colors.brand} />
-              </Pressable>
-              <Pressable
-                style={styles.socialBtn}
-                onPress={() => openLink(data?.socialLinks?.website)}
-              >
-                <Ionicons name="globe-outline" size={16} color={colors.brand} />
-              </Pressable>
-            </View>
+            {hasSocialLinks ? (
+              <View style={styles.socialRow}>
+                {socialLinks.instagram ? (
+                  <Pressable
+                    style={styles.socialBtn}
+                    onPress={() => openLink(socialLinks.instagram)}
+                  >
+                    <Ionicons
+                      name="logo-instagram"
+                      size={16}
+                      color={colors.brand}
+                    />
+                  </Pressable>
+                ) : null}
+                {socialLinks.facebook ? (
+                  <Pressable
+                    style={styles.socialBtn}
+                    onPress={() => openLink(socialLinks.facebook)}
+                  >
+                    <Ionicons
+                      name="logo-facebook"
+                      size={16}
+                      color={colors.brand}
+                    />
+                  </Pressable>
+                ) : null}
+                {socialLinks.tiktok ? (
+                  <Pressable
+                    style={styles.socialBtn}
+                    onPress={() => openLink(socialLinks.tiktok)}
+                  >
+                    <Ionicons
+                      name="logo-tiktok"
+                      size={16}
+                      color={colors.brand}
+                    />
+                  </Pressable>
+                ) : null}
+                {socialLinks.website ? (
+                  <Pressable
+                    style={styles.socialBtn}
+                    onPress={() => openLink(socialLinks.website)}
+                  >
+                    <Ionicons
+                      name="globe-outline"
+                      size={16}
+                      color={colors.brand}
+                    />
+                  </Pressable>
+                ) : null}
+              </View>
+            ) : null}
           </View>
 
           {addressLine ? (
@@ -261,7 +294,7 @@ export default function SalonDetailScreen() {
 
         <View style={styles.tabsRow}>
           <TabPill
-            label="À propos"
+            label="A propos"
             active={activeTab === "about"}
             onPress={() => setActiveTab("about")}
           />
@@ -286,62 +319,68 @@ export default function SalonDetailScreen() {
               </Text>
             </View>
 
-            <View style={styles.aboutSection}>
-              <Text style={styles.aboutTitle}>Horaires d'ouverture</Text>
-              <View style={styles.aboutCard}>
-                {(data?.openingHours ?? []).map((item) => (
-                  <View key={item.day} style={styles.hoursRow}>
-                    <Text style={styles.hoursDay}>{item.day}</Text>
-                    <Text
-                      style={[
-                        styles.hoursValue,
-                        item.closed ? styles.hoursClosed : undefined,
-                      ]}
-                    >
-                      {item.closed ? "Fermé" : `${item.open} - ${item.close}`}
+            {openingHours.length > 0 ? (
+              <View style={styles.aboutSection}>
+                <Text style={styles.aboutTitle}>Horaires d'ouverture</Text>
+                <View style={styles.aboutCard}>
+                  {openingHours.map((item) => (
+                    <View key={item.day} style={styles.hoursRow}>
+                      <Text style={styles.hoursDay}>{item.day}</Text>
+                      <Text
+                        style={[
+                          styles.hoursValue,
+                          item.closed ? styles.hoursClosed : undefined,
+                        ]}
+                      >
+                        {item.closed ? "Ferme" : `${item.open} - ${item.close}`}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            ) : null}
+
+            {conditions.length > 0 ? (
+              <View style={styles.aboutSection}>
+                <Text style={styles.aboutTitle}>Conditions</Text>
+                <View style={styles.aboutCard}>
+                  {conditions.map((condition) => (
+                    <Text key={condition} style={styles.conditionText}>
+                      - {condition}
+                    </Text>
+                  ))}
+                </View>
+              </View>
+            ) : null}
+
+            {typeof data?.responseTimeMin === "number" ? (
+              <View style={styles.aboutSection}>
+                <Text style={styles.aboutTitle}>Temps de reponse</Text>
+                <View style={styles.responseCard}>
+                  <View style={styles.responseRow}>
+                    <Ionicons
+                      name="time-outline"
+                      size={18}
+                      color={colors.premium}
+                    />
+                    <Text style={styles.responseText}>
+                      Temps de reponse moyen : {data.responseTimeMin} min
                     </Text>
                   </View>
-                ))}
-              </View>
-            </View>
-
-            <View style={styles.aboutSection}>
-              <Text style={styles.aboutTitle}>Conditions</Text>
-              <View style={styles.aboutCard}>
-                {(data?.conditions ?? []).map((condition) => (
-                  <Text key={condition} style={styles.conditionText}>
-                    • {condition}
-                  </Text>
-                ))}
-              </View>
-            </View>
-
-            <View style={styles.aboutSection}>
-              <Text style={styles.aboutTitle}>Temps de réponse</Text>
-              <View style={styles.responseCard}>
-                <View style={styles.responseRow}>
-                  <Ionicons
-                    name="time-outline"
-                    size={18}
-                    color={colors.premium}
-                  />
-                  <Text style={styles.responseText}>
-                    Temps de réponse moyen : {data?.responseTimeMin ?? 15} min
+                  <Text style={styles.responseHint}>
+                    Indication basee sur l'activite recente du prestataire
                   </Text>
                 </View>
-                <Text style={styles.responseHint}>
-                  Indication basée sur les réponses du prestataire
-                </Text>
               </View>
-            </View>
+            ) : null}
 
             {(data?.employees ?? []).length ? (
               <View style={styles.aboutSection}>
-                <Text style={styles.aboutTitle}>Équipe</Text>
+                <Text style={styles.aboutTitle}>Equipe</Text>
                 <View style={styles.aboutCard}>
                   {(data?.employees ?? []).map((employee) => (
                     <Text key={employee.id} style={styles.conditionText}>
-                      • {formatEmployeeLabel(employee)}
+                      - {formatEmployeeLabel(employee)}
                     </Text>
                   ))}
                 </View>
@@ -381,7 +420,7 @@ export default function SalonDetailScreen() {
                                 {service.name}
                               </Text>
                               <Text style={styles.serviceMeta}>
-                                Durée: {service.durationMin} min
+                                Duree: {service.durationMin} min
                               </Text>
                               {offerServiceId === service.id && offerPrice ? (
                                 <View style={styles.offerPriceRow}>
@@ -457,7 +496,7 @@ export default function SalonDetailScreen() {
             }}
             style={styles.cartCta}
           >
-            <Text style={styles.cartCtaText}>Voir le récap</Text>
+            <Text style={styles.cartCtaText}>Voir le recap</Text>
           </Pressable>
         </View>
       ) : null}
@@ -694,3 +733,5 @@ const styles = StyleSheet.create({
   },
   cartCtaText: { color: colors.brand, fontWeight: "700" },
 });
+
+

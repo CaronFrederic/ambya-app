@@ -1,10 +1,11 @@
-import React, { useState } from 'react'
+﻿import React, { useState } from 'react'
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { router } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 
 import { Card } from '../../src/components/Card'
 import { Screen } from '../../src/components/Screen'
+import { FeedbackState } from '../../src/components/FeedbackState'
 import { EmployeeChipTabs } from '../../src/components/employee/EmployeeChipTabs'
 import { EmployeeHeader } from '../../src/components/employee/EmployeeHeader'
 import { useEmployeeSchedule, type EmployeeScheduleTab } from '../../src/api/employee'
@@ -25,10 +26,7 @@ export default function EmployeeAppointmentsScreen() {
 
   return (
     <Screen noPadding style={styles.screen}>
-      <EmployeeHeader
-        title="Mes rendez-vous"
-        subtitle="Gerez votre planning"
-      />
+      <EmployeeHeader title="Mes rendez-vous" subtitle="Gerez votre planning" />
 
       <ScrollView
         showsVerticalScrollIndicator={false}
@@ -40,14 +38,25 @@ export default function EmployeeAppointmentsScreen() {
 
         <View style={styles.list}>
           {schedule.isLoading ? (
-            <Text style={styles.feedbackText}>Chargement de votre agenda...</Text>
+            <FeedbackState
+              icon="time-outline"
+              title="Chargement de votre agenda"
+              description="Vos rendez-vous et creneaux bloques arrivent."
+            />
           ) : schedule.isError ? (
-            <Text style={styles.feedbackText}>Impossible de charger les rendez-vous.</Text>
+            <FeedbackState
+              icon="alert-circle-outline"
+              title="Impossible de charger l agenda"
+              description="Reessayez dans un instant."
+              actionLabel="Reessayer"
+              onAction={() => void schedule.refetch()}
+            />
           ) : (schedule.data?.items.length ?? 0) === 0 ? (
-            <Card style={styles.card}>
-              <Text style={styles.name}>Aucun rendez-vous</Text>
-              <Text style={styles.service}>Aucun element ne correspond a ce filtre.</Text>
-            </Card>
+            <FeedbackState
+              icon="calendar-clear-outline"
+              title="Aucun rendez-vous"
+              description="Aucun element ne correspond a ce filtre pour le moment."
+            />
           ) : (
             schedule.data?.items.map((appointment) => (
               <Pressable
@@ -158,11 +167,6 @@ const styles = StyleSheet.create({
   list: {
     gap: spacing.md,
   },
-  feedbackText: {
-    color: colors.textMuted,
-    ...typography.body,
-    textAlign: 'center',
-  },
   card: {
     borderRadius: radius.xl,
   },
@@ -252,3 +256,4 @@ const styles = StyleSheet.create({
     ...typography.small,
   },
 })
+

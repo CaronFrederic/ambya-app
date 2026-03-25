@@ -5,6 +5,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { Button } from '../../src/components/Button'
 import { Card } from '../../src/components/Card'
 import { Screen } from '../../src/components/Screen'
+import { FeedbackState } from '../../src/components/FeedbackState'
 import { EmployeeHeader } from '../../src/components/employee/EmployeeHeader'
 import { useClaimEmployeeSlot, useEmployeeAvailableSlots } from '../../src/api/employee'
 import { colors } from '../../src/theme/colors'
@@ -19,8 +20,8 @@ export default function EmployeeAvailabilityScreen() {
   return (
     <Screen noPadding style={styles.screen}>
       <EmployeeHeader
-        title="Creneaux disponibles"
-        subtitle="Rendez-vous non assignes"
+        title="Créneaux disponibles"
+        subtitle="Rendez-vous non assignés"
         canGoBack
       />
 
@@ -33,20 +34,31 @@ export default function EmployeeAvailabilityScreen() {
         <View style={styles.infoBanner}>
           <Ionicons name="alert-circle-outline" size={18} color="#D4AF6A" />
           <Text style={styles.infoText}>
-            Ces rendez-vous clients ne sont encore assignes a aucun employe.
+            Ces rendez-vous clients ne sont encore assignés à aucun employé.
           </Text>
         </View>
 
         <View style={styles.list}>
           {availableSlots.isLoading ? (
-            <Text style={styles.feedbackText}>Chargement des creneaux...</Text>
+            <FeedbackState
+              icon="time-outline"
+              title="Chargement des créneaux"
+              description="Nous cherchons les demandes encore disponibles."
+            />
           ) : availableSlots.isError ? (
-            <Text style={styles.feedbackText}>Impossible de charger les creneaux.</Text>
+            <FeedbackState
+              icon="alert-circle-outline"
+              title="Impossible de charger les créneaux"
+              description="Réessayez dans un instant."
+              actionLabel="Réessayer"
+              onAction={() => void availableSlots.refetch()}
+            />
           ) : (availableSlots.data?.items.length ?? 0) === 0 ? (
-            <Card style={styles.card}>
-              <Text style={styles.service}>Aucun creneau disponible</Text>
-              <Text style={styles.metaText}>Tout est deja pris en charge pour le moment.</Text>
-            </Card>
+            <FeedbackState
+              icon="calendar-clear-outline"
+              title="Aucun créneau disponible"
+              description="Tout est déjà pris en charge pour le moment."
+            />
           ) : (
             availableSlots.data?.items.map((slot) => (
               <Card key={slot.id} style={styles.card}>
@@ -54,7 +66,7 @@ export default function EmployeeAvailabilityScreen() {
                   <Text style={styles.service}>{slot.service.name}</Text>
                   <View style={[styles.badge, !slot.isClaimable && styles.badgeMuted]}>
                     <Text style={[styles.badgeText, !slot.isClaimable && styles.badgeTextMuted]}>
-                      {slot.isClaimable ? 'Non assigne' : 'Conflit agenda'}
+                      {slot.isClaimable ? 'Non assigné' : 'Conflit agenda'}
                     </Text>
                   </View>
                 </View>
@@ -93,7 +105,7 @@ export default function EmployeeAvailabilityScreen() {
                   onPress={async () => {
                     try {
                       await claimSlot.mutateAsync({ id: slot.id })
-                      Alert.alert('Creneau assigne', 'Le creneau a ete ajoute a votre agenda.')
+                      Alert.alert('Créneau assigné', 'Le créneau a été ajouté à votre agenda.')
                     } catch (error: any) {
                       Alert.alert('Action impossible', error?.message ?? 'Erreur inconnue')
                     }
@@ -148,11 +160,6 @@ const styles = StyleSheet.create({
     color: colors.text,
     ...typography.body,
     lineHeight: 22,
-  },
-  feedbackText: {
-    color: colors.textMuted,
-    ...typography.body,
-    textAlign: 'center',
   },
   list: {
     gap: spacing.md,

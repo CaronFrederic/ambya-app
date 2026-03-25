@@ -1,10 +1,11 @@
-import React from "react";
+﻿import React from "react";
 import { View, Text, StyleSheet, ScrollView } from "react-native";
 import { router } from "expo-router";
 
 import { Screen } from "../../src/components/Screen";
 import { OfferListItem } from "../../src/components/OfferListItem";
 import { useHomeDiscovery } from "../../src/api/discovery";
+import { FeedbackState } from "../../src/components/FeedbackState";
 
 import { colors } from "../../src/theme/colors";
 import { spacing } from "../../src/theme/spacing";
@@ -18,9 +19,9 @@ export default function Offers() {
   return (
     <Screen noPadding style={styles.screen}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Offres spéciales</Text>
+        <Text style={styles.headerTitle}>Selections du moment</Text>
         <Text style={styles.headerSubtitle}>
-          Profitez de nos meilleures promotions
+          Parcourez les services mis en avant pour cette beta
         </Text>
       </View>
 
@@ -29,30 +30,38 @@ export default function Offers() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator
       >
-        {isLoading ? <Text style={styles.loading}>Chargement…</Text> : null}
+        {isLoading ? <Text style={styles.loading}>Chargement...</Text> : null}
 
-        <View style={styles.list}>
-          {offers.map((offer) => (
-            <OfferListItem
-              key={`${offer.salonId}-${offer.serviceId}`}
-              title={offer.serviceName}
-              salonName={offer.salonName}
-              discountPercent={offer.discountPercent}
-              price={offer.discountedPrice}
-              originalPrice={offer.originalPrice}
-              onPress={() =>
-                router.push({
-                  pathname: "/(screens)/salon",
-                  params: {
-                    salonId: offer.salonId,
-                    offerServiceId: offer.serviceId,
-                    offerPrice: String(offer.discountedPrice),
-                  },
-                })
-              }
-            />
-          ))}
-        </View>
+        {!isLoading && offers.length === 0 ? (
+          <FeedbackState
+            title="Aucune selection disponible"
+            description="Les mises en avant du moment apparaitront ici des qu elles seront prêtes."
+          />
+        ) : (
+          <View style={styles.list}>
+            {offers.map((offer) => (
+              <OfferListItem
+                key={`${offer.salonId}-${offer.serviceId}`}
+                title={offer.serviceName}
+                salonName={offer.salonName}
+                discountPercent={offer.discountPercent}
+                highlightLabel={offer.highlightLabel}
+                price={offer.discountedPrice}
+                originalPrice={offer.originalPrice}
+                onPress={() =>
+                  router.push({
+                    pathname: "/(screens)/salon",
+                    params: {
+                      salonId: offer.salonId,
+                      offerServiceId: offer.serviceId,
+                      offerPrice: String(offer.discountedPrice),
+                    },
+                  })
+                }
+              />
+            ))}
+          </View>
+        )}
       </ScrollView>
     </Screen>
   );
@@ -102,3 +111,4 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
 });
+

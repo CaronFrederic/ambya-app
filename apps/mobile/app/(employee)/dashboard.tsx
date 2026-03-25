@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react'
+﻿import React, { useMemo, useState } from 'react'
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { router } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
@@ -6,6 +6,7 @@ import { LinearGradient } from 'expo-linear-gradient'
 
 import { Button } from '../../src/components/Button'
 import { Card } from '../../src/components/Card'
+import { FeedbackState } from '../../src/components/FeedbackState'
 import { Input } from '../../src/components/Input'
 import { Screen } from '../../src/components/Screen'
 import { EmployeeCalendarPicker } from '../../src/components/employee/EmployeeCalendarPicker'
@@ -130,7 +131,10 @@ export default function EmployeeDashboardScreen() {
   if (dashboard.isLoading) {
     return (
       <Screen style={styles.loadingScreen}>
-        <Text style={styles.loadingText}>Chargement du tableau de bord...</Text>
+        <FeedbackState
+          title="Chargement du tableau de bord"
+          description="Nous recuperons vos rendez-vous et vos actions du jour."
+        />
       </Screen>
     )
   }
@@ -138,9 +142,12 @@ export default function EmployeeDashboardScreen() {
   if (dashboard.isError || !dashboard.data || !profile) {
     return (
       <Screen style={styles.loadingScreen}>
-        <Text style={styles.loadingText}>
-          Impossible de charger le flow employe.
-        </Text>
+        <FeedbackState
+          title="Flow employe indisponible"
+          description="Impossible de charger votre tableau de bord pour le moment."
+          actionLabel="Reessayer"
+          onAction={() => void dashboard.refetch()}
+        />
       </Screen>
     )
   }
@@ -249,7 +256,7 @@ export default function EmployeeDashboardScreen() {
                         )
                       }
                     >
-                      <Text style={styles.linkText}>Voir details</Text>
+                      <Text style={styles.linkText}>Voir les details</Text>
                     </Pressable>
                   </View>
                 </Card>
@@ -617,3 +624,5 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 })
+
+

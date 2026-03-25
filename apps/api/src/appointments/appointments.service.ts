@@ -114,6 +114,7 @@ export class AppointmentsService {
     if (Number.isNaN(startAt.getTime())) {
       throw new BadRequestException('Invalid startAt');
     }
+    this.assertStartInFuture(startAt);
 
     const service = await this.prisma.service.findFirst({
       where: { id: dto.serviceId, salonId: dto.salonId, isActive: true },
@@ -248,6 +249,7 @@ export class AppointmentsService {
   if (Number.isNaN(startAt.getTime())) {
     throw new BadRequestException('Invalid startAt');
   }
+  this.assertStartInFuture(startAt);
 
   const expandedServiceIds = dto.items.flatMap((item) =>
     Array.from({ length: item.quantity }, () => item.serviceId),
@@ -616,6 +618,7 @@ export class AppointmentsService {
       if (Number.isNaN(startAt.getTime())) {
         throw new BadRequestException('Invalid startAt');
       }
+      this.assertStartInFuture(startAt);
       const timeChanged = appointments[0].startAt.getTime() !== startAt.getTime();
 
       const targetEmployeeId =
@@ -1046,6 +1049,12 @@ export class AppointmentsService {
       status === AppointmentStatus.PENDING ||
       status === AppointmentStatus.CONFIRMED
     );
+  }
+
+  private assertStartInFuture(startAt: Date) {
+    if (startAt.getTime() <= Date.now()) {
+      throw new BadRequestException('Selected time must be in the future');
+    }
   }
 
   private getCancellationPolicy(startAt: Date) {

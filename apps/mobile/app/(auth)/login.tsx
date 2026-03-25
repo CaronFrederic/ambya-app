@@ -50,9 +50,10 @@ export default function Login() {
 
       await refreshAuth()
 
-      if (data.user.role === 'PROFESSIONAL') router.replace('/(professional)/dashboard')
-      else if (data.user.role === 'EMPLOYEE') router.replace('/(employee)/dashboard')
-      else router.replace('/(tabs)/home')
+      if (data.user.role === 'PROFESSIONAL') router.replace('/(professional)/dashboard' as never)
+      else if (data.user.role === 'EMPLOYEE') router.replace('/(employee)/dashboard' as never)
+      else if (data.user.role === 'ADMIN') router.replace('/(admin)/dashboard' as never)
+      else router.replace('/(tabs)/home' as never)
 
     } catch (e) {
       console.log(e)

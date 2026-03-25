@@ -1,5 +1,6 @@
 import 'dotenv/config'
 import {
+  AdminScope,
   AppointmentStatus,
   EmployeeSpecialty,
   LeaveRequestStatus,
@@ -101,7 +102,43 @@ async function main() {
     },
   })
 
+  const adminUser = await prisma.user.upsert({
+    where: { email: 'admin.beta@ambya.com' },
+    update: {
+      password: passwordHash,
+      role: UserRole.ADMIN,
+      isActive: true,
+      phone: '+24170000099',
+    },
+    create: {
+      email: 'admin.beta@ambya.com',
+      password: passwordHash,
+      role: UserRole.ADMIN,
+      isActive: true,
+      phone: '+24170000099',
+    },
+  })
+
+  await prisma.adminProfile.upsert({
+    where: { userId: adminUser.id },
+    update: {
+      firstName: 'Amina',
+      lastName: 'Admin',
+      scope: AdminScope.SUPER_ADMIN,
+      notes: 'Compte de demonstration back-office',
+    },
+    create: {
+      userId: adminUser.id,
+      firstName: 'Amina',
+      lastName: 'Admin',
+      scope: AdminScope.SUPER_ADMIN,
+      notes: 'Compte de demonstration back-office',
+    },
+  })
+
   const salon = await ensureSalon(professional.id)
+  await ensureDiscoverySalons(professional.id)
+  await spreadExistingSalonCoordinates()
 
   const employee = await prisma.employee.upsert({
     where: { userId: employeeUser.id },
@@ -503,6 +540,7 @@ async function main() {
   console.log('Client: client.beta@ambya.com / password123')
   console.log('Employee: employee.beta@ambya.com / password123')
   console.log('Salon owner: pro.beta@ambya.com / password123')
+  console.log('Admin: admin.beta@ambya.com / password123')
 }
 
 async function ensureCountries() {
@@ -542,6 +580,10 @@ async function ensureBetaSchemaCompat() {
           'OTHER'
         );
       END IF;
+
+      IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'AdminScope') THEN
+        CREATE TYPE "AdminScope" AS ENUM ('SUPER_ADMIN', 'SUPPORT', 'OPS');
+      END IF;
     END $$;
   `)
 
@@ -560,6 +602,50 @@ async function ensureBetaSchemaCompat() {
     ALTER TABLE "Salon"
       ADD COLUMN IF NOT EXISTS "latitude" DOUBLE PRECISION,
       ADD COLUMN IF NOT EXISTS "longitude" DOUBLE PRECISION;
+  `)
+
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "AdminProfile" (
+      "id" TEXT NOT NULL,
+      "userId" TEXT NOT NULL,
+      "firstName" TEXT,
+      "lastName" TEXT,
+      "scope" "AdminScope" NOT NULL DEFAULT 'SUPPORT',
+      "notes" TEXT,
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" TIMESTAMP(3) NOT NULL,
+      CONSTRAINT "AdminProfile_pkey" PRIMARY KEY ("id")
+    );
+  `)
+
+  await prisma.$executeRawUnsafe(`
+    CREATE UNIQUE INDEX IF NOT EXISTS "AdminProfile_userId_key"
+      ON "AdminProfile"("userId");
+  `)
+
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "AuditLog" (
+      "id" TEXT NOT NULL,
+      "actionType" TEXT NOT NULL,
+      "entityType" TEXT NOT NULL,
+      "entityId" TEXT,
+      "actorUserId" TEXT,
+      "actorRole" "UserRole",
+      "actorAdminScope" "AdminScope",
+      "requestId" TEXT,
+      "route" TEXT,
+      "method" TEXT,
+      "oldValue" JSONB,
+      "newValue" JSONB,
+      "metadata" JSONB,
+      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      CONSTRAINT "AuditLog_pkey" PRIMARY KEY ("id")
+    );
+  `)
+
+  await prisma.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS "AuditLog_createdAt_idx"
+      ON "AuditLog"("createdAt");
   `)
 
   await prisma.$executeRawUnsafe(`
@@ -668,6 +754,274 @@ async function ensureSalon(ownerId: string) {
       },
     },
   })
+}
+
+async function ensureDiscoverySalons(ownerId: string) {
+  const demoSalons = [
+    {
+      name: 'Salon Élégance',
+      description: 'Adresse prisée pour coiffure premium et mises en beauté.',
+      address: '12 rue Charbonnages, quartier Charbonnages',
+      city: 'Libreville',
+      country: 'Gabon',
+      phone: '+24170000110',
+      coverImageUrl:
+        'https://images.unsplash.com/photo-1521590832167-7bcbfaa6381f?auto=format&fit=crop&w=1200&q=80',
+    },
+    {
+      name: 'Beauty Lounge Glass',
+      description: 'Salon urbain moderne au coeur du quartier Glass.',
+      address: 'Avenue de Cointet, quartier Glass',
+      city: 'Libreville',
+      country: 'Gabon',
+      phone: '+24170000111',
+      coverImageUrl:
+        'https://images.unsplash.com/photo-1487412912498-0447578fcca8?auto=format&fit=crop&w=1200&q=80',
+    },
+    {
+      name: 'Maison Akanda Spa',
+      description: 'Espace bien-être et soins dans la zone résidentielle d’Akanda.',
+      address: 'Route du Cap Esterias, quartier Akanda',
+      city: 'Libreville',
+      country: 'Gabon',
+      phone: '+24170000112',
+      coverImageUrl:
+        'https://images.unsplash.com/photo-1515377905703-c4788e51af15?auto=format&fit=crop&w=1200&q=80',
+    },
+    {
+      name: 'Studio Nzeng Signature',
+      description: 'Coiffure, barbe et rituels express au coeur de Nzeng-Ayong.',
+      address: 'Boulevard de Nzeng-Ayong, quartier Nzeng-Ayong',
+      city: 'Libreville',
+      country: 'Gabon',
+      phone: '+24170000113',
+      coverImageUrl:
+        'https://images.unsplash.com/photo-1519415943484-f6b3433f9b73?auto=format&fit=crop&w=1200&q=80',
+    },
+    {
+      name: 'Belleza Beauty',
+      description: 'Salon chaleureux près du centre de Lambaréné.',
+      address: 'Rue de l’Ogooué, quartier Centre-Ville',
+      city: 'Lambaréné',
+      country: 'Gabon',
+      phone: '+24170000120',
+      coverImageUrl:
+        'https://images.unsplash.com/photo-1562322140-8baeececf3df?auto=format&fit=crop&w=1200&q=80',
+    },
+    {
+      name: 'Prestige Beauty',
+      description: 'Adresse cocooning pour soins visage et massages à Lambaréné.',
+      address: 'Avenue du Gouverneur, quartier Isaac',
+      city: 'Lambaréné',
+      country: 'Gabon',
+      phone: '+24170000121',
+      coverImageUrl:
+        'https://images.unsplash.com/photo-1512496015851-a90fb38ba796?auto=format&fit=crop&w=1200&q=80',
+    },
+    {
+      name: 'Aura Beauty Port-Gentil',
+      description: 'Salon lumineux pour coiffure et manucure à Port-Gentil.',
+      address: 'Boulevard Léon Mba, quartier Centre',
+      city: 'Port-Gentil',
+      country: 'Gabon',
+      phone: '+24170000130',
+      coverImageUrl:
+        'https://images.unsplash.com/photo-1595475884562-073c30d45670?auto=format&fit=crop&w=1200&q=80',
+    },
+    {
+      name: 'Velvet Beauty Marina',
+      description: 'Expérience premium à deux pas de la marina de Port-Gentil.',
+      address: 'Rue des Pétroliers, quartier Bord de Mer',
+      city: 'Port-Gentil',
+      country: 'Gabon',
+      phone: '+24170000131',
+      coverImageUrl:
+        'https://images.unsplash.com/photo-1522337360788-8b13dee7a37e?auto=format&fit=crop&w=1200&q=80',
+    },
+    {
+      name: 'Éden Beauté Franceville',
+      description: 'Institut élégant pour détente et remise en forme à Franceville.',
+      address: 'Avenue Savorgnan, quartier Potos',
+      city: 'Franceville',
+      country: 'Gabon',
+      phone: '+24170000140',
+      coverImageUrl:
+        'https://images.unsplash.com/photo-1519014816548-bf5fe059798b?auto=format&fit=crop&w=1200&q=80',
+    },
+  ] as const
+
+  for (const definition of demoSalons) {
+    const existing = await prisma.salon.findFirst({
+      where: { ownerId, name: definition.name },
+      select: { id: true },
+    })
+
+    const salon = existing
+      ? await prisma.salon.update({
+          where: { id: existing.id },
+          data: {
+            description: definition.description,
+            address: definition.address,
+            city: definition.city,
+            country: definition.country,
+            phone: definition.phone,
+            isActive: true,
+            coverImageUrl: definition.coverImageUrl,
+            galleryImageUrls: [
+              definition.coverImageUrl,
+              'https://images.unsplash.com/photo-1512496015851-a90fb38ba796?auto=format&fit=crop&w=900&q=80',
+              'https://images.unsplash.com/photo-1521590832167-7bcbfaa6381f?auto=format&fit=crop&w=900&q=80',
+            ],
+            socialLinks: {
+              instagram: 'https://instagram.com/ambya.demo',
+              facebook: 'https://facebook.com/ambya.demo',
+            },
+          },
+        })
+      : await prisma.salon.create({
+          data: {
+            ownerId,
+            name: definition.name,
+            description: definition.description,
+            address: definition.address,
+            city: definition.city,
+            country: definition.country,
+            phone: definition.phone,
+            isActive: true,
+            coverImageUrl: definition.coverImageUrl,
+            galleryImageUrls: [
+              definition.coverImageUrl,
+              'https://images.unsplash.com/photo-1512496015851-a90fb38ba796?auto=format&fit=crop&w=900&q=80',
+              'https://images.unsplash.com/photo-1521590832167-7bcbfaa6381f?auto=format&fit=crop&w=900&q=80',
+            ],
+            socialLinks: {
+              instagram: 'https://instagram.com/ambya.demo',
+              facebook: 'https://facebook.com/ambya.demo',
+            },
+          },
+        })
+
+    await ensureServices(salon.id)
+  }
+}
+
+type SeedCoordinates = {
+  latitude: number
+  longitude: number
+}
+
+const CITY_COORDINATE_CENTERS: Record<string, SeedCoordinates> = {
+  libreville: { latitude: 0.4162, longitude: 9.4673 },
+  'port-gentil': { latitude: -0.7193, longitude: 8.7815 },
+  franceville: { latitude: -1.6333, longitude: 13.5836 },
+  oyem: { latitude: 1.5995, longitude: 11.5793 },
+  lambarene: { latitude: -0.7000, longitude: 10.2400 },
+  mouila: { latitude: -1.8670, longitude: 11.0559 },
+}
+
+const QUARTER_HINT_OFFSETS: Array<{ hint: string; latitude: number; longitude: number }> = [
+  { hint: 'batterie', latitude: 0.0065, longitude: 0.0042 },
+  { hint: 'charbonnages', latitude: 0.0042, longitude: 0.0028 },
+  { hint: 'glass', latitude: 0.0031, longitude: -0.0025 },
+  { hint: 'louis', latitude: -0.0024, longitude: 0.0032 },
+  { hint: 'angondje', latitude: 0.0135, longitude: 0.0098 },
+  { hint: 'akanda', latitude: 0.0102, longitude: 0.0074 },
+  { hint: 'nzeng', latitude: -0.0062, longitude: -0.0048 },
+  { hint: 'pk', latitude: -0.0084, longitude: -0.0063 },
+  { hint: 'centre', latitude: 0.0012, longitude: 0.0015 },
+]
+
+async function spreadExistingSalonCoordinates() {
+  const salons = await prisma.salon.findMany({
+    select: {
+      id: true,
+      name: true,
+      address: true,
+      city: true,
+      country: true,
+      latitude: true,
+      longitude: true,
+    },
+    orderBy: [{ city: 'asc' }, { name: 'asc' }],
+  })
+
+  for (let index = 0; index < salons.length; index += 1) {
+    const salon = salons[index]
+    const coordinates = buildSeedCoordinatesForSalon(salon, index)
+    await prisma.salon.update({
+      where: { id: salon.id },
+      data: {
+        latitude: coordinates.latitude,
+        longitude: coordinates.longitude,
+      },
+    })
+  }
+}
+
+function buildSeedCoordinatesForSalon(
+  salon: {
+    id: string
+    name: string
+    address: string | null
+    city: string | null
+    country: string | null
+  },
+  index: number,
+) {
+  const cityKey = normalizeSeedText(salon.city)
+  const center = CITY_COORDINATE_CENTERS[cityKey] ?? CITY_COORDINATE_CENTERS.libreville
+  const base = {
+    latitude: center.latitude,
+    longitude: center.longitude,
+  }
+
+  const quarterOffset = findQuarterHintOffset(salon.address, salon.name)
+  if (quarterOffset) {
+    base.latitude += quarterOffset.latitude
+    base.longitude += quarterOffset.longitude
+  }
+
+  const stableOffset = buildStableScatterOffset(
+    `${salon.id}-${salon.city ?? ''}-${salon.address ?? salon.name}`,
+    index,
+  )
+
+  return {
+    latitude: roundCoordinate(base.latitude + stableOffset.latitude),
+    longitude: roundCoordinate(base.longitude + stableOffset.longitude),
+  }
+}
+
+function findQuarterHintOffset(...values: Array<string | null | undefined>) {
+  const haystack = normalizeSeedText(values.filter(Boolean).join(' '))
+  return QUARTER_HINT_OFFSETS.find((item) => haystack.includes(item.hint)) ?? null
+}
+
+function buildStableScatterOffset(seed: string, index: number) {
+  const hash = Array.from(seed).reduce((acc, char, charIndex) => {
+    return (acc + char.charCodeAt(0) * (charIndex + 1)) % 100000
+  }, 0)
+
+  const ring = (hash % 5) + 1
+  const angle = ((hash + index * 37) % 360) * (Math.PI / 180)
+  const radius = 0.0012 * ring
+
+  return {
+    latitude: Math.sin(angle) * radius,
+    longitude: Math.cos(angle) * radius,
+  }
+}
+
+function normalizeSeedText(value?: string | null) {
+  return (value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
+}
+
+function roundCoordinate(value: number) {
+  return Number(value.toFixed(6))
 }
 
 async function ensureServices(salonId: string) {

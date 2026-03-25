@@ -175,7 +175,7 @@ export default function ProfileScreen() {
         { label: 'Email', value: display(data.general.email ?? null) },
         { label: 'Téléphone', value: display(data.general.phone ?? null) },
         { label: 'Genre', value: display(labelOf(data.general.gender, MAP_GENDER)) },
-        { label: 'Âge', value: display(labelOf(data.general.ageRange, MAP_AGE)) },
+        { label: 'Age', value: display(labelOf(data.general.ageRange, MAP_AGE)) },
         { label: 'Ville', value: display(data.general.city ?? null) },
         { label: 'Pays', value: display(data.general.country ?? null) },
       ],
@@ -327,7 +327,7 @@ export default function ProfileScreen() {
           <View style={{ gap: spacing.md }}>
             {isLoading ? (
               <View style={styles.placeholderCard}>
-                <Text style={styles.placeholderTitle}>Chargement…</Text>
+                <Text style={styles.placeholderTitle}>Chargement...</Text>
                 <Text style={styles.placeholderText}>Récupération de vos informations.</Text>
               </View>
             ) : (

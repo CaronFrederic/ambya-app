@@ -9,6 +9,7 @@ export type HomePayload = {
     serviceId: string;
     serviceName: string;
     discountPercent: number;
+    highlightLabel?: string;
     originalPrice: number;
     discountedPrice: number;
   }>;
@@ -89,7 +90,7 @@ export type SalonDetailsPayload = {
     closed: boolean;
   }>;
   conditions: string[];
-  responseTimeMin: number;
+  responseTimeMin: number | null;
   servicesByCategory: Record<
     string,
     Array<{

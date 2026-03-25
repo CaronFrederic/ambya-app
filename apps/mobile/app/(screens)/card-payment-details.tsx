@@ -72,15 +72,23 @@ export default function CardPaymentDetailsScreen() {
     return `${draft.selectedDateIso}T${draft.time}:00.000Z`;
   }, [draft.selectedDateIso, draft.time]);
 
+  const effectiveEmployeeId = useMemo(() => {
+    const raw = draft.selectedEmployeeId?.trim();
+    return raw ? raw : undefined;
+  }, [draft.selectedEmployeeId]);
+
   const mutation = useMutation({
     mutationFn: async () => {
-      if (!draft.salonId) throw new Error("Salon non sélectionné");
-      if (!startAtIso) throw new Error("Créneau non sélectionné");
+      if (!draft.salonId) throw new Error("Salon non selectionne");
+      if (!startAtIso) throw new Error("Creneau non selectionne");
+      if (new Date(startAtIso).getTime() <= Date.now()) {
+        throw new Error("Le creneau selectionne n est plus disponible.");
+      }
 
       const result = await createAppointmentsFromCart({
         salonId: draft.salonId,
         startAt: startAtIso,
-        employeeId: draft.selectedEmployeeId,
+        employeeId: effectiveEmployeeId,
         paymentMethod: "CARD",
         items: draft.cart.map((item) => ({
           serviceId: item.id,
@@ -118,7 +126,7 @@ export default function CardPaymentDetailsScreen() {
       });
     },
     onError: (error: any) => {
-      Alert.alert("Paiement refusé", error?.message ?? "Erreur inconnue");
+      Alert.alert("Paiement refuse", error?.message ?? "Erreur inconnue");
     },
   });
 
@@ -161,13 +169,18 @@ export default function CardPaymentDetailsScreen() {
             </View>
 
             <View>
-              <Text style={styles.label}>Numéro de carte</Text>
-              <Input placeholder="1234 5678 9012 3456" value={cardNumber} onChangeText={(t) => setCardNumber(formatCardNumber(t))} keyboardType="number-pad" />
+              <Text style={styles.label}>Numero de carte</Text>
+              <Input
+                placeholder="1234 5678 9012 3456"
+                value={cardNumber}
+                onChangeText={(t) => setCardNumber(formatCardNumber(t))}
+                keyboardType="number-pad"
+              />
             </View>
 
             <View style={styles.row2}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.label}>Date d'expiration</Text>
+                <Text style={styles.label}>Date d expiration</Text>
                 <Input
                   placeholder="MM/AA"
                   value={expiry}
@@ -190,7 +203,7 @@ export default function CardPaymentDetailsScreen() {
 
             {saveCard ? (
               <Text style={styles.saveHint}>
-                Cette carte sera enregistrée pour vos prochains paiements.
+                Cette carte sera enregistree pour vos prochains paiements.
               </Text>
             ) : null}
 
@@ -200,7 +213,7 @@ export default function CardPaymentDetailsScreen() {
 
             <Card style={styles.amountCard}>
               <View style={styles.amountRow}>
-                <Text style={styles.amountLabel}>Montant à payer</Text>
+                <Text style={styles.amountLabel}>Montant a payer</Text>
                 <Text style={styles.amountValue}>{formatFCFA(amount)}</Text>
               </View>
             </Card>
@@ -209,11 +222,7 @@ export default function CardPaymentDetailsScreen() {
 
         <View style={styles.bottomCta}>
           <Button
-            title={
-              mutation.isPending
-                ? "Traitement..."
-                : `Valider ${formatFCFA(amount)}`
-            }
+            title={mutation.isPending ? "Traitement..." : `Valider ${formatFCFA(amount)}`}
             onPress={onPay}
             disabled={!canPay || mutation.isPending}
           />

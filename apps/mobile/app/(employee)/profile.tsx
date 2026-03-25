@@ -62,9 +62,9 @@ export default function EmployeeProfileScreen() {
       })
       await profileQuery.refetch()
       setIsEditing(false)
-      Alert.alert('Profil mis a jour', 'Vos informations ont bien ete enregistrees.')
+      Alert.alert('Profil mis à jour', 'Vos informations ont bien été enregistrées.')
     } catch (error: any) {
-      Alert.alert('Impossible de mettre a jour le profil', error?.message ?? 'Erreur inconnue')
+      Alert.alert('Impossible de mettre à jour le profil', error?.message ?? 'Erreur inconnue')
     }
   }
 
@@ -87,7 +87,7 @@ export default function EmployeeProfileScreen() {
   if (profileQuery.isError || !profileQuery.data?.profile) {
     return (
       <Screen style={styles.screen}>
-        <Text style={styles.loadingText}>Impossible de charger le profil employe.</Text>
+        <Text style={styles.loadingText}>Impossible de charger le profil employé.</Text>
       </Screen>
     )
   }
@@ -112,7 +112,7 @@ export default function EmployeeProfileScreen() {
           <Text style={styles.formTitle}>Mes informations</Text>
 
           <Input
-            label="Prenom"
+            label="Prénom"
             value={firstName}
             onChangeText={setFirstName}
             containerStyle={styles.field}
@@ -135,14 +135,14 @@ export default function EmployeeProfileScreen() {
             editable={isEditing}
           />
           <Input
-            label="Telephone"
+            label="Téléphone"
             value={phone}
             onChangeText={setPhone}
             keyboardType="phone-pad"
             containerStyle={styles.field}
             editable={isEditing}
           />
-          <Input label="Role" value={profile.role} editable={false} containerStyle={styles.field} />
+          <Input label="Rôle" value={profile.role} editable={false} containerStyle={styles.field} />
           <Input label="Salon" value={profile.salon} editable={false} />
 
           {isEditing ? (
@@ -171,25 +171,25 @@ export default function EmployeeProfileScreen() {
         </Card>
 
         <Card style={styles.securityCard}>
-          <Text style={styles.sectionTitle}>Securite</Text>
-          <Text style={styles.sectionDescription}>Gerez votre mot de passe</Text>
+          <Text style={styles.sectionTitle}>Sécurité</Text>
+          <Text style={styles.sectionDescription}>Gérez votre mot de passe</Text>
 
           <Pressable
             onPress={() => setShowResetConfirm(true)}
             style={styles.outlineButton}
           >
-            <Text style={styles.outlineButtonText}>Reinitialiser le mot de passe</Text>
+            <Text style={styles.outlineButtonText}>Réinitialiser le mot de passe</Text>
           </Pressable>
         </Card>
 
         <Pressable onPress={onLogout} style={styles.logoutCard}>
-          <Text style={styles.logoutText}>Deconnexion</Text>
+          <Text style={styles.logoutText}>Déconnexion</Text>
         </Pressable>
       </ScrollView>
 
       <EmployeeModal
         visible={showResetConfirm}
-        title="Reinitialiser le mot de passe"
+        title="Réinitialiser le mot de passe"
         onClose={() => setShowResetConfirm(false)}
         footer={
           <>
@@ -213,7 +213,7 @@ export default function EmployeeProfileScreen() {
         }
       >
         <Text style={styles.modalBodyText}>
-          Un email de reinitialisation sera envoye a{'\n'}
+          Un email de réinitialisation sera envoyé à{'\n'}
           <Text style={styles.modalBodyStrong}>{email}</Text>
         </Text>
       </EmployeeModal>

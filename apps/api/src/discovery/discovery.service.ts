@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+﻿import { Injectable, NotFoundException } from '@nestjs/common';
 import { ServiceCategory } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { HomeQueryDto } from './dto/home-query.dto';
@@ -51,6 +51,10 @@ export class DiscoveryService {
           where: { status: { in: ['COMPLETED', 'CONFIRMED'] } },
           select: { id: true },
         },
+        reviews: {
+          select: { rating: true },
+          take: 50,
+        },
       },
       take: 40,
     });
@@ -80,7 +84,7 @@ export class DiscoveryService {
         address: salon.address,
         city: salon.city,
         country: salon.country,
-        rating: this.estimateRating(salon.appointments.length),
+        rating: this.computeAverageRating(salon.reviews),
         duration: salon.services[0]
           ? `${salon.services[0].durationMin} min`
           : '30 min',
@@ -105,17 +109,17 @@ export class DiscoveryService {
     const offers = filteredByCategory
       .filter((salon) => salon.services[0])
       .slice(0, 20)
-      .map((salon, index) => {
+      .map((salon) => {
         const service = salon.services[0]!;
-        const discount = 10 + (index % 3) * 10;
         return {
           salonId: salon.id,
           salonName: salon.name,
           serviceId: service.id,
           serviceName: service.name,
-          discountPercent: discount,
+          discountPercent: 0,
+          highlightLabel: this.toCategoryFromEnum(service.category),
           originalPrice: service.price,
-          discountedPrice: Math.round(service.price * (1 - discount / 100)),
+          discountedPrice: service.price,
         };
       });
 
@@ -181,6 +185,10 @@ export class DiscoveryService {
           where: { status: { in: ['COMPLETED', 'CONFIRMED'] } },
           select: { id: true },
         },
+        reviews: {
+          select: { rating: true },
+          take: 50,
+        },
         services: {
           where: { isActive: true },
           select: { id: true, name: true, category: true, price: true, durationMin: true },
@@ -205,7 +213,7 @@ export class DiscoveryService {
         address: salon.address,
         city: salon.city,
         country: salon.country,
-        rating: this.estimateRating(salon.appointments.length),
+        rating: this.computeAverageRating(salon.reviews),
         geoRank: this.computeGeoRank(
           salon,
           query.preferredCity ?? query.city,
@@ -310,18 +318,6 @@ export class DiscoveryService {
       servicesByCategory[category].push(service);
     }
 
-    const fallbackReviews = salon.appointments
-      .slice(0, 8)
-      .map((appointment, index) => ({
-        id: appointment.id,
-        author:
-          appointment.client.clientProfile?.nickname ??
-          appointment.client.email?.split('@')[0] ??
-          'Client',
-        rating: 5 - (index % 2),
-        comment: 'Service apprécié, équipe professionnelle.',
-        createdAt: appointment.createdAt,
-      }));
 
     const explicitReviews = salon.reviews.map((review) => ({
       id: review.id,
@@ -334,15 +330,8 @@ export class DiscoveryService {
       createdAt: review.createdAt,
     }));
 
-    const reviews = explicitReviews.length ? explicitReviews : fallbackReviews;
-    const averageRating = explicitReviews.length
-      ? Number(
-          (
-            explicitReviews.reduce((sum, review) => sum + review.rating, 0) /
-            explicitReviews.length
-          ).toFixed(1),
-        )
-      : this.estimateRating(salon.appointments.length);
+    const reviews = explicitReviews;
+    const averageRating = this.computeAverageRating(explicitReviews);
 
     return {
       id: salon.id,
@@ -355,13 +344,13 @@ export class DiscoveryService {
       coverImageUrl:
         typeof salon.coverImageUrl === 'string' && salon.coverImageUrl
           ? salon.coverImageUrl
-          : this.defaultGallery()[0],
+          : null,
       galleryImageUrls: Array.isArray(salon.galleryImageUrls)
         ? salon.galleryImageUrls.filter(
             (v): v is string => typeof v === 'string' && v.length > 0,
           )
-        : this.defaultGallery(),
-      socialLinks: this.normalizeSocialLinks(salon.socialLinks, salon.name),
+        : [],
+      socialLinks: this.normalizeSocialLinks(salon.socialLinks),
       employees: salon.employees.map((employee) => ({
         id: employee.id,
         displayName: employee.displayName,
@@ -370,9 +359,9 @@ export class DiscoveryService {
           employee.specialties,
         ),
       })),
-      openingHours: this.defaultOpeningHours(),
-      conditions: this.defaultConditions(),
-      responseTimeMin: this.estimateResponseTimeMin(salon.employees.length),
+      openingHours: [],
+      conditions: [],
+      responseTimeMin: null,
       servicesByCategory,
       rating: averageRating,
       reviewCount: reviews.length,
@@ -460,7 +449,9 @@ export class DiscoveryService {
       }),
     ]);
 
-    const slots = this.generateSlots(dayStart, dayEnd, totalDurationMin);
+    const slots = this.generateSlots(dayStart, dayEnd, totalDurationMin).filter(
+      (slot) => slot.start.getTime() > Date.now(),
+    );
     const employeeAppointmentEvents = appointments.reduce<
       Array<{ employeeId: string; startAt: Date; endAt: Date }>
     >((acc, appointment) => {
@@ -692,80 +683,28 @@ export class DiscoveryService {
     );
   }
 
-  private defaultGallery() {
-    return [
-      'https://images.unsplash.com/photo-1560066984-138dadb4c035?auto=format&fit=crop&w=1200&q=80',
-      'https://images.unsplash.com/photo-1521590832167-7bcbfaa6381f?auto=format&fit=crop&w=700&q=80',
-      'https://images.unsplash.com/photo-1487412947147-5cebf100ffc2?auto=format&fit=crop&w=700&q=80',
-      'https://images.unsplash.com/photo-1522337660859-02fbefca4702?auto=format&fit=crop&w=700&q=80',
-      'https://images.unsplash.com/photo-1519014816548-bf5fe059798b?auto=format&fit=crop&w=700&q=80',
-    ];
-  }
-
-  private normalizeSocialLinks(raw: unknown, salonName: string) {
-    const fallback = this.defaultSocialLinks(salonName);
-
-    if (!raw || typeof raw !== 'object') return fallback;
+  private normalizeSocialLinks(raw: unknown) {
+    if (!raw || typeof raw !== 'object') return {};
 
     const social = raw as Record<string, unknown>;
     return {
       instagram:
         typeof social.instagram === 'string' && social.instagram
           ? social.instagram
-          : fallback.instagram,
+          : undefined,
       facebook:
         typeof social.facebook === 'string' && social.facebook
           ? social.facebook
-          : fallback.facebook,
+          : undefined,
       tiktok:
         typeof social.tiktok === 'string' && social.tiktok
           ? social.tiktok
-          : fallback.tiktok,
+          : undefined,
       website:
         typeof social.website === 'string' && social.website
           ? social.website
-          : fallback.website,
+          : undefined,
     };
-  }
-
-  private defaultSocialLinks(salonName: string) {
-    const slug =
-      salonName
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '')
-        .slice(0, 20) || 'salon';
-    return {
-      instagram: `https://instagram.com/${slug}`,
-      facebook: `https://facebook.com/${slug}`,
-      tiktok: `https://tiktok.com/@${slug}`,
-      website: `https://ambya.app/salons/${slug}`,
-    };
-  }
-
-  private defaultOpeningHours() {
-    return [
-      { day: 'Lundi', open: '08:00', close: '18:00', closed: false },
-      { day: 'Mardi', open: '08:00', close: '18:00', closed: false },
-      { day: 'Mercredi', open: '08:00', close: '18:00', closed: false },
-      { day: 'Jeudi', open: '08:00', close: '18:00', closed: false },
-      { day: 'Vendredi', open: '08:00', close: '19:00', closed: false },
-      { day: 'Samedi', open: '09:00', close: '17:00', closed: false },
-      { day: 'Dimanche', open: null, close: null, closed: true },
-    ];
-  }
-
-  private defaultConditions() {
-    return [
-      'Paiement: Espèces, Mobile Money, Carte bancaire',
-      'Annulation gratuite jusqu’à 24h avant',
-      'Retard de plus de 15 min = annulation automatique',
-    ];
-  }
-
-  private estimateResponseTimeMin(employeeCount: number) {
-    if (employeeCount >= 4) return 10;
-    if (employeeCount >= 2) return 15;
-    return 20;
   }
 
   private computeGeoRank(
@@ -788,6 +727,13 @@ export class DiscoveryService {
     if (completedCount >= 20) return 4.8;
     if (completedCount >= 10) return 4.7;
     return 4.5;
+  }
+
+  private computeAverageRating(reviews: Array<{ rating: number }>) {
+    if (!reviews.length) return 0;
+    return Number(
+      (reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length).toFixed(1),
+    );
   }
 
   private toCategoryFromEnum(category: ServiceCategory) {
@@ -814,8 +760,8 @@ export class DiscoveryService {
     if (n.includes('coiff') || n.includes('lissage') || n.includes('brushing'))
       return 'Coiffure';
     if (n.includes('mass')) return 'Massage';
-    if (n.includes('ongl') || n.includes('manuc') || n.includes('pédic'))
-      return 'Manucure/Pédicure';
+    if (n.includes('ongl') || n.includes('manuc') || n.includes('pedic'))
+      return 'Manucure/Pedicure';
     if (n.includes('maquill') || n.includes('visage') || n.includes('skin'))
       return 'Soin du visage';
     return 'Autres';
@@ -857,7 +803,6 @@ export class DiscoveryService {
 
     const knownCityCoordinates: Record<string, Coordinates> = {
       'libreville|gabon': { latitude: 0.4162, longitude: 9.4673 },
-      'lambaréné|gabon': { latitude: -0.7001, longitude: 10.2406 },
       'lambarene|gabon': { latitude: -0.7001, longitude: 10.2406 },
       'port-gentil|gabon': { latitude: -0.7193, longitude: 8.7815 },
       'port gentil|gabon': { latitude: -0.7193, longitude: 8.7815 },
@@ -890,3 +835,4 @@ export class DiscoveryService {
     return Number((earthRadiusKm * c).toFixed(1));
   }
 }
+

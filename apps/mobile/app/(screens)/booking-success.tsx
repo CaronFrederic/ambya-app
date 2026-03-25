@@ -64,11 +64,11 @@ export default function BookingSuccessScreen() {
           </View>
 
           <Text style={styles.title}>
-            {isPaid ? 'Paiement enregistre' : 'Demande de rendez-vous envoyee'}
+            {isPaid ? 'Paiement enregistré' : 'Demande de rendez-vous envoyée'}
           </Text>
           <Text style={styles.subtitle}>
             {isPaid
-              ? 'Votre paiement beta interne a bien ete enregistre. Le salon doit encore valider votre rendez-vous.'
+              ? 'Votre paiement beta interne a bien été enregistré. Le salon doit encore valider votre rendez-vous.'
               : paymentMethod === 'CASH'
                 ? 'Votre rendez-vous est en attente de validation par le salon. Le paiement se fera sur place.'
                 : 'Votre rendez-vous est en attente de validation par le salon.'}
@@ -103,11 +103,11 @@ export default function BookingSuccessScreen() {
             <Text style={{ color: colors.brand, fontWeight: '700' }}>
               {isPaid
                 ? paymentMethod === 'CARD'
-                  ? 'Carte enregistree'
+                  ? 'Carte enregistrée'
                   : paymentMethod === 'MOMO'
-                    ? 'Mobile Money enregistre'
-                    : 'Encaisse'
-                : 'A regler'}
+                    ? 'Mobile Money enregistré'
+                    : 'Encaissé'
+                : 'À régler'}
             </Text>
           </Text>
 
@@ -132,7 +132,7 @@ export default function BookingSuccessScreen() {
             onPress={() => router.replace('/(tabs)/home')}
             style={({ pressed }) => [styles.secondaryBtn, pressed && { opacity: 0.9 }]}
           >
-            <Text style={styles.secondaryText}>Retour a l'accueil</Text>
+            <Text style={styles.secondaryText}>Retour à l'accueil</Text>
           </Pressable>
         </View>
 

@@ -53,15 +53,11 @@ export default function PaymentScreen() {
   const defaultMomo = momos.find((m) => m.isDefault) ?? momos[0];
 
   useEffect(() => {
-    if (cards.length > 0) {
-      setUseSavedCard(true);
-    }
+    if (cards.length > 0) setUseSavedCard(true);
   }, [cards.length]);
 
   useEffect(() => {
-    if (momos.length > 0) {
-      setUseSavedMomo(true);
-    }
+    if (momos.length > 0) setUseSavedMomo(true);
   }, [momos.length]);
 
   const totalAmount = useMemo(
@@ -78,16 +74,25 @@ export default function PaymentScreen() {
     return `${draft.selectedDateIso}T${draft.time}:00.000Z`;
   }, [draft.selectedDateIso, draft.time]);
 
+  const effectiveEmployeeId = useMemo(() => {
+    const raw = draft.selectedEmployeeId?.trim();
+    return raw ? raw : undefined;
+  }, [draft.selectedEmployeeId]);
+
   const bookingMutation = useMutation({
     mutationFn: async () => {
-      if (!draft.salonId) throw new Error("Salon non sélectionné");
-      if (!startAtIso) throw new Error("Créneau non sélectionné");
+      if (!draft.salonId) throw new Error("Salon non selectionne");
+      if (!startAtIso) throw new Error("Creneau non selectionne");
+      if (new Date(startAtIso).getTime() <= Date.now()) {
+        throw new Error("Le creneau selectionne n est plus disponible.");
+      }
 
       return createAppointmentsFromCart({
         salonId: draft.salonId,
         startAt: startAtIso,
-        employeeId: draft.selectedEmployeeId,
-        paymentMethod: method === "cash" ? "CASH" : method === "mobile_money" ? "MOMO" : "CARD",
+        employeeId: effectiveEmployeeId,
+        paymentMethod:
+          method === "cash" ? "CASH" : method === "mobile_money" ? "MOMO" : "CARD",
         items: draft.cart.map((item) => ({
           serviceId: item.id,
           quantity: item.quantity || 1,
@@ -110,10 +115,7 @@ export default function PaymentScreen() {
       });
     },
     onError: (error: any) => {
-      Alert.alert(
-        "Impossible de réserver",
-        error?.message ?? "Erreur inconnue",
-      );
+      Alert.alert("Impossible de reserver", error?.message ?? "Erreur inconnue");
     },
   });
 
@@ -139,7 +141,7 @@ export default function PaymentScreen() {
       if (!momoPhone.trim()) {
         Alert.alert(
           "Informations manquantes",
-          "Veuillez renseigner le numéro Mobile Money.",
+          "Veuillez renseigner le numero Mobile Money.",
         );
         return;
       }
@@ -155,7 +157,7 @@ export default function PaymentScreen() {
         await qc.invalidateQueries({ queryKey: ["me", "payment-methods"] });
       } catch (error: any) {
         Alert.alert(
-          "Impossible d’enregistrer le moyen de paiement",
+          "Impossible d enregistrer le moyen de paiement",
           error?.message ?? "Erreur inconnue",
         );
         return;
@@ -196,14 +198,14 @@ export default function PaymentScreen() {
           <MethodRow
             icon="phone-portrait-outline"
             title="Mobile Money"
-            subtitle="Paiement via opérateur"
+            subtitle="Paiement via operateur"
             active={method === "mobile_money"}
             onPress={() => setMethod("mobile_money")}
           />
           <MethodRow
             icon="cash-outline"
             title="Payer sur place"
-            subtitle="En espèces au salon"
+            subtitle="En especes au salon"
             active={method === "cash"}
             onPress={() => setMethod("cash")}
           />
@@ -211,11 +213,8 @@ export default function PaymentScreen() {
 
         {method === "card" && cards.length > 0 && (
           <View style={styles.savedBox}>
-            <Text style={styles.savedTitle}>Carte déjà enregistrée</Text>
-            <Pressable
-              style={styles.radioRow}
-              onPress={() => setUseSavedCard(true)}
-            >
+            <Text style={styles.savedTitle}>Carte deja enregistree</Text>
+            <Pressable style={styles.radioRow} onPress={() => setUseSavedCard(true)}>
               <Ionicons
                 name={useSavedCard ? "radio-button-on" : "radio-button-off"}
                 size={18}
@@ -226,10 +225,7 @@ export default function PaymentScreen() {
                 {defaultCard?.last4 ?? "----"}
               </Text>
             </Pressable>
-            <Pressable
-              style={styles.radioRow}
-              onPress={() => setUseSavedCard(false)}
-            >
+            <Pressable style={styles.radioRow} onPress={() => setUseSavedCard(false)}>
               <Ionicons
                 name={!useSavedCard ? "radio-button-on" : "radio-button-off"}
                 size={18}
@@ -238,10 +234,7 @@ export default function PaymentScreen() {
               <Text style={styles.savedText}>Utiliser une nouvelle carte</Text>
             </Pressable>
             {!useSavedCard && (
-              <Pressable
-                style={styles.radioRow}
-                onPress={() => setSaveNewCard((v) => !v)}
-              >
+              <Pressable style={styles.radioRow} onPress={() => setSaveNewCard((v) => !v)}>
                 <Ionicons
                   name={saveNewCard ? "checkbox" : "square-outline"}
                   size={18}
@@ -257,11 +250,8 @@ export default function PaymentScreen() {
 
         {method === "mobile_money" && momos.length > 0 && (
           <View style={styles.savedBox}>
-            <Text style={styles.savedTitle}>Mobile Money enregistré</Text>
-            <Pressable
-              style={styles.radioRow}
-              onPress={() => setUseSavedMomo(true)}
-            >
+            <Text style={styles.savedTitle}>Mobile Money enregistre</Text>
+            <Pressable style={styles.radioRow} onPress={() => setUseSavedMomo(true)}>
               <Ionicons
                 name={useSavedMomo ? "radio-button-on" : "radio-button-off"}
                 size={18}
@@ -272,10 +262,7 @@ export default function PaymentScreen() {
                 {defaultMomo?.phone ?? ""}
               </Text>
             </Pressable>
-            <Pressable
-              style={styles.radioRow}
-              onPress={() => setUseSavedMomo(false)}
-            >
+            <Pressable style={styles.radioRow} onPress={() => setUseSavedMomo(false)}>
               <Ionicons
                 name={!useSavedMomo ? "radio-button-on" : "radio-button-off"}
                 size={18}
@@ -292,21 +279,18 @@ export default function PaymentScreen() {
           <View style={styles.savedBox}>
             <Text style={styles.savedTitle}>Nouveau Mobile Money</Text>
             <Input
-              placeholder="Opérateur (MTN, Airtel...)"
+              placeholder="Operateur (MTN, Airtel...)"
               value={momoProvider}
               onChangeText={setMomoProvider}
             />
             <View style={{ height: spacing.sm }} />
             <Input
-              placeholder="Numéro"
+              placeholder="Numero"
               value={momoPhone}
               onChangeText={setMomoPhone}
               keyboardType="phone-pad"
             />
-            <Pressable
-              style={styles.radioRow}
-              onPress={() => setSaveNewMomo((v) => !v)}
-            >
+            <Pressable style={styles.radioRow} onPress={() => setSaveNewMomo((v) => !v)}>
               <Ionicons
                 name={saveNewMomo ? "checkbox" : "square-outline"}
                 size={18}
@@ -320,20 +304,20 @@ export default function PaymentScreen() {
         )}
 
         <View style={styles.recapBox}>
-          <Text style={styles.recapTitle}>Récapitulatif</Text>
-          {draft.cart.map((it) => (
-            <View key={it.id} style={styles.recapRow}>
+          <Text style={styles.recapTitle}>Recapitulatif</Text>
+          {draft.cart.map((item) => (
+            <View key={item.id} style={styles.recapRow}>
               <Text style={styles.recapLabel} numberOfLines={1}>
-                {it.name} x{it.quantity || 1}
+                {item.name} x{item.quantity || 1}
               </Text>
               <View style={styles.priceWrap}>
-                {it.originalPrice && it.originalPrice > it.price ? (
+                {item.originalPrice && item.originalPrice > item.price ? (
                   <Text style={styles.oldPrice}>
-                    {formatFCFA(it.originalPrice * (it.quantity || 1))}
+                    {formatFCFA(item.originalPrice * (item.quantity || 1))}
                   </Text>
                 ) : null}
                 <Text style={styles.recapLabel}>
-                  {formatFCFA(it.price * (it.quantity || 1))}
+                  {formatFCFA(item.price * (item.quantity || 1))}
                 </Text>
               </View>
             </View>
@@ -344,7 +328,7 @@ export default function PaymentScreen() {
             <Text style={styles.recapPrice}>{formatFCFA(totalAmount)}</Text>
           </View>
           <Text style={styles.recapSub}>
-            Créneau: {draft.selectedDateIso} {draft.time ?? "-"}
+            Creneau: {draft.selectedDateIso} {draft.time ?? "-"}
           </Text>
           <Text style={styles.recapSub}>Salon: {draft.salonName ?? "-"}</Text>
           <Text style={styles.recapSub}>
@@ -358,7 +342,7 @@ export default function PaymentScreen() {
           title={
             method === "card"
               ? "Continuer vers carte"
-              : "Confirmer la réservation"
+              : "Confirmer la reservation"
           }
           onPress={onConfirm}
           disabled={

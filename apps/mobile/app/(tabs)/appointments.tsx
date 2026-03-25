@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+﻿import { useCallback, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -12,7 +12,7 @@ import { Ionicons } from "@expo/vector-icons";
 
 import { useAppointments } from "../../src/api/appointments";
 import { Screen } from "../../src/components/Screen";
-import { Card } from "../../src/components/Card";
+import { FeedbackState } from "../../src/components/FeedbackState";
 
 import { spacing } from "../../src/theme/spacing";
 import { colors, overlays } from "../../src/theme/colors";
@@ -43,7 +43,7 @@ type GroupedAppointment = {
 function toStatusUi(status: AppointmentStatus) {
   if (status === "CONFIRMED") {
     return {
-      label: "Confirmé",
+      label: "Confirme",
       border: "#7B2037",
       pillBg: "#DDF7E7",
       pillColor: "#1E9A53",
@@ -59,7 +59,7 @@ function toStatusUi(status: AppointmentStatus) {
   }
   if (status === "COMPLETED") {
     return {
-      label: "Terminé",
+      label: "Termine",
       border: "#333333",
       pillBg: "#EDEFF3",
       pillColor: "#4E5A68",
@@ -67,7 +67,7 @@ function toStatusUi(status: AppointmentStatus) {
   }
   if (status === "EXPIRED") {
     return {
-      label: "Expiré",
+      label: "Expire",
       border: "#4E5A68",
       pillBg: "#EDEFF3",
       pillColor: "#4E5A68",
@@ -75,7 +75,7 @@ function toStatusUi(status: AppointmentStatus) {
   }
   if (status === "CANCELLED") {
     return {
-      label: "Annulé",
+      label: "Annule",
       border: colors.dangerText,
       pillBg: colors.dangerSoft,
       pillColor: colors.dangerText,
@@ -83,7 +83,7 @@ function toStatusUi(status: AppointmentStatus) {
   }
   if (status === "NO_SHOW") {
     return {
-      label: "Non honoré",
+      label: "Non honore",
       border: colors.dangerText,
       pillBg: colors.dangerSoft,
       pillColor: colors.dangerText,
@@ -252,7 +252,7 @@ export default function AppointmentsScreen() {
                   : styles.tabTextInactive,
               ]}
             >
-              À venir
+              A venir
             </Text>
           </Pressable>
           <Pressable
@@ -268,19 +268,25 @@ export default function AppointmentsScreen() {
                 tab === "past" ? styles.tabTextActive : styles.tabTextInactive,
               ]}
             >
-              Passés
+              Passes
             </Text>
           </Pressable>
         </View>
 
         {isLoading ? (
-          <Card>
-            <Text>Chargement...</Text>
-          </Card>
+          <FeedbackState
+            icon="time-outline"
+            title="Chargement de vos rendez-vous"
+            description="Nous recuperons vos reservations et leurs statuts."
+          />
         ) : isError ? (
-          <Card>
-            <Text>Erreur lors du chargement.</Text>
-          </Card>
+          <FeedbackState
+            icon="alert-circle-outline"
+            title="Impossible de charger vos rendez-vous"
+            description="Verifiez votre connexion puis reessayez."
+            actionLabel="Reessayer"
+            onAction={() => void refetch()}
+          />
         ) : (
           <FlatList
             data={filtered}
@@ -290,11 +296,21 @@ export default function AppointmentsScreen() {
             }
             contentContainerStyle={styles.listContent}
             ListEmptyComponent={
-              <Text style={styles.emptyText}>
-                {tab === "upcoming"
-                  ? "Aucun rendez-vous à venir."
-                  : "Aucun rendez-vous passé."}
-              </Text>
+              <FeedbackState
+                icon={
+                  tab === "upcoming" ? "calendar-outline" : "archive-outline"
+                }
+                title={
+                  tab === "upcoming"
+                    ? "Aucun rendez-vous a venir"
+                    : "Aucun rendez-vous passe"
+                }
+                description={
+                  tab === "upcoming"
+                    ? "Vos prochaines reservations s afficheront ici."
+                    : "Votre historique apparaitra ici apres vos prestations."
+                }
+              />
             }
             renderItem={({ item }) => {
               const statusUi = toStatusUi(item.status);
@@ -338,7 +354,7 @@ export default function AppointmentsScreen() {
                   </Text>
                   {item.employeeNames.length > 0 ? (
                     <Text style={styles.employeeText}>
-                      Employé: {item.employeeNames.join(", ")}
+                      Employe : {item.employeeNames.join(", ")}
                     </Text>
                   ) : null}
                   <Text
@@ -347,7 +363,7 @@ export default function AppointmentsScreen() {
                       strikeAmount ? styles.totalTextStriked : undefined,
                     ]}
                   >
-                    Total: {formatCurrency(item.totalAmount)}
+                    Total : {formatCurrency(item.totalAmount)}
                   </Text>
 
                   <View style={styles.dateRow}>
@@ -356,14 +372,18 @@ export default function AppointmentsScreen() {
                       size={15}
                       color={colors.textMuted}
                     />
-                    <Text style={styles.dateText}>{formatAppointmentDate(item.startAt)}</Text>
+                    <Text style={styles.dateText}>
+                      {formatAppointmentDate(item.startAt)}
+                    </Text>
                     <Ionicons
                       name="time-outline"
                       size={15}
                       color={colors.textMuted}
                       style={{ marginLeft: spacing.sm }}
                     />
-                    <Text style={styles.dateText}>{formatAppointmentTime(item.startAt)}</Text>
+                    <Text style={styles.dateText}>
+                      {formatAppointmentTime(item.startAt)}
+                    </Text>
                   </View>
 
                   {isPastCompleted ? (
@@ -425,7 +445,6 @@ const styles = StyleSheet.create({
   tabTextActive: { color: colors.brandForeground },
   tabTextInactive: { color: colors.text },
   listContent: { paddingBottom: spacing.xl, gap: spacing.md },
-  emptyText: { color: colors.textMuted, marginTop: spacing.md },
   appointmentCard: {
     backgroundColor: "#fff",
     borderRadius: radius.xl,
@@ -479,3 +498,4 @@ const styles = StyleSheet.create({
   reviewRowPressed: { backgroundColor: overlays.gold10 },
   reviewText: { color: colors.premium, ...typography.body, fontWeight: "600" },
 });
+
