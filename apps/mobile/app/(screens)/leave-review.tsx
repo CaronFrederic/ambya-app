@@ -15,10 +15,13 @@ import { spacing } from '../../src/theme/spacing'
 import { colors, overlays } from '../../src/theme/colors'
 import { radius } from '../../src/theme/radius'
 import { typography } from '../../src/theme/typography'
+import { useOfflineStatus } from '../../src/providers/OfflineProvider'
+import { requireOnlineAction } from '../../src/offline/guard'
 
 export default function LeaveReviewScreen() {
   const params = useLocalSearchParams<{ groupId?: string }>()
   const groupId = params.groupId
+  const { isOffline } = useOfflineStatus()
   const { data, isLoading, isError } = useAppointmentGroupDetails(groupId)
   const createReview = useCreateAppointmentReview()
 
@@ -31,6 +34,7 @@ export default function LeaveReviewScreen() {
   )
 
   const submit = async () => {
+    if (!requireOnlineAction('publier un avis')) return
     if (!groupId) return
 
     try {
@@ -109,7 +113,7 @@ export default function LeaveReviewScreen() {
             <Button
               title={createReview.isPending ? 'Envoi...' : 'Publier mon avis'}
               onPress={submit}
-              disabled={createReview.isPending || comment.trim().length === 0}
+              disabled={isOffline || createReview.isPending || comment.trim().length === 0}
             />
           </>
         )}

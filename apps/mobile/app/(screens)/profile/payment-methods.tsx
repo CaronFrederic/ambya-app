@@ -20,6 +20,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Screen } from '../../../src/components/Screen'
 import { Button } from '../../../src/components/Button'
 import { Card } from '../../../src/components/Card'
+import { requireOnlineAction } from '../../../src/offline/guard'
+import { useOfflineStatus } from '../../../src/providers/OfflineProvider'
 
 import { colors, overlays } from '../../../src/theme/colors'
 import { spacing } from '../../../src/theme/spacing'
@@ -145,6 +147,7 @@ function useDeletePaymentMethod(token: string | null) {
 // -------------------------
 export default function PaymentMethodsScreen() {
   const qc = useQueryClient()
+  const { isOffline } = useOfflineStatus()
   const [token, setToken] = useState<string | null>(null)
 
   useEffect(() => {
@@ -184,6 +187,8 @@ export default function PaymentMethodsScreen() {
   }
 
   const saveCard = async () => {
+    if (!requireOnlineAction('modifier vos moyens de paiement')) return
+
     const numDigits = onlyDigits(number)
     const mm = onlyDigits(expMonth).slice(0, 2)
     const yy = onlyDigits(expYear).slice(0, 2)
@@ -226,6 +231,7 @@ export default function PaymentMethodsScreen() {
 
   const removeCard = () => {
     if (!defaultCard) return
+    if (!requireOnlineAction('supprimer une carte')) return
     Alert.alert('Supprimer la carte', 'Voulez-vous supprimer cette carte ?', [
       { text: 'Annuler', style: 'cancel' },
       {
@@ -263,6 +269,8 @@ export default function PaymentMethodsScreen() {
   }
 
   const saveMomo = async () => {
+    if (!requireOnlineAction('modifier vos moyens de paiement')) return
+
     const phone = normalizePhone(momoPhone).trim()
     if (!phone || phone.length < 6) return Alert.alert('Erreur', 'Numéro Mobile Money invalide.')
 
@@ -292,6 +300,7 @@ export default function PaymentMethodsScreen() {
 
   const removeMomo = () => {
     if (!defaultMomo) return
+    if (!requireOnlineAction('supprimer un moyen de paiement')) return
     Alert.alert('Supprimer Mobile Money', 'Voulez-vous supprimer ce moyen de paiement ?', [
       { text: 'Annuler', style: 'cancel' },
       {
@@ -314,7 +323,8 @@ export default function PaymentMethodsScreen() {
     isLoading ||
     createPM.isPending ||
     setDefaultPM.isPending ||
-    deletePM.isPending
+    deletePM.isPending ||
+    isOffline
 
   return (
     <Screen noPadding style={{ backgroundColor: colors.background }}>

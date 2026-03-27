@@ -39,4 +39,17 @@ describe('AdminService', () => {
 
     expect(result).toBe('Nina')
   })
+
+  it('normalizes opening hours and clears open/close when a day is closed', () => {
+    const result = (service as any).normalizeOpeningHours([
+      { day: 'Lundi', open: '09:00', close: '18:00', closed: false },
+      { day: 'Dimanche', open: '10:00', close: '13:00', closed: true },
+      { foo: 'bar' },
+    ])
+
+    expect(result).toEqual([
+      { day: 'Lundi', open: '09:00', close: '18:00', closed: false },
+      { day: 'Dimanche', open: null, close: null, closed: true },
+    ])
+  })
 })

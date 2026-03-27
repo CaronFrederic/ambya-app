@@ -251,6 +251,7 @@ export class DiscoveryService {
         coverImageUrl: true,
         galleryImageUrls: true,
         socialLinks: true,
+        openingHours: true,
         services: {
           where: { isActive: true },
           select: {
@@ -359,7 +360,7 @@ export class DiscoveryService {
           employee.specialties,
         ),
       })),
-      openingHours: [],
+      openingHours: this.normalizeOpeningHours(salon.openingHours),
       conditions: [],
       responseTimeMin: null,
       servicesByCategory,
@@ -374,6 +375,7 @@ export class DiscoveryService {
       where: { id: salonId, isActive: true },
       select: {
         id: true,
+        openingHours: true,
         employees: {
           where: { isActive: true },
           select: {
@@ -406,8 +408,28 @@ export class DiscoveryService {
       selectedServices.reduce((sum, service) => sum + service.durationMin, 0) ||
       30;
 
-    const dayStart = new Date(`${query.date}T08:00:00.000Z`);
-    const dayEnd = new Date(`${query.date}T18:00:00.000Z`);
+    const dailyHours = this.getOpeningHoursForDate(query.date, salon.openingHours);
+    if (dailyHours?.closed) {
+      return {
+        date: query.date,
+        totalDurationMin,
+        slots: [],
+        professionals: salon.employees.map((employee) => ({
+          id: employee.id,
+          displayName: employee.displayName,
+          specialties: getEmployeeSpecialtyLabels(employee.specialties),
+          primarySpecialtyLabel: getPrimaryEmployeeSpecialtyLabel(
+            employee.specialties,
+          ),
+          slots: [],
+        })),
+      };
+    }
+
+    const openTime = dailyHours?.open ?? '08:00';
+    const closeTime = dailyHours?.close ?? '18:00';
+    const dayStart = new Date(`${query.date}T${openTime}:00.000Z`);
+    const dayEnd = new Date(`${query.date}T${closeTime}:00.000Z`);
 
     const [appointments, blockedSlots, leaveRequests] = await Promise.all([
       this.prisma.appointment.findMany({
@@ -705,6 +727,67 @@ export class DiscoveryService {
           ? social.website
           : undefined,
     };
+  }
+
+  private normalizeOpeningHours(raw: unknown) {
+    if (!Array.isArray(raw)) return [];
+
+    return raw
+      .map((item) => {
+        if (!item || typeof item !== 'object') return null;
+
+        const entry = item as Record<string, unknown>;
+        const day = typeof entry.day === 'string' ? entry.day : null;
+        if (!day) return null;
+
+        const closed = Boolean(entry.closed);
+        const open =
+          typeof entry.open === 'string' && entry.open.trim()
+            ? entry.open.trim()
+            : null;
+        const close =
+          typeof entry.close === 'string' && entry.close.trim()
+            ? entry.close.trim()
+            : null;
+
+        return {
+          day,
+          open: closed ? null : open,
+          close: closed ? null : close,
+          closed,
+        };
+      })
+      .filter(
+        (
+          item,
+        ): item is {
+          day: string;
+          open: string | null;
+          close: string | null;
+          closed: boolean;
+        } => Boolean(item),
+      );
+  }
+
+  private getOpeningHoursForDate(dateIso: string, raw: unknown) {
+    const date = new Date(`${dateIso}T00:00:00.000Z`);
+    if (Number.isNaN(date.getTime())) return null;
+
+    const labels = [
+      'Dimanche',
+      'Lundi',
+      'Mardi',
+      'Mercredi',
+      'Jeudi',
+      'Vendredi',
+      'Samedi',
+    ];
+
+    return (
+      this.normalizeOpeningHours(raw).find(
+        (item) => item.day === labels[date.getUTCDay()],
+      ) ?? null
+    );
   }
 
   private computeGeoRank(

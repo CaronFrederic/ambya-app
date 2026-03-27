@@ -15,11 +15,13 @@ import { Screen } from "../../src/components/Screen";
 import { Button } from "../../src/components/Button";
 import { Input } from "../../src/components/Input";
 import { useBooking } from "../../src/providers/BookingProvider";
+import { useOfflineStatus } from "../../src/providers/OfflineProvider";
 import { createAppointmentsFromCart } from "../../src/api/appointments";
 import {
   createPaymentMethod,
   usePaymentMethods,
 } from "../../src/api/paymentMethods";
+import { requireOnlineAction } from "../../src/offline/guard";
 
 import { colors, overlays } from "../../src/theme/colors";
 import { spacing } from "../../src/theme/spacing";
@@ -33,6 +35,7 @@ function formatFCFA(v: number) {
 export default function PaymentScreen() {
   const { draft } = useBooking();
   const qc = useQueryClient();
+  const { isOffline } = useOfflineStatus();
 
   const [method, setMethod] = useState<"card" | "mobile_money" | "cash">(
     draft.paymentMethod ?? "card",
@@ -120,6 +123,8 @@ export default function PaymentScreen() {
   });
 
   const onConfirm = async () => {
+    if (!requireOnlineAction("finaliser une reservation")) return;
+
     if (method === "card") {
       if (useSavedCard && defaultCard) {
         bookingMutation.mutate();
@@ -346,6 +351,7 @@ export default function PaymentScreen() {
           }
           onPress={onConfirm}
           disabled={
+            isOffline ||
             bookingMutation.isPending ||
             !draft.salonId ||
             !startAtIso ||

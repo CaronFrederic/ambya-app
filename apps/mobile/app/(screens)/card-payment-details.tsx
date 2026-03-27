@@ -15,8 +15,10 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { Screen, Card, Input, Button } from "../../src/components";
 import { useBooking } from "../../src/providers/BookingProvider";
+import { useOfflineStatus } from "../../src/providers/OfflineProvider";
 import { createAppointmentsFromCart } from "../../src/api/appointments";
 import { createPaymentMethod } from "../../src/api/paymentMethods";
+import { requireOnlineAction } from "../../src/offline/guard";
 import { colors, overlays } from "../../src/theme/colors";
 import { spacing } from "../../src/theme/spacing";
 import { radius } from "../../src/theme/radius";
@@ -49,6 +51,7 @@ export default function CardPaymentDetailsScreen() {
   const params = useLocalSearchParams<{ amount?: string; saveCard?: string }>();
   const { draft } = useBooking();
   const qc = useQueryClient();
+  const { isOffline } = useOfflineStatus();
 
   const amount = useMemo(() => {
     const n = Number(params.amount);
@@ -130,7 +133,10 @@ export default function CardPaymentDetailsScreen() {
     },
   });
 
-  const onPay = () => mutation.mutate();
+  const onPay = () => {
+    if (!requireOnlineAction("payer et confirmer une reservation")) return;
+    mutation.mutate();
+  };
 
   return (
     <Screen noPadding style={styles.screen}>
@@ -224,7 +230,7 @@ export default function CardPaymentDetailsScreen() {
           <Button
             title={mutation.isPending ? "Traitement..." : `Valider ${formatFCFA(amount)}`}
             onPress={onPay}
-            disabled={!canPay || mutation.isPending}
+            disabled={isOffline || !canPay || mutation.isPending}
           />
         </View>
       </KeyboardAvoidingView>

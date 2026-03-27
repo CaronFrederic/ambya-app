@@ -10,12 +10,15 @@ import { Card } from '../../src/components/Card'
 import { FeedbackState } from '../../src/components/FeedbackState'
 import { Input } from '../../src/components/Input'
 import { Screen } from '../../src/components/Screen'
+import { requireOnlineAction } from '../../src/offline/guard'
+import { useOfflineStatus } from '../../src/providers/OfflineProvider'
 import { colors } from '../../src/theme/colors'
 import { radius } from '../../src/theme/radius'
 import { spacing } from '../../src/theme/spacing'
 
 export default function AdminUserDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
+  const { isOffline } = useOfflineStatus()
   const { data, isLoading, isError, refetch } = useAdminUser(id)
   const updateUser = useUpdateAdminUser()
 
@@ -73,6 +76,7 @@ export default function AdminUserDetailScreen() {
               <Button
                 title={updateUser.isPending ? 'Enregistrement...' : 'Enregistrer'}
                 onPress={async () => {
+                  if (!requireOnlineAction('mettre a jour cette fiche utilisateur')) return
                   try {
                     await updateUser.mutateAsync({
                       id: id!,
@@ -93,6 +97,7 @@ export default function AdminUserDetailScreen() {
                     )
                   }
                 }}
+                disabled={updateUser.isPending || isOffline}
               />
             </Card>
 

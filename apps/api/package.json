@@ -21,6 +21,7 @@
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
+    "check": "pnpm build && pnpm exec jest --runInBand",
     "dev": "nest start --watch",
     "check:auth": "ts-node scripts/check-auth.ts",
     "check:appointments:api": "ts-node scripts/check-appointments-api.ts",

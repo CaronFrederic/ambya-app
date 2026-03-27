@@ -9,11 +9,14 @@ import { Card } from '../../src/components/Card'
 import { FeedbackState } from '../../src/components/FeedbackState'
 import { Input } from '../../src/components/Input'
 import { Screen } from '../../src/components/Screen'
+import { requireOnlineAction } from '../../src/offline/guard'
+import { useOfflineStatus } from '../../src/providers/OfflineProvider'
 import { spacing } from '../../src/theme/spacing'
 import { radius } from '../../src/theme/radius'
 
 export default function AdminDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
+  const { isOffline } = useOfflineStatus()
   const { data, isLoading, isError, refetch } = useAdminAccount(id)
   const updateAdmin = useUpdateAdmin()
 
@@ -56,6 +59,7 @@ export default function AdminDetailScreen() {
             <Button
               title={updateAdmin.isPending ? 'Enregistrement...' : 'Enregistrer'}
               onPress={async () => {
+                if (!requireOnlineAction('mettre a jour un compte admin')) return
                 try {
                   await updateAdmin.mutateAsync({ id: id!, firstName, lastName, email, phone, notes })
                   Alert.alert('Modifications enregistrees', 'Le compte admin a ete mis a jour.')
@@ -68,6 +72,7 @@ export default function AdminDetailScreen() {
                   )
                 }
               }}
+              disabled={updateAdmin.isPending || isOffline}
             />
           </Card>
         )}

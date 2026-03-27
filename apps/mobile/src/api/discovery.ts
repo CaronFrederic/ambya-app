@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "./client";
+import { useOfflineCachedQuery } from "./useOfflineCachedQuery";
 
 export type HomePayload = {
   categories: string[];
@@ -124,7 +125,7 @@ export function useHomeDiscovery(params?: {
   latitude?: number | null;
   longitude?: number | null;
 }) {
-  return useQuery({
+  return useOfflineCachedQuery({
     queryKey: ["discover", "home", params],
     queryFn: async () => {
       const res = await api.get<HomePayload>("/discover/home", {
@@ -143,6 +144,7 @@ export function useHomeDiscovery(params?: {
       });
       return res.data;
     },
+    cacheKey: `discover:home:${JSON.stringify(params ?? {})}`,
     staleTime: 1000 * 60,
   });
 }
@@ -155,22 +157,24 @@ export function useSearchDiscovery(params: {
   preferredCity?: string;
   preferredCountry?: string;
 }) {
-  return useQuery({
+  return useOfflineCachedQuery({
     queryKey: ["discover", "search", params],
     queryFn: async () => {
       const res = await api.get<SearchPayload>("/discover/search", { params });
       return res.data;
     },
+    cacheKey: `discover:search:${JSON.stringify(params)}`,
   });
 }
 
 export function useSalonDetails(salonId?: string) {
-  return useQuery({
+  return useOfflineCachedQuery({
     queryKey: ["salons", salonId],
     queryFn: async () => {
       const res = await api.get<SalonDetailsPayload>(`/salons/${salonId}`);
       return res.data;
     },
+    cacheKey: `discover:salon:${salonId ?? 'unknown'}`,
     enabled: !!salonId,
   });
 }

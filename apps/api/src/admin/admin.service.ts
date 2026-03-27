@@ -890,17 +890,40 @@ export class AdminService {
     const salon = await this.findSalonOrThrow(salonId)
     const previous = this.mapSalonDetail(salon)
 
-    await this.prisma.salon.update({
-      where: { id: salonId },
-      data: {
-        name: dto.name ?? undefined,
-        description: dto.description ?? undefined,
-        address: dto.address ?? undefined,
-        city: dto.city ?? undefined,
-        country: dto.country ?? undefined,
-        phone: dto.phone ?? undefined,
-        isActive: dto.isActive ?? undefined,
-      },
+    await this.prisma.$transaction(async (tx) => {
+      await tx.salon.update({
+        where: { id: salonId },
+        data: {
+          name: dto.name ?? undefined,
+          description: dto.description ?? undefined,
+          address: dto.address ?? undefined,
+          city: dto.city ?? undefined,
+          country: dto.country ?? undefined,
+          phone: dto.phone ?? undefined,
+          isActive: dto.isActive ?? undefined,
+          openingHours: dto.openingHours ? this.normalizeOpeningHours(dto.openingHours) : undefined,
+        },
+      })
+
+      if (dto.services?.length) {
+        const allowedServiceIds = new Set(salon.services.map((item) => item.id))
+
+        for (const service of dto.services) {
+          if (!allowedServiceIds.has(service.id)) {
+            throw new BadRequestException('Service does not belong to this salon')
+          }
+
+          await tx.service.update({
+            where: { id: service.id },
+            data: {
+              name: service.name?.trim() || undefined,
+              price: service.price ?? undefined,
+              durationMin: service.durationMin ?? undefined,
+              isActive: service.isActive ?? undefined,
+            },
+          })
+        }
+      }
     })
 
     const refreshed = await this.findSalonOrThrow(salonId)
@@ -1397,6 +1420,7 @@ export class AdminService {
       description: item.description,
       latitude: item.latitude,
       longitude: item.longitude,
+      openingHours: this.normalizeOpeningHours(item.openingHours),
       services: item.services,
       employees: item.employees,
     }
@@ -1510,5 +1534,29 @@ export class AdminService {
     }
 
     return deepMerge(target, source)
+  }
+
+  private normalizeOpeningHours(raw: unknown) {
+    if (!Array.isArray(raw)) return []
+
+    return raw
+      .map((item) => {
+        if (!item || typeof item !== 'object') return null
+        const entry = item as Record<string, unknown>
+        const day = typeof entry.day === 'string' ? entry.day : null
+        if (!day) return null
+
+        const closed = Boolean(entry.closed)
+        const open = typeof entry.open === 'string' && entry.open.trim() ? entry.open.trim() : null
+        const close = typeof entry.close === 'string' && entry.close.trim() ? entry.close.trim() : null
+
+        return {
+          day,
+          open: closed ? null : open,
+          close: closed ? null : close,
+          closed,
+        }
+      })
+      .filter((item): item is { day: string; open: string | null; close: string | null; closed: boolean } => Boolean(item))
   }
 }

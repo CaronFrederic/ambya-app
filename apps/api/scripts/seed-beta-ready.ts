@@ -726,6 +726,7 @@ async function ensureSalon(ownerId: string) {
           instagram: 'https://instagram.com/ambya.beta',
           facebook: 'https://facebook.com/ambya.beta',
         },
+        openingHours: buildDefaultOpeningHours(),
       },
     })
   }
@@ -752,8 +753,21 @@ async function ensureSalon(ownerId: string) {
         instagram: 'https://instagram.com/ambya.beta',
         facebook: 'https://facebook.com/ambya.beta',
       },
+      openingHours: buildDefaultOpeningHours(),
     },
   })
+}
+
+function buildDefaultOpeningHours() {
+  return [
+    { day: 'Lundi', open: '09:00', close: '19:00', closed: false },
+    { day: 'Mardi', open: '09:00', close: '19:00', closed: false },
+    { day: 'Mercredi', open: '09:00', close: '19:00', closed: false },
+    { day: 'Jeudi', open: '09:00', close: '19:00', closed: false },
+    { day: 'Vendredi', open: '09:00', close: '19:00', closed: false },
+    { day: 'Samedi', open: '09:00', close: '18:00', closed: false },
+    { day: 'Dimanche', open: null, close: null, closed: true },
+  ]
 }
 
 async function ensureDiscoverySalons(ownerId: string) {
@@ -876,6 +890,7 @@ async function ensureDiscoverySalons(ownerId: string) {
               instagram: 'https://instagram.com/ambya.demo',
               facebook: 'https://facebook.com/ambya.demo',
             },
+            openingHours: buildDefaultOpeningHours(),
           },
         })
       : await prisma.salon.create({
@@ -898,6 +913,7 @@ async function ensureDiscoverySalons(ownerId: string) {
               instagram: 'https://instagram.com/ambya.demo',
               facebook: 'https://facebook.com/ambya.demo',
             },
+            openingHours: buildDefaultOpeningHours(),
           },
         })
 

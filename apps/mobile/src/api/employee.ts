@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from './client'
+import { useOfflineCachedQuery } from './useOfflineCachedQuery'
 
 export type EmployeeScheduleStatus =
   | 'PENDING'
@@ -185,24 +186,27 @@ function invalidateEmployeeQueries(queryClient: ReturnType<typeof useQueryClient
 }
 
 export function useEmployeeDashboard() {
-  return useQuery({
+  return useOfflineCachedQuery({
     queryKey: ['employee', 'dashboard'],
     queryFn: fetchEmployeeDashboard,
+    cacheKey: 'employee:dashboard',
     staleTime: 30_000,
   })
 }
 
 export function useEmployeeSchedule(tab: EmployeeScheduleTab) {
-  return useQuery({
+  return useOfflineCachedQuery({
     queryKey: ['employee', 'schedule', tab],
     queryFn: () => fetchEmployeeSchedule(tab),
+    cacheKey: `employee:schedule:${tab}`,
   })
 }
 
 export function useEmployeeScheduleItem(kind?: string, id?: string) {
-  return useQuery({
+  return useOfflineCachedQuery({
     queryKey: ['employee', 'schedule-item', kind, id],
     queryFn: () => fetchEmployeeScheduleItem(kind!, id!),
+    cacheKey: `employee:schedule-item:${kind ?? 'unknown'}:${id ?? 'unknown'}`,
     enabled: Boolean(kind && id),
   })
 }
@@ -215,16 +219,18 @@ export function useEmployeeAvailableSlots() {
 }
 
 export function useEmployeeLeaveRequests() {
-  return useQuery({
+  return useOfflineCachedQuery({
     queryKey: ['employee', 'leave-requests'],
     queryFn: fetchEmployeeLeaveRequests,
+    cacheKey: 'employee:leave-requests',
   })
 }
 
 export function useEmployeeProfile() {
-  return useQuery({
+  return useOfflineCachedQuery({
     queryKey: ['employee', 'profile'],
     queryFn: fetchEmployeeProfile,
+    cacheKey: 'employee:profile',
     staleTime: 30_000,
   })
 }

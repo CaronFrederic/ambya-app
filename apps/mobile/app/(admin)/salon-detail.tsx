@@ -9,12 +9,57 @@ import { Card } from '../../src/components/Card'
 import { FeedbackState } from '../../src/components/FeedbackState'
 import { Input } from '../../src/components/Input'
 import { Screen } from '../../src/components/Screen'
+import { requireOnlineAction } from '../../src/offline/guard'
+import { useOfflineStatus } from '../../src/providers/OfflineProvider'
 import { colors } from '../../src/theme/colors'
 import { radius } from '../../src/theme/radius'
 import { spacing } from '../../src/theme/spacing'
 
+type EditableService = {
+  id: string
+  name: string
+  category: string
+  price: string
+  durationMin: string
+  isActive: boolean
+}
+
+type OpeningHour = {
+  day: string
+  open: string | null
+  close: string | null
+  closed: boolean
+}
+
+const DEFAULT_OPENING_HOURS: OpeningHour[] = [
+  { day: 'Lundi', open: '09:00', close: '19:00', closed: false },
+  { day: 'Mardi', open: '09:00', close: '19:00', closed: false },
+  { day: 'Mercredi', open: '09:00', close: '19:00', closed: false },
+  { day: 'Jeudi', open: '09:00', close: '19:00', closed: false },
+  { day: 'Vendredi', open: '09:00', close: '19:00', closed: false },
+  { day: 'Samedi', open: '09:00', close: '18:00', closed: false },
+  { day: 'Dimanche', open: null, close: null, closed: true },
+]
+
+function ToggleChip({
+  label,
+  active,
+  onPress,
+}: {
+  label: string
+  active: boolean
+  onPress: () => void
+}) {
+  return (
+    <Pressable onPress={onPress} style={[styles.toggleChip, active && styles.toggleChipActive]}>
+      <Text style={[styles.toggleChipText, active && styles.toggleChipTextActive]}>{label}</Text>
+    </Pressable>
+  )
+}
+
 export default function AdminSalonDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
+  const { isOffline } = useOfflineStatus()
   const { data, isLoading, isError, refetch } = useAdminSalon(id)
   const updateSalon = useUpdateAdminSalon()
   const item = data?.item as any
@@ -25,16 +70,94 @@ export default function AdminSalonDetailScreen() {
   const [city, setCity] = useState('')
   const [country, setCountry] = useState('')
   const [phone, setPhone] = useState('')
+  const [isActive, setIsActive] = useState(true)
+  const [openingHours, setOpeningHours] = useState<OpeningHour[]>(DEFAULT_OPENING_HOURS)
+  const [services, setServices] = useState<EditableService[]>([])
 
   useEffect(() => {
     if (!item) return
+
     setName(item.name ?? '')
     setDescription(item.description ?? '')
     setAddress(item.address ?? '')
     setCity(item.city ?? '')
     setCountry(item.country ?? '')
     setPhone(item.phone ?? '')
+    setIsActive(Boolean(item.isActive))
+    setOpeningHours(normalizeOpeningHours(item.openingHours))
+    setServices(
+      (item.services ?? []).map((service: any) => ({
+        id: service.id,
+        name: service.name ?? '',
+        category: service.category ?? 'OTHER',
+        price: String(service.price ?? ''),
+        durationMin: String(service.durationMin ?? ''),
+        isActive: Boolean(service.isActive),
+      })),
+    )
   }, [item])
+
+  const updateOpeningHour = (day: string, patch: Partial<OpeningHour>) => {
+    setOpeningHours((current) =>
+      current.map((entry) => {
+        if (entry.day !== day) return entry
+        const next = { ...entry, ...patch }
+        if (next.closed) {
+          return { ...next, open: null, close: null }
+        }
+        return {
+          ...next,
+          open: next.open || '09:00',
+          close: next.close || '18:00',
+        }
+      }),
+    )
+  }
+
+  const updateService = (serviceId: string, patch: Partial<EditableService>) => {
+    setServices((current) =>
+      current.map((service) => (service.id === serviceId ? { ...service, ...patch } : service)),
+    )
+  }
+
+  const handleSave = async () => {
+    if (!requireOnlineAction('mettre a jour un salon')) return
+
+    try {
+      await updateSalon.mutateAsync({
+        id: id!,
+        name,
+        description,
+        address,
+        city,
+        country,
+        phone,
+        isActive,
+        openingHours: openingHours.map((entry) => ({
+          day: entry.day,
+          open: entry.closed ? null : entry.open,
+          close: entry.closed ? null : entry.close,
+          closed: entry.closed,
+        })),
+        services: services.map((service) => ({
+          id: service.id,
+          name: service.name.trim(),
+          price: Number(service.price || 0),
+          durationMin: Number(service.durationMin || 0),
+          isActive: service.isActive,
+        })),
+      })
+      Alert.alert('Modifications enregistrees', 'La fiche salon a ete mise a jour.')
+      void refetch()
+    } catch (error: any) {
+      Alert.alert(
+        'Mise a jour impossible',
+        error?.response?.data?.message?.[0] ??
+          error?.response?.data?.message ??
+          'Impossible de mettre a jour ce salon.',
+      )
+    }
+  }
 
   return (
     <Screen noPadding>
@@ -60,7 +183,7 @@ export default function AdminSalonDetailScreen() {
               <AdminStatCard label="CA" value={`${(item.analytics?.totalRevenue ?? 0).toLocaleString('fr-FR')} FCFA`} />
             </View>
 
-            <AdminSectionTitle title="Modification rapide" />
+            <AdminSectionTitle title="Edition salon" />
             <Card style={styles.card}>
               <Input value={name} onChangeText={setName} placeholder="Nom du salon" />
               <Input value={description} onChangeText={setDescription} placeholder="Description" />
@@ -68,31 +191,140 @@ export default function AdminSalonDetailScreen() {
               <Input value={city} onChangeText={setCity} placeholder="Ville" />
               <Input value={country} onChangeText={setCountry} placeholder="Pays" />
               <Input value={phone} onChangeText={setPhone} placeholder="Telephone" />
-              <Button
-                title={updateSalon.isPending ? 'Enregistrement...' : 'Enregistrer'}
-                onPress={async () => {
-                  try {
-                    await updateSalon.mutateAsync({
-                      id: id!,
-                      name,
-                      description,
-                      address,
-                      city,
-                      country,
-                      phone,
-                    })
-                    Alert.alert('Modifications enregistrees', 'La fiche salon a ete mise a jour.')
-                  } catch (error: any) {
-                    Alert.alert(
-                      'Mise a jour impossible',
-                      error?.response?.data?.message?.[0] ??
-                        error?.response?.data?.message ??
-                        'Impossible de mettre a jour ce salon.',
-                    )
-                  }
-                }}
-              />
+
+              <View style={styles.toggleRow}>
+                <Text style={styles.toggleLabel}>Statut du salon</Text>
+                <View style={styles.toggleGroup}>
+                  <ToggleChip label="Actif" active={isActive} onPress={() => setIsActive(true)} />
+                  <ToggleChip label="Inactif" active={!isActive} onPress={() => setIsActive(false)} />
+                </View>
+              </View>
             </Card>
+
+            <AdminSectionTitle title="Horaires d'ouverture" />
+            <View style={styles.list}>
+              {openingHours.map((entry) => (
+                <Card key={entry.day} style={styles.card}>
+                  <Text style={styles.cardTitle}>{entry.day}</Text>
+                  <View style={styles.toggleGroup}>
+                    <ToggleChip
+                      label="Ouvert"
+                      active={!entry.closed}
+                      onPress={() => updateOpeningHour(entry.day, { closed: false })}
+                    />
+                    <ToggleChip
+                      label="Ferme"
+                      active={entry.closed}
+                      onPress={() => updateOpeningHour(entry.day, { closed: true })}
+                    />
+                  </View>
+                  <View style={styles.hourRow}>
+                    <View style={styles.hourCol}>
+                      <Input
+                        value={entry.open ?? ''}
+                        onChangeText={(value) => updateOpeningHour(entry.day, { open: value })}
+                        placeholder="Ouverture"
+                        editable={!entry.closed}
+                      />
+                    </View>
+                    <View style={styles.hourCol}>
+                      <Input
+                        value={entry.close ?? ''}
+                        onChangeText={(value) => updateOpeningHour(entry.day, { close: value })}
+                        placeholder="Fermeture"
+                        editable={!entry.closed}
+                      />
+                    </View>
+                  </View>
+                </Card>
+              ))}
+            </View>
+
+            <AdminSectionTitle title="Services lies" />
+            <View style={styles.list}>
+              {services.length === 0 ? (
+                <Card style={styles.card}>
+                  <Text style={styles.emptyText}>Aucun service rattache a ce salon.</Text>
+                </Card>
+              ) : (
+                services.map((service) => (
+                  <Card key={service.id} style={styles.card}>
+                    <Text style={styles.cardTitle}>{formatServiceCategory(service.category)}</Text>
+                    <Input
+                      value={service.name}
+                      onChangeText={(value) => updateService(service.id, { name: value })}
+                      placeholder="Nom du service"
+                    />
+                    <View style={styles.hourRow}>
+                      <View style={styles.hourCol}>
+                        <Input
+                          value={service.price}
+                          onChangeText={(value) => updateService(service.id, { price: value.replace(/[^\d]/g, '') })}
+                          placeholder="Prix"
+                          keyboardType="numeric"
+                        />
+                      </View>
+                      <View style={styles.hourCol}>
+                        <Input
+                          value={service.durationMin}
+                          onChangeText={(value) =>
+                            updateService(service.id, { durationMin: value.replace(/[^\d]/g, '') })
+                          }
+                          placeholder="Duree"
+                          keyboardType="numeric"
+                        />
+                      </View>
+                    </View>
+                    <View style={styles.toggleGroup}>
+                      <ToggleChip
+                        label="Actif"
+                        active={service.isActive}
+                        onPress={() => updateService(service.id, { isActive: true })}
+                      />
+                      <ToggleChip
+                        label="Inactif"
+                        active={!service.isActive}
+                        onPress={() => updateService(service.id, { isActive: false })}
+                      />
+                    </View>
+                  </Card>
+                ))
+              )}
+            </View>
+
+            <AdminSectionTitle title="Employes lies" />
+            <Card style={styles.card}>
+              <Text style={styles.helperText}>
+                Ouvre une fiche employee pour modifier son statut, ses specialites et son profil.
+              </Text>
+            </Card>
+            <View style={styles.list}>
+              {(item.employees ?? []).length === 0 ? (
+                <Card style={styles.card}>
+                  <Text style={styles.emptyText}>Aucun employe rattache a ce salon.</Text>
+                </Card>
+              ) : (
+                (item.employees ?? []).map((employee: any) => (
+                  <Pressable
+                    key={employee.id}
+                    onPress={() => router.push({ pathname: '/(admin)/employee-detail' as never, params: { id: employee.id } })}
+                  >
+                    <Card style={styles.card}>
+                      <Text style={styles.cardTitle}>{employee.displayName}</Text>
+                      <Text style={styles.metaText}>{employee.email ?? 'Email non renseigne'}</Text>
+                      <Text style={styles.metaText}>{employee.phone ?? 'Telephone non renseigne'}</Text>
+                      <Text style={styles.metaText}>{formatSpecialties(employee.specialties)}</Text>
+                    </Card>
+                  </Pressable>
+                ))
+              )}
+            </View>
+
+            <Button
+              title={updateSalon.isPending ? 'Enregistrement...' : 'Enregistrer la fiche salon'}
+              onPress={() => void handleSave()}
+              disabled={updateSalon.isPending || isOffline}
+            />
 
             <AdminSectionTitle title="Informations generales" />
             <Card style={styles.card}>
@@ -111,43 +343,6 @@ export default function AdminSalonDetailScreen() {
               <DetailRow label="Telephone" value={item.owner?.phone} />
               <DetailRow label="Statut" value={item.owner?.isActive ? 'Actif' : 'Inactif'} />
             </Card>
-
-            <AdminSectionTitle title="Services lies" />
-            <View style={styles.list}>
-              {(item.services ?? []).length === 0 ? (
-                <Card style={styles.card}><Text style={styles.emptyText}>Aucun service rattache a ce salon.</Text></Card>
-              ) : (
-                (item.services ?? []).map((service: any) => (
-                  <Card key={service.id} style={styles.card}>
-                    <Text style={styles.cardTitle}>{service.name}</Text>
-                    <Text style={styles.metaText}>{formatServiceCategory(service.category)}</Text>
-                    <Text style={styles.metaText}>{`${service.durationMin} min - ${service.price.toLocaleString('fr-FR')} FCFA`}</Text>
-                    <Text style={styles.metaText}>{service.isActive ? 'Actif' : 'Inactif'}</Text>
-                  </Card>
-                ))
-              )}
-            </View>
-
-            <AdminSectionTitle title="Employes lies" />
-            <View style={styles.list}>
-              {(item.employees ?? []).length === 0 ? (
-                <Card style={styles.card}><Text style={styles.emptyText}>Aucun employe rattache a ce salon.</Text></Card>
-              ) : (
-                (item.employees ?? []).map((employee: any) => (
-                  <Pressable
-                    key={employee.id}
-                    onPress={() => router.push({ pathname: '/(admin)/employee-detail' as never, params: { id: employee.id } })}
-                  >
-                    <Card style={styles.card}>
-                      <Text style={styles.cardTitle}>{employee.displayName}</Text>
-                      <Text style={styles.metaText}>{employee.email ?? 'Email non renseigne'}</Text>
-                      <Text style={styles.metaText}>{employee.phone ?? 'Telephone non renseigne'}</Text>
-                      <Text style={styles.metaText}>{formatSpecialties(employee.specialties)}</Text>
-                    </Card>
-                  </Pressable>
-                ))
-              )}
-            </View>
 
             <AdminSectionTitle title="Rendez-vous recents" />
             <View style={styles.list}>
@@ -188,7 +383,10 @@ export default function AdminSalonDetailScreen() {
 
             <AdminSectionTitle title="Activite recente & avis" />
             <Card style={styles.card}>
-              <DetailRow label="Top services" value={(item.analytics?.topServices ?? []).map((entry: any) => `${entry.label} (${entry.value})`).join(', ') || 'Aucun'} />
+              <DetailRow
+                label="Top services"
+                value={(item.analytics?.topServices ?? []).map((entry: any) => `${entry.label} (${entry.value})`).join(', ') || 'Aucun'}
+              />
               <DetailRow label="Revenu AMBYA" value={`${(item.analytics?.ambyaRevenue ?? 0).toLocaleString('fr-FR')} FCFA`} />
             </Card>
             <View style={styles.list}>
@@ -211,6 +409,31 @@ export default function AdminSalonDetailScreen() {
   )
 }
 
+function normalizeOpeningHours(raw: unknown): OpeningHour[] {
+  if (!Array.isArray(raw)) return DEFAULT_OPENING_HOURS
+
+  const mapped = raw
+    .map((item) => {
+      if (!item || typeof item !== 'object') return null
+      const entry = item as Record<string, unknown>
+      const day = typeof entry.day === 'string' ? entry.day : null
+      if (!day) return null
+      return {
+        day,
+        open: typeof entry.open === 'string' ? entry.open : null,
+        close: typeof entry.close === 'string' ? entry.close : null,
+        closed: Boolean(entry.closed),
+      }
+    })
+    .filter((item): item is OpeningHour => Boolean(item))
+
+  if (!mapped.length) return DEFAULT_OPENING_HOURS
+
+  return DEFAULT_OPENING_HOURS.map(
+    (fallback) => mapped.find((item) => item.day === fallback.day) ?? fallback,
+  )
+}
+
 function DetailRow({ label, value }: { label: string; value?: string | null }) {
   return (
     <View style={styles.row}>
@@ -224,7 +447,7 @@ const styles = StyleSheet.create({
   content: {
     padding: spacing.lg,
     gap: spacing.lg,
-    paddingBottom: spacing.xl,
+    paddingBottom: spacing.xl * 2,
   },
   statsGrid: {
     flexDirection: 'row',
@@ -265,6 +488,51 @@ const styles = StyleSheet.create({
   emptyText: {
     color: colors.textMuted,
     fontSize: 14,
+  },
+  helperText: {
+    color: colors.textMuted,
+    fontSize: 14,
+    lineHeight: 22,
+  },
+  toggleRow: {
+    gap: spacing.sm,
+  },
+  toggleLabel: {
+    color: colors.text,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  toggleGroup: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  toggleChip: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.card,
+  },
+  toggleChipActive: {
+    backgroundColor: colors.brand,
+    borderColor: colors.brand,
+  },
+  toggleChipText: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  toggleChipTextActive: {
+    color: colors.brandForeground,
+  },
+  hourRow: {
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  hourCol: {
+    flex: 1,
   },
 })
 

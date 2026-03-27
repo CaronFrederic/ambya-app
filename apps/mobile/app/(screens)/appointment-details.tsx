@@ -24,6 +24,8 @@ import { spacing } from "../../src/theme/spacing";
 import { colors, overlays } from "../../src/theme/colors";
 import { radius } from "../../src/theme/radius";
 import { typography } from "../../src/theme/typography";
+import { useOfflineStatus } from "../../src/providers/OfflineProvider";
+import { requireOnlineAction } from "../../src/offline/guard";
 
 function getNextDays(count: number, fromIso?: string) {
   const items: Array<{ label: string; iso: string }> = [];
@@ -107,6 +109,7 @@ function toErrorMessage(error: unknown) {
 export default function AppointmentDetailsScreen() {
   const params = useLocalSearchParams<{ groupId?: string }>();
   const groupId = params.groupId;
+  const { isOffline } = useOfflineStatus();
 
   const { data, isLoading, isError, refetch } = useAppointmentGroupDetails(groupId);
   const updateGroup = useUpdateAppointmentGroup();
@@ -211,6 +214,7 @@ export default function AppointmentDetailsScreen() {
   const canManage = Boolean(data?.canManage) && displayStatus !== "EXPIRED";
 
   const handleSave = async () => {
+    if (!requireOnlineAction("modifier un rendez-vous")) return;
     if (!groupId || !nextStartAt || !hasChanges) return;
 
     try {
@@ -238,6 +242,7 @@ export default function AppointmentDetailsScreen() {
   };
 
   const handleCancel = () => {
+    if (!requireOnlineAction("annuler un rendez-vous")) return;
     if (!groupId || !data) return;
 
     Alert.alert(
@@ -466,13 +471,13 @@ export default function AppointmentDetailsScreen() {
                     : "Enregistrer les modifications"
                 }
                 onPress={handleSave}
-                disabled={!hasChanges || updateGroup.isPending}
+                disabled={isOffline || !hasChanges || updateGroup.isPending}
               />
               <Button
                 title={cancelGroup.isPending ? "Annulation..." : "Annuler le rendez-vous"}
                 onPress={handleCancel}
                 variant="outline"
-                disabled={cancelGroup.isPending}
+                disabled={isOffline || cancelGroup.isPending}
                 style={styles.cancelButton}
                 textStyle={{ color: colors.dangerText }}
               />

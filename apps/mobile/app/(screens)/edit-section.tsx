@@ -18,6 +18,8 @@ import { useQueryClient } from '@tanstack/react-query'
 import { Screen } from '../../src/components/Screen'
 import { Button } from '../../src/components/Button'
 import { fetchMeSummary, useMeSummary } from '../../src/api/me'
+import { useOfflineStatus } from '../../src/providers/OfflineProvider'
+import { requireOnlineAction } from '../../src/offline/guard'
 
 import { colors, overlays } from '../../src/theme/colors'
 import { spacing } from '../../src/theme/spacing'
@@ -108,6 +110,7 @@ async function patchMeProfile(token: string, body: any) {
 
 export default function EditSectionScreen() {
   const qc = useQueryClient()
+  const { isOffline } = useOfflineStatus()
   const params = useLocalSearchParams<{ section?: string; title?: string }>()
   const section = (params.section ?? 'general') as SectionKey
   const screenTitle = (params.title ?? 'Modifier') as string
@@ -236,6 +239,7 @@ export default function EditSectionScreen() {
   const canSave = !!token && !saving
 
   async function onSave() {
+    if (!requireOnlineAction('mettre a jour votre profil')) return
     if (!token) return
 
     if (section === 'general') {
@@ -567,7 +571,7 @@ export default function EditSectionScreen() {
 
           <View style={{ height: 18 }} />
 
-          <Button title={saving ? 'Enregistrement…' : 'Enregistrer'} onPress={onSave} disabled={!canSave} />
+          <Button title={saving ? 'Enregistrement…' : 'Enregistrer'} onPress={onSave} disabled={isOffline || !canSave} />
 
           <View style={{ height: 28 }} />
         </ScrollView>

@@ -20,6 +20,8 @@ import { colors } from '../../src/theme/colors'
 import { radius } from '../../src/theme/radius'
 import { spacing } from '../../src/theme/spacing'
 import { typography } from '../../src/theme/typography'
+import { useOfflineStatus } from '../../src/providers/OfflineProvider'
+import { requireOnlineAction } from '../../src/offline/guard'
 
 type PickerType = 'start' | 'end' | null
 
@@ -28,6 +30,7 @@ export default function EmployeeLeaveScreen() {
   const createLeaveRequest = useCreateEmployeeLeaveRequest()
   const updateLeaveRequest = useUpdateEmployeeLeaveRequest()
   const cancelLeaveRequest = useCancelEmployeeLeaveRequest()
+  const { isOffline } = useOfflineStatus()
   const [showModal, setShowModal] = useState(false)
   const [editingLeaveId, setEditingLeaveId] = useState<string | null>(null)
   const [startDate, setStartDate] = useState('')
@@ -70,6 +73,7 @@ export default function EmployeeLeaveScreen() {
   }
 
   const handleSubmit = async () => {
+    if (!requireOnlineAction(editingLeaveId ? 'modifier une demande de conges' : 'envoyer une demande de conges')) return
     if (!validateForm()) return
 
     try {
@@ -118,6 +122,7 @@ export default function EmployeeLeaveScreen() {
   }
 
   const handleCancelLeave = (leaveId: string) => {
+    if (!requireOnlineAction('annuler une demande de conges')) return
     Alert.alert(
       'Annuler cette demande',
       'Cette demande de congés en attente sera supprimée.',
@@ -149,7 +154,12 @@ export default function EmployeeLeaveScreen() {
         keyboardDismissMode="interactive"
         contentContainerStyle={styles.content}
       >
-        <Button title="Nouvelle demande" onPress={openCreateModal} style={styles.newRequestButton} />
+        <Button
+          title="Nouvelle demande"
+          onPress={openCreateModal}
+          style={styles.newRequestButton}
+          disabled={isOffline}
+        />
 
         <View style={styles.list}>
           {leaveRequests.isLoading ? (
@@ -251,7 +261,7 @@ export default function EmployeeLeaveScreen() {
               }
               onPress={handleSubmit}
               style={styles.footerButton}
-              disabled={createLeaveRequest.isPending || updateLeaveRequest.isPending}
+              disabled={isOffline || createLeaveRequest.isPending || updateLeaveRequest.isPending}
             />
           </>
         }

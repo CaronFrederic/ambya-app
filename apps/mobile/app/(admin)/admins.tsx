@@ -9,11 +9,14 @@ import { Card } from '../../src/components/Card'
 import { FeedbackState } from '../../src/components/FeedbackState'
 import { Input } from '../../src/components/Input'
 import { Screen } from '../../src/components/Screen'
+import { requireOnlineAction } from '../../src/offline/guard'
+import { useOfflineStatus } from '../../src/providers/OfflineProvider'
 import { colors } from '../../src/theme/colors'
 import { radius } from '../../src/theme/radius'
 import { spacing } from '../../src/theme/spacing'
 
 export default function AdminAdminsScreen() {
+  const { isOffline } = useOfflineStatus()
   const { data, isLoading, isError, refetch } = useAdmins()
   const createAdmin = useCreateAdmin()
   const [email, setEmail] = useState('')
@@ -38,8 +41,9 @@ export default function AdminAdminsScreen() {
           <Input value={password} onChangeText={setPassword} placeholder="Mot de passe" secureTextEntry />
           <Button
             title={createAdmin.isPending ? 'Creation...' : 'Creer admin'}
-            disabled={!canSubmit || createAdmin.isPending}
+            disabled={!canSubmit || createAdmin.isPending || isOffline}
             onPress={async () => {
+              if (!requireOnlineAction('creer un compte admin')) return
               try {
                 await createAdmin.mutateAsync({
                   email,

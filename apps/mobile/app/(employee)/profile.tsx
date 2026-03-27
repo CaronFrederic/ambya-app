@@ -12,14 +12,17 @@ import { EmployeeModal } from '../../src/components/employee/EmployeeModal'
 import { EmployeeHeader } from '../../src/components/employee/EmployeeHeader'
 import { useEmployeeProfile, useUpdateEmployeeProfile } from '../../src/api/employee'
 import { useAuthRefresh } from '../../src/providers/AuthRefreshProvider'
+import { useOfflineStatus } from '../../src/providers/OfflineProvider'
 import { colors, overlays } from '../../src/theme/colors'
 import { radius } from '../../src/theme/radius'
 import { spacing } from '../../src/theme/spacing'
 import { typography } from '../../src/theme/typography'
+import { requireOnlineAction } from '../../src/offline/guard'
 
 export default function EmployeeProfileScreen() {
   const { refreshAuth } = useAuthRefresh()
   const queryClient = useQueryClient()
+  const { isOffline } = useOfflineStatus()
   const profileQuery = useEmployeeProfile()
   const updateProfile = useUpdateEmployeeProfile()
 
@@ -53,6 +56,7 @@ export default function EmployeeProfileScreen() {
   }
 
   const handleUpdate = async () => {
+    if (!requireOnlineAction('mettre a jour le profil employe')) return
     try {
       await updateProfile.mutateAsync({
         firstName: firstName.trim(),
@@ -149,7 +153,7 @@ export default function EmployeeProfileScreen() {
             <Pressable
               onPress={handleUpdate}
               style={styles.primaryButtonWide}
-              disabled={updateProfile.isPending}
+              disabled={isOffline || updateProfile.isPending}
             >
               <Ionicons name="save-outline" size={16} color={colors.brandForeground} />
               <Text style={styles.primaryButtonText}>

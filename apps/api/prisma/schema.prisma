@@ -121,6 +121,7 @@ model Salon {
   coverImageUrl    String?
   galleryImageUrls Json?
   socialLinks      Json?
+  openingHours     Json?
   isActive         Boolean @default(true)
 
   ownerId String

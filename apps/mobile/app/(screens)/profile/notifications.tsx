@@ -12,6 +12,8 @@ import { radius } from '../../../src/theme/radius'
 import { typography } from '../../../src/theme/typography'
 
 import { useMeSummary, useUpdateMeProfile, MeSummary } from '../../../src/api/me'
+import { useOfflineStatus } from '../../../src/providers/OfflineProvider'
+import { requireOnlineAction } from '../../../src/offline/guard'
 
 type NotifValue = 'push' | 'email' | 'sms'
 
@@ -23,6 +25,7 @@ const OPTIONS: { label: string; value: NotifValue; icon: any; sub: string }[] = 
 
 export default function NotificationsScreen() {
   const qc = useQueryClient()
+  const { isOffline } = useOfflineStatus()
   const { data: summary, isLoading, isRefetching } = useMeSummary(true)
   const update = useUpdateMeProfile()
 
@@ -35,6 +38,7 @@ export default function NotificationsScreen() {
   const saving = update.isPending
 
   const commit = async (next: Set<NotifValue>) => {
+    if (!requireOnlineAction('mettre a jour les notifications')) return
     const nextArr = Array.from(next)
 
     // ✅ Optimistic UI : on pousse directement dans la cache source-of-truth
@@ -75,7 +79,7 @@ export default function NotificationsScreen() {
   }
 
   const toggle = (v: NotifValue) => {
-    if (saving || isLoading) return
+    if (saving || isLoading || isOffline) return
     const next = new Set(selected)
     if (next.has(v)) next.delete(v)
     else next.add(v)
@@ -110,11 +114,11 @@ export default function NotificationsScreen() {
               <Pressable
                 key={o.value}
                 onPress={() => toggle(o.value)}
-                disabled={saving || isLoading}
+                disabled={saving || isLoading || isOffline}
                 style={[
                   styles.row,
                   on ? styles.rowOn : styles.rowOff,
-                  (saving || isLoading) && { opacity: 0.7 },
+                  (saving || isLoading || isOffline) && { opacity: 0.7 },
                 ]}
               >
                 <Ionicons name={o.icon} size={22} color={colors.brand} />

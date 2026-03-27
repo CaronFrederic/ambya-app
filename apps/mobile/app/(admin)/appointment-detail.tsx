@@ -16,6 +16,8 @@ import { EmployeeModal } from '../../src/components/employee/EmployeeModal'
 import { EmployeePickerField } from '../../src/components/employee/EmployeePickerField'
 import { EmployeeSelectList } from '../../src/components/employee/EmployeeSelectList'
 import { EmployeeTimePicker } from '../../src/components/employee/EmployeeTimePicker'
+import { requireOnlineAction } from '../../src/offline/guard'
+import { useOfflineStatus } from '../../src/providers/OfflineProvider'
 import { colors } from '../../src/theme/colors'
 import { radius } from '../../src/theme/radius'
 import { spacing } from '../../src/theme/spacing'
@@ -25,6 +27,7 @@ type PickerType = 'status' | 'employee' | 'date' | 'startTime' | 'endTime' | nul
 
 export default function AdminAppointmentDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
+  const { isOffline } = useOfflineStatus()
   const { data, isLoading, isError, refetch } = useAdminAppointment(id)
   const updateAppointment = useUpdateAdminAppointment()
   const item = data?.item as any
@@ -69,6 +72,8 @@ export default function AdminAppointmentDetailScreen() {
     : 'Derniers rendez-vous client'
 
   const handleSave = async () => {
+    if (!requireOnlineAction('mettre a jour un rendez-vous admin')) return
+
     const errors: Record<string, string> = {}
     if (!dateValue) errors.date = 'Selectionne une date.'
     if (!startTimeValue) errors.start = 'Selectionne une heure de debut.'
@@ -304,7 +309,7 @@ export default function AdminAppointmentDetailScreen() {
               <Button
                 title={updateAppointment.isPending ? 'Enregistrement...' : 'Enregistrer les corrections'}
                 onPress={() => void handleSave()}
-                disabled={updateAppointment.isPending}
+                disabled={updateAppointment.isPending || isOffline}
               />
             </Card>
           </>

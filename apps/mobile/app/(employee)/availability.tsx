@@ -8,6 +8,8 @@ import { Screen } from '../../src/components/Screen'
 import { FeedbackState } from '../../src/components/FeedbackState'
 import { EmployeeHeader } from '../../src/components/employee/EmployeeHeader'
 import { useClaimEmployeeSlot, useEmployeeAvailableSlots } from '../../src/api/employee'
+import { useOfflineStatus } from '../../src/providers/OfflineProvider'
+import { requireOnlineAction } from '../../src/offline/guard'
 import { colors } from '../../src/theme/colors'
 import { radius } from '../../src/theme/radius'
 import { spacing } from '../../src/theme/spacing'
@@ -16,6 +18,7 @@ import { typography } from '../../src/theme/typography'
 export default function EmployeeAvailabilityScreen() {
   const availableSlots = useEmployeeAvailableSlots()
   const claimSlot = useClaimEmployeeSlot()
+  const { isOffline } = useOfflineStatus()
 
   return (
     <Screen noPadding style={styles.screen}>
@@ -103,6 +106,7 @@ export default function EmployeeAvailabilityScreen() {
                 <Button
                   title={claimSlot.isPending ? 'Attribution...' : 'Prendre en charge'}
                   onPress={async () => {
+                    if (!requireOnlineAction('prendre en charge un creneau')) return
                     try {
                       await claimSlot.mutateAsync({ id: slot.id })
                       Alert.alert('Créneau assigné', 'Le créneau a été ajouté à votre agenda.')
@@ -111,7 +115,7 @@ export default function EmployeeAvailabilityScreen() {
                     }
                   }}
                   style={styles.button}
-                  disabled={claimSlot.isPending || !slot.isClaimable}
+                  disabled={isOffline || claimSlot.isPending || !slot.isClaimable}
                 />
               </Card>
             ))

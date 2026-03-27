@@ -19,6 +19,8 @@ import {
   useCreateEmployeeBlockedSlot,
   useEmployeeDashboard,
 } from '../../src/api/employee'
+import { useOfflineStatus } from '../../src/providers/OfflineProvider'
+import { requireOnlineAction } from '../../src/offline/guard'
 import { colors, overlays } from '../../src/theme/colors'
 import { radius } from '../../src/theme/radius'
 import { spacing } from '../../src/theme/spacing'
@@ -53,6 +55,7 @@ const quickActions = [
 export default function EmployeeDashboardScreen() {
   const dashboard = useEmployeeDashboard()
   const createBlockedSlot = useCreateEmployeeBlockedSlot()
+  const { isOffline } = useOfflineStatus()
 
   const [showBlockModal, setShowBlockModal] = useState(false)
   const [activePicker, setActivePicker] = useState<PickerType>(null)
@@ -101,6 +104,7 @@ export default function EmployeeDashboardScreen() {
   }
 
   const handleBlockSubmit = async () => {
+    if (!requireOnlineAction('bloquer un creneau')) return
     const nextErrors: Record<string, string> = {}
 
     if (!blockDate) nextErrors.blockDate = 'Selectionnez une date.'
@@ -277,7 +281,7 @@ export default function EmployeeDashboardScreen() {
               title={createBlockedSlot.isPending ? 'Enregistrement...' : 'Bloquer le creneau'}
               onPress={handleBlockSubmit}
               style={styles.footerButton}
-              disabled={createBlockedSlot.isPending}
+              disabled={isOffline || createBlockedSlot.isPending}
             />
           </>
         }

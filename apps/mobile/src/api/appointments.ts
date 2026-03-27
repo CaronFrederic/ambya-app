@@ -1,5 +1,6 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "./client";
+import { useOfflineCachedQuery } from "./useOfflineCachedQuery";
 
 export type AppointmentListResponse = {
   items: Array<{
@@ -84,9 +85,10 @@ export async function fetchAppointments() {
 }
 
 export function useAppointments() {
-  return useQuery({
+  return useOfflineCachedQuery({
     queryKey: ["appointments"],
     queryFn: fetchAppointments,
+    cacheKey: "client:appointments",
 
     staleTime: 60_000,
     gcTime: 10 * 60_000,
@@ -134,9 +136,10 @@ export async function fetchAppointmentGroupDetails(groupId: string) {
 }
 
 export function useAppointmentGroupDetails(groupId?: string) {
-  return useQuery({
+  return useOfflineCachedQuery({
     queryKey: ["appointments", "group", groupId],
     queryFn: () => fetchAppointmentGroupDetails(groupId!),
+    cacheKey: `client:appointment-group:${groupId ?? "unknown"}`,
     enabled: !!groupId,
   });
 }

@@ -1,4 +1,5 @@
 import * as SecureStore from 'expo-secure-store'
+import { isLikelyNetworkError, setOfflineStatus } from '../offline/store'
 
 const BASE_URL = process.env.EXPO_PUBLIC_API_URL
 
@@ -22,7 +23,17 @@ export async function apiFetch<T>(path: string, opts: FetchOptions = {}): Promis
     if (token) headers.Authorization = `Bearer ${token}`
   }
 
-  const res = await fetch(url, { ...opts, headers })
+  let res: Response
+
+  try {
+    res = await fetch(url, { ...opts, headers })
+    setOfflineStatus(false)
+  } catch (error) {
+    if (isLikelyNetworkError(error)) {
+      setOfflineStatus(true)
+    }
+    throw error
+  }
 
   // try parse json error
   let body: any = null

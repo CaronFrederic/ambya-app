@@ -8,6 +8,7 @@ import { BookingProvider } from '../src/providers/BookingProvider'
 import { ProfileProvider } from '../src/providers/ProfileProvider'
 import { PaymentProvider } from '../src/providers/PaymentProvider'
 import { AuthRefreshProvider } from '../src/providers/AuthRefreshProvider'
+import { OfflineProvider } from '../src/providers/OfflineProvider'
 
 const AUTH_TOKEN_KEY = 'accessToken'
 const ROLE_KEY = 'userRole'
@@ -126,22 +127,24 @@ export default function RootLayout() {
 
   return (
     <AuthRefreshProvider refreshAuth={refreshAuth}>
-      <QueryProvider>
-        <BookingProvider>
-          <ProfileProvider>
-            <PaymentProvider>
-              <Stack screenOptions={{ headerShown: false }}>
-                <Stack.Screen name="(auth)" />
-                <Stack.Screen name="(tabs)" />
-                <Stack.Screen name="(screens)" />
-                <Stack.Screen name="(professional)" />
-                <Stack.Screen name="(employee)" />
-                <Stack.Screen name="(admin)" />
-              </Stack>
-            </PaymentProvider>
-          </ProfileProvider>
-        </BookingProvider>
-      </QueryProvider>
+      <OfflineProvider>
+        <QueryProvider>
+          <BookingProvider>
+            <ProfileProvider>
+              <PaymentProvider>
+                <Stack screenOptions={{ headerShown: false }}>
+                  <Stack.Screen name="(auth)" />
+                  <Stack.Screen name="(tabs)" />
+                  <Stack.Screen name="(screens)" />
+                  <Stack.Screen name="(professional)" />
+                  <Stack.Screen name="(employee)" />
+                  <Stack.Screen name="(admin)" />
+                </Stack>
+              </PaymentProvider>
+            </ProfileProvider>
+          </BookingProvider>
+        </QueryProvider>
+      </OfflineProvider>
     </AuthRefreshProvider>
   )
 }

@@ -19,11 +19,14 @@ import { colors, overlays } from '../../src/theme/colors'
 import { radius } from '../../src/theme/radius'
 import { spacing } from '../../src/theme/spacing'
 import { typography } from '../../src/theme/typography'
+import { useOfflineStatus } from '../../src/providers/OfflineProvider'
+import { requireOnlineAction } from '../../src/offline/guard'
 
 export default function EmployeeAppointmentDetailScreen() {
   const params = useLocalSearchParams<{ id?: string; kind?: string }>()
   const id = typeof params.id === 'string' ? params.id : undefined
   const kind = typeof params.kind === 'string' ? params.kind : undefined
+  const { isOffline } = useOfflineStatus()
 
   const detail = useEmployeeScheduleItem(kind, id)
   const confirmMutation = useConfirmEmployeeScheduleItem()
@@ -72,6 +75,7 @@ export default function EmployeeAppointmentDetailScreen() {
   const appointment = detail.data.item
 
   const handleConfirm = async () => {
+    if (!requireOnlineAction('confirmer un rendez-vous')) return
     try {
       await confirmMutation.mutateAsync({ kind, id })
       Alert.alert('Rendez-vous confirmé', 'Le rendez-vous a été pris en charge.')
@@ -81,6 +85,7 @@ export default function EmployeeAppointmentDetailScreen() {
   }
 
   const handleComplete = async () => {
+    if (!requireOnlineAction('marquer un rendez-vous comme termine')) return
     try {
       await completeMutation.mutateAsync({ kind, id })
       Alert.alert('Rendez-vous terminé', 'Le rendez-vous a été marqué comme terminé.')
@@ -90,6 +95,7 @@ export default function EmployeeAppointmentDetailScreen() {
   }
 
   const handlePaid = async () => {
+    if (!requireOnlineAction('enregistrer un paiement')) return
     try {
       await payMutation.mutateAsync({ kind, id })
       Alert.alert('Paiement enregistré', 'Le rendez-vous a été marqué comme payé.')
@@ -99,6 +105,7 @@ export default function EmployeeAppointmentDetailScreen() {
   }
 
   const handleCancel = async () => {
+    if (!requireOnlineAction('annuler un rendez-vous')) return
     Alert.alert(
       'Annuler ce rendez-vous',
       'Le rendez-vous client sera annulé et ne pourra plus être pris en charge depuis cet agenda.',
@@ -227,7 +234,7 @@ export default function EmployeeAppointmentDetailScreen() {
             <Button
               title={confirmMutation.isPending ? 'Confirmation...' : 'Prendre en charge / confirmer'}
               onPress={handleConfirm}
-              disabled={isPending}
+              disabled={isOffline || isPending}
               style={styles.actionButton}
             />
           ) : null}
@@ -240,7 +247,7 @@ export default function EmployeeAppointmentDetailScreen() {
                   : 'Marquer comme terminé'
             }
             onPress={handleComplete}
-            disabled={isPending || !canComplete}
+            disabled={isOffline || isPending || !canComplete}
             style={styles.actionButton}
           />
           <Button
@@ -252,7 +259,7 @@ export default function EmployeeAppointmentDetailScreen() {
                   : 'Marquer comme payé'
             }
             onPress={handlePaid}
-            disabled={isPending || !canPay}
+            disabled={isOffline || isPending || !canPay}
             variant={appointment.isPaid ? 'secondary' : 'outline'}
             style={styles.actionButton}
           />
@@ -260,7 +267,7 @@ export default function EmployeeAppointmentDetailScreen() {
             <Button
               title={cancelMutation.isPending ? 'Annulation...' : 'Annuler le rendez-vous'}
               onPress={handleCancel}
-              disabled={isPending}
+              disabled={isOffline || isPending}
               variant="secondary"
               style={styles.actionButton}
             />

@@ -132,6 +132,12 @@ export type AdminSalon = {
   description?: string | null
   latitude?: number | null
   longitude?: number | null
+  openingHours?: Array<{
+    day: string
+    open: string | null
+    close: string | null
+    closed: boolean
+  }>
   services?: Array<{
     id: string
     name: string

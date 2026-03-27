@@ -9,6 +9,8 @@ import { Card } from '../../src/components/Card'
 import { FeedbackState } from '../../src/components/FeedbackState'
 import { Input } from '../../src/components/Input'
 import { Screen } from '../../src/components/Screen'
+import { requireOnlineAction } from '../../src/offline/guard'
+import { useOfflineStatus } from '../../src/providers/OfflineProvider'
 import { colors } from '../../src/theme/colors'
 import { radius } from '../../src/theme/radius'
 import { spacing } from '../../src/theme/spacing'
@@ -50,6 +52,7 @@ function DetailRow({ label, value }: { label: string; value?: string | null }) {
 
 export default function AdminEmployeeDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
+  const { isOffline } = useOfflineStatus()
   const { data, isLoading, isError, refetch } = useAdminUser(id)
   const updateUser = useUpdateAdminUser()
   const item = data?.item as any
@@ -92,6 +95,8 @@ export default function AdminEmployeeDetailScreen() {
   }
 
   const handleSave = async () => {
+    if (!requireOnlineAction('mettre a jour une fiche employee')) return
+
     try {
       await updateUser.mutateAsync({
         id: id!,
@@ -217,7 +222,7 @@ export default function AdminEmployeeDetailScreen() {
             <Button
               title={updateUser.isPending ? 'Enregistrement...' : "Enregistrer la fiche employee"}
               onPress={() => void handleSave()}
-              disabled={updateUser.isPending}
+              disabled={updateUser.isPending || isOffline}
             />
           </>
         )}

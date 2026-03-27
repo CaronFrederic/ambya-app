@@ -32,6 +32,8 @@ import {
   MAP_WELLBEING,
   MAP_ZONES,
 } from '../../src/constants/questionnaireLabels'
+import { requireOnlineAction } from '../../src/offline/guard'
+import { useOfflineStatus } from '../../src/providers/OfflineProvider'
 import { colors } from '../../src/theme/colors'
 import { radius } from '../../src/theme/radius'
 import { spacing } from '../../src/theme/spacing'
@@ -151,6 +153,7 @@ function ChipGroup({
 
 export default function AdminClientDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
+  const { isOffline } = useOfflineStatus()
   const { data, isLoading, isError, refetch } = useAdminUser(id)
   const updateUser = useUpdateAdminUser()
   const item = data?.item as any
@@ -269,6 +272,8 @@ export default function AdminClientDetailScreen() {
   }, [item, questionnaire])
 
   const handleSave = async () => {
+    if (!requireOnlineAction('mettre a jour une fiche client')) return
+
     try {
       await updateUser.mutateAsync({
         id: id!,
@@ -572,11 +577,11 @@ export default function AdminClientDetailScreen() {
               )}
             </View>
 
-            <Button
-              title={updateUser.isPending ? 'Enregistrement...' : 'Enregistrer la fiche client'}
-              onPress={() => void handleSave()}
-              disabled={updateUser.isPending}
-            />
+              <Button
+                title={updateUser.isPending ? 'Enregistrement...' : 'Enregistrer la fiche client'}
+                onPress={() => void handleSave()}
+                disabled={updateUser.isPending || isOffline}
+              />
           </>
         )}
       </ScrollView>
