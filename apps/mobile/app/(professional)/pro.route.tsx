@@ -8,6 +8,7 @@ export type ProRoute =
   | "/professional/promotions"
   | "/professional/loyalty"
   | "/professional/booking-history"
+  | "/professional/agenda"
   | `/professional/client-details/${string}`
   | "/professional/service";
 
@@ -23,6 +24,7 @@ export type ProScreenKey =
   | "bookings"
   | "clientDetails"
   | "service"
+  | "agenda"
   ;
 
 export const PRO_SCREENS: Record<ProScreenKey, { title: string; route: ProRoute }> = {
@@ -37,4 +39,5 @@ export const PRO_SCREENS: Record<ProScreenKey, { title: string; route: ProRoute 
   bookings:      { title: "Historique", route: "/professional/booking-history" },
   clientDetails: { title: "Fiche client", route: "/professional/client-details/1" }, // mock
   service:       { title: "Service", route: "/professional/service" },
+  agenda:        { title: "Agenda", route: "/professional/agenda" },
 };

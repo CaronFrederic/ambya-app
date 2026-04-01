@@ -20,6 +20,7 @@ export default function ProLayout() {
       <Stack.Screen name="ExpenseManagement" />
       <Stack.Screen name="service" />
       <Stack.Screen name="AccountingReports" />
+      <Stack.Screen name="Agenda" />
     </Stack>
   );
 }

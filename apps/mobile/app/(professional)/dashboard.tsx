@@ -104,7 +104,7 @@ function TodayAppointmentsBanner({ count }: { count: number }) {
       </View>
 
       <Pressable
-        onPress={() => router.push("/(professional)/booking-history")}
+        onPress={() => router.push("/(professional)/agenda")}
         style={({ pressed }) => [styles.bannerButton, pressed && { opacity: 0.9 }]}
       >
         <Text style={styles.bannerButtonText}>Voir l&apos;agenda</Text>
@@ -332,6 +332,16 @@ export default function ProDashboard() {
           </View>
 
           <QuickActions />
+
+
+              <Tile
+                title="Agenda"
+                subtitle="Planning et rendez-vous"
+                icon="calendar-outline"
+                href="/(professional)/agenda"
+              />
+        
+
 
           <Tile
             title="Caisse & Transactions"

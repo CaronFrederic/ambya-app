@@ -23,7 +23,7 @@ import { ClientsModule } from './clients/clients.module';
 
 
 @Module({
-  imports: [AppConfigModule, AppointmentsModule, 
+  imports: [AppConfigModule, AppointmentsModule, DashboardModule,
     AuthModule, MeModule, PaymentMethodsModule, PaymentsModule, DiscoveryModule, UsersModule, SalonsModule, EmployeesModule, ServicesModule,
     ConfigModule.forRoot({
       isGlobal: true,

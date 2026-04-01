@@ -5,6 +5,7 @@ import { CreatePaymentIntentDto } from './dto/create-payment-intent.dto'
 import { UpdateIntentStatusDto } from './dto/update-intent-status.dto'
 import { Role } from '../common/enums/role.enum';
 import { Prisma } from '@prisma/client';
+import { GetCashRegisterQueryDto } from './dto/get-cash-register-query.dto';
 @Injectable()
 export class PaymentsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -256,4 +257,194 @@ export class PaymentsService {
       return updatedIntent
     })
   }
+
+   private inferMethodFromProvider(provider?: string | null): 'mobile-money' | 'card' | 'cash' {
+    const value = (provider ?? '').trim().toUpperCase();
+
+    if (
+      value.includes('MTN') ||
+      value.includes('ORANGE') ||
+      value.includes('MOOV') ||
+      value.includes('AIRTEL') ||
+      value.includes('MOMO')
+    ) {
+      return 'mobile-money';
+    }
+
+    if (
+      value.includes('CARD') ||
+      value.includes('VISA') ||
+      value.includes('MASTERCARD') ||
+      value.includes('STRIPE')
+    ) {
+      return 'card';
+    }
+
+    return 'cash';
+  }
+
+  private getDayBounds(date: string) {
+    const start = new Date(`${date}T00:00:00.000Z`);
+    const end = new Date(`${date}T23:59:59.999Z`);
+    return { start, end };
+  }
+
+  private getUserSalonFilter(user: { userId: string; role: string }) {
+    if (user.role === 'PROFESSIONAL' || user.role === 'SALON_MANAGER') {
+      return {
+        salon: {
+          ownerId: user.userId,
+        },
+      };
+    }
+
+    if (user.role === 'EMPLOYEE') {
+      return {
+        salon: {
+          employees: {
+            some: {
+              userId: user.userId,
+            },
+          },
+        },
+      };
+    }
+
+    throw new ForbiddenException('Not allowed');
+  }
+
+  async getCashRegister(
+    user: { userId: string; role: 'CLIENT' | 'PROFESSIONAL' | 'SALON_MANAGER' | 'EMPLOYEE' | 'ADMIN' },
+    query: GetCashRegisterQueryDto,
+  ) {
+    if (user.role === 'CLIENT') {
+      throw new ForbiddenException('Not allowed');
+    }
+
+    const date =
+      query.date ??
+      new Date().toISOString().slice(0, 10);
+
+    const method = query.method ?? 'all';
+    const { start, end } = this.getDayBounds(date);
+
+    const transactions = await this.prisma.paymentIntent.findMany({
+      where: {
+        status: {
+          in: [PaymentStatus.SUCCEEDED, PaymentStatus.PENDING],
+        },
+        createdAt: {
+          gte: start,
+          lte: end,
+        },
+        ...this.getUserSalonFilter(user),
+      },
+      include: {
+        appointment: {
+          include: {
+            client: {
+              select: {
+                id: true,
+                email: true,
+                phone: true,
+                clientProfile: {
+                  select: {
+                    nickname: true,
+                  },
+                },
+              },
+            },
+            service: {
+              select: {
+                name: true,
+              },
+            },
+            employee: {
+              select: {
+                displayName: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    const mapped = transactions.map((tx) => {
+      const inferredMethod = this.inferMethodFromProvider(tx.provider);
+      const clientName =
+        tx.appointment?.client?.clientProfile?.nickname ||
+        tx.appointment?.client?.phone ||
+        tx.appointment?.client?.email ||
+        'Client';
+
+      return {
+        id: tx.id,
+        date: tx.createdAt,
+        client: clientName,
+        clientId: tx.appointment?.client?.id ?? null,
+        services: tx.appointment?.service?.name ?? 'Prestation',
+        employee: tx.appointment?.employee?.displayName ?? 'Non assigné',
+        amount: tx.payableAmount > 0 ? tx.payableAmount : tx.amount,
+        method: inferredMethod,
+        status: tx.status === PaymentStatus.SUCCEEDED ? 'paid' : 'pending',
+        provider: tx.provider,
+      };
+    });
+
+    const filteredTransactions =
+      method === 'all'
+        ? mapped
+        : mapped.filter((tx) => tx.method === method);
+
+    const totals = filteredTransactions.reduce(
+      (acc, tx) => {
+        if (tx.status !== 'paid') return acc;
+
+        acc.total += tx.amount;
+        if (tx.method === 'mobile-money') acc.mobileMoney += tx.amount;
+        if (tx.method === 'card') acc.card += tx.amount;
+        if (tx.method === 'cash') acc.cash += tx.amount;
+
+        return acc;
+      },
+      { total: 0, mobileMoney: 0, card: 0, cash: 0 },
+    );
+
+    const paidTotal = totals.total || 1;
+
+    const breakdown = [
+      {
+        name: 'Part salon',
+        value: Math.round((65 / 100) * 100),
+        color: '#6B2737',
+      },
+      {
+        name: 'Commission AMBYA',
+        value: Math.round((15 / 100) * 100),
+        color: '#D4AF6A',
+      },
+      {
+        name: 'Frais transaction',
+        value: Math.round((5 / 100) * 100),
+        color: '#8B8B8B',
+      },
+    ];
+
+    return {
+      date,
+      totals,
+      transactions: filteredTransactions,
+      breakdown,
+      meta: {
+        count: filteredTransactions.length,
+        paidCount: filteredTransactions.filter((t) => t.status === 'paid').length,
+        pendingCount: filteredTransactions.filter((t) => t.status === 'pending').length,
+        paidTotal,
+      },
+    };
+  }
+
 }
