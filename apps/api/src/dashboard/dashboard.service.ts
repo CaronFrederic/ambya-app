@@ -5,7 +5,6 @@ import { PrismaService } from '../prisma/prisma.service';
 type DashboardUser = {
   userId: string;
   role: 'CLIENT' | 'PROFESSIONAL' | 'SALON_MANAGER' | 'EMPLOYEE' | 'ADMIN';
-  salonId?: string | null;
 };
 
 @Injectable()
@@ -13,54 +12,15 @@ export class DashboardService {
   constructor(private readonly prisma: PrismaService) {}
 
   private getMonthBounds(baseDate = new Date()) {
-    const start = new Date(
-      baseDate.getFullYear(),
-      baseDate.getMonth(),
-      1,
-      0,
-      0,
-      0,
-      0,
-    );
-    const end = new Date(
-      baseDate.getFullYear(),
-      baseDate.getMonth() + 1,
-      0,
-      23,
-      59,
-      59,
-      999,
-    );
+    const start = new Date(baseDate.getFullYear(), baseDate.getMonth(), 1, 0, 0, 0, 0);
+    const end = new Date(baseDate.getFullYear(), baseDate.getMonth() + 1, 0, 23, 59, 59, 999);
     return { start, end };
   }
 
   private getDayBounds(baseDate = new Date()) {
-    const start = new Date(
-      baseDate.getFullYear(),
-      baseDate.getMonth(),
-      baseDate.getDate(),
-      0,
-      0,
-      0,
-      0,
-    );
-    const end = new Date(
-      baseDate.getFullYear(),
-      baseDate.getMonth(),
-      baseDate.getDate(),
-      23,
-      59,
-      59,
-      999,
-    );
+    const start = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate(), 0, 0, 0, 0);
+    const end = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate(), 23, 59, 59, 999);
     return { start, end };
-  }
-
-  private ensureSalon(user: DashboardUser) {
-    if (!user?.salonId) {
-      throw new ForbiddenException('Salon introuvable pour cet utilisateur');
-    }
-    return user.salonId;
   }
 
   private async getManagedSalonIds(user: DashboardUser): Promise<string[]> {
@@ -140,20 +100,10 @@ export class DashboardService {
       where: {
         salonId: { in: salonIds },
         status: PaymentStatus.SUCCEEDED,
-        OR: [
-          {
-            createdAt: {
-              gte: monthStart,
-              lte: monthEnd,
-            },
-          },
-          {
-            transactionDate: {
-              gte: monthStart,
-              lte: monthEnd,
-            },
-          },
-        ],
+        createdAt: {
+          gte: monthStart,
+          lte: monthEnd,
+        },
       },
       select: {
         amount: true,
@@ -162,10 +112,7 @@ export class DashboardService {
     });
 
     const monthlyRevenue = monthlyPayments.reduce((sum, item) => {
-      const value =
-        item.payableAmount && item.payableAmount > 0
-          ? item.payableAmount
-          : item.amount;
+      const value = item.payableAmount && item.payableAmount > 0 ? item.payableAmount : item.amount;
       return sum + value;
     }, 0);
 
@@ -206,28 +153,26 @@ export class DashboardService {
       AppointmentStatus.COMPLETED,
     ]);
 
-    const totalRelevant = monthAppointments.filter((a) =>
-      [
-        AppointmentStatus.PENDING,
-        AppointmentStatus.CONFIRMED,
-        AppointmentStatus.COMPLETED,
-        AppointmentStatus.CANCELLED,
-        AppointmentStatus.NO_SHOW,
-      ].includes(a.status),
-    ).length;
+   const relevantStatuses: AppointmentStatus[] = [
+  AppointmentStatus.PENDING,
+  AppointmentStatus.CONFIRMED,
+  AppointmentStatus.COMPLETED,
+  AppointmentStatus.CANCELLED,
+  AppointmentStatus.NO_SHOW,
+];
+
+const totalRelevant = monthAppointments.filter((a) =>
+  relevantStatuses.includes(a.status),
+).length;
 
     const productiveCount = monthAppointments.filter((a) =>
       productiveStatuses.has(a.status),
     ).length;
 
     const occupancyRate =
-      totalRelevant > 0
-        ? Math.round((productiveCount / totalRelevant) * 100)
-        : 0;
+      totalRelevant > 0 ? Math.round((productiveCount / totalRelevant) * 100) : 0;
 
-    const uniqueMonthClients = [
-      ...new Set(monthAppointments.map((a) => a.clientId)),
-    ];
+    const uniqueMonthClients = [...new Set(monthAppointments.map((a) => a.clientId))];
 
     let newClients = 0;
 
@@ -265,111 +210,5 @@ export class DashboardService {
       newClients,
       monthlyExpenses,
     };
-  }
-
-  async getSummary(user: DashboardUser) {
-    const salonId = this.ensureSalon(user);
-
-    const now = new Date();
-    const { start: monthStart, end: monthEnd } = this.getMonthBounds(now);
-    const { start: todayStart, end: todayEnd } = this.getDayBounds(now);
-
-    const [todayAppointments, monthPayments, monthExpenses, newClients] =
-      await Promise.all([
-        this.prisma.appointment.count({
-          where: {
-            salonId,
-            startAt: {
-              gte: todayStart,
-              lte: todayEnd,
-            },
-            status: {
-              notIn: [AppointmentStatus.CANCELLED, AppointmentStatus.REJECTED],
-            },
-          },
-        }),
-        this.prisma.paymentIntent.aggregate({
-          where: {
-            salonId,
-            status: PaymentStatus.SUCCEEDED,
-            OR: [
-              {
-                transactionDate: {
-                  gte: monthStart,
-                  lte: monthEnd,
-                },
-              },
-              {
-                createdAt: {
-                  gte: monthStart,
-                  lte: monthEnd,
-                },
-              },
-            ],
-          },
-          _sum: {
-            payableAmount: true,
-            amount: true,
-          },
-        }),
-        this.prisma.expense.aggregate({
-          where: {
-            salonId,
-            deletedAt: null,
-            status: 'CONFIRMED',
-            expenseDate: {
-              gte: monthStart,
-              lte: monthEnd,
-            },
-          },
-          _sum: {
-            amount: true,
-          },
-        }),
-        this.prisma.salonClient.count({
-          where: {
-            salonId,
-            firstVisitAt: {
-              gte: monthStart,
-              lte: monthEnd,
-            },
-          },
-        }),
-      ]);
-
-    const monthRevenue =
-      monthPayments._sum.payableAmount && monthPayments._sum.payableAmount > 0
-        ? monthPayments._sum.payableAmount
-        : (monthPayments._sum.amount ?? 0);
-
-    return {
-      todayAppointments,
-      monthRevenue,
-      monthExpenses: monthExpenses._sum.amount ?? 0,
-      newClients,
-      occupancyRate: 0,
-    };
-  }
-
-  async getRecentTransactions(user: DashboardUser) {
-    const salonId = this.ensureSalon(user);
-
-    return this.prisma.paymentIntent.findMany({
-      where: {
-        salonId,
-      },
-      orderBy: {
-        transactionDate: 'desc',
-      },
-      take: 10,
-      include: {
-        appointment: {
-          include: {
-            client: true,
-            service: true,
-          },
-        },
-      },
-    });
   }
 }

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -27,6 +27,14 @@ const COLORS = {
   gold: "#D4AF6A",
   text: "#3A3A3A",
   white: "#FFFFFF",
+  success: "#16A34A",
+  successBg: "#DCFCE7",
+  purple: "#7C3AED",
+  purpleBg: "#EDE9FE",
+  orange: "#EA580C",
+  orangeBg: "#FFEDD5",
+  red: "#DC2626",
+  redBg: "#FEE2E2",
 };
 
 type TileProps = {
@@ -42,24 +50,47 @@ type KPIProps = {
   value: string;
 };
 
+type QuickActionItem = {
+  label: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  onPress: () => void;
+  withBorder?: boolean;
+};
+
+const EMPTY_SUMMARY: DashboardSummary = {
+  todayAppointments: 0,
+  monthRevenue: 0,
+  monthExpenses: 0,
+  newClients: 0,
+  occupancyRate: 0,
+};
+
 async function getAccessToken(): Promise<string> {
-const token = await AsyncStorage.getItem("accessToken");
-if (!token) {
-throw new Error("Utilisateur non authentifié.");
-}
-return token;
+  const token = await AsyncStorage.getItem("accessToken");
+  if (!token) {
+    throw new Error("Utilisateur non authentifié.");
+  }
+  return token;
 }
 
 function formatFcfa(value: number) {
   return `${value.toLocaleString("fr-FR")} FCFA`;
 }
 
-function Tile(props: TileProps & { subtitle: string; icon: keyof typeof Ionicons.glyphMap; tone?: "primary" | "gold" }) {
-  const tone = props.tone ?? "primary";
-
+function Tile({
+  title,
+  subtitle,
+  icon,
+  href,
+  tone = "primary",
+}: TileProps & {
+  subtitle: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  tone?: "primary" | "gold";
+}) {
   return (
     <Pressable
-      onPress={() => router.push(props.href)}
+      onPress={() => router.push(href)}
       style={({ pressed }) => [
         styles.card,
         pressed && { transform: [{ scale: 0.99 }], opacity: 0.95 },
@@ -73,15 +104,15 @@ function Tile(props: TileProps & { subtitle: string; icon: keyof typeof Ionicons
         ]}
       >
         <Ionicons
-          name={props.icon}
+          name={icon}
           size={20}
           color={tone === "gold" ? COLORS.gold : COLORS.primary}
         />
       </View>
 
       <View style={{ flex: 1 }}>
-        <Text style={styles.cardTitle}>{props.title}</Text>
-        <Text style={styles.cardSubtitle}>{props.subtitle}</Text>
+        <Text style={styles.cardTitle}>{title}</Text>
+        <Text style={styles.cardSubtitle}>{subtitle}</Text>
       </View>
 
       <Ionicons name="chevron-forward" size={18} color={`${COLORS.text}66`} />
@@ -125,13 +156,6 @@ function KPI({ icon, iconColor, bgColor, label, value }: KPIProps) {
     </View>
   );
 }
-
-type QuickActionItem = {
-  label: string;
-  icon: keyof typeof Ionicons.glyphMap;
-  onPress: () => void;
-  withBorder?: boolean;
-};
 
 function QuickActions() {
   const [isOpen, setIsOpen] = useState(false);
@@ -228,31 +252,33 @@ function QuickActions() {
   );
 }
 
-const EMPTY_SUMMARY: DashboardSummary = {
-  todayAppointments: 0,
-  monthRevenue: 0,
-  monthExpenses: 0,
-  newClients: 0,
-  occupancyRate: 0,
-};
-
 export default function ProDashboard() {
   const [summary, setSummary] = useState<DashboardSummary>(EMPTY_SUMMARY);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const loadDashboard = async () => {
     const token = await getAccessToken();
     const data = await getDashboardSummary(token);
-    setSummary(data);
+    setSummary({
+      todayAppointments: data?.todayAppointments ?? 0,
+      monthRevenue: data?.monthRevenue ?? 0,
+      monthExpenses: data?.monthExpenses ?? 0,
+      newClients: data?.newClients ?? 0,
+      occupancyRate: data?.occupancyRate ?? 0,
+    });
   };
 
   const initialLoad = async () => {
     try {
       setLoading(true);
+      setErrorMessage(null);
       await loadDashboard();
     } catch (error) {
       console.error("Dashboard load error:", error);
+      setErrorMessage("Impossible de charger le dashboard.");
+      setSummary(EMPTY_SUMMARY);
     } finally {
       setLoading(false);
     }
@@ -261,9 +287,11 @@ export default function ProDashboard() {
   const onRefresh = async () => {
     try {
       setRefreshing(true);
+      setErrorMessage(null);
       await loadDashboard();
     } catch (error) {
       console.error("Dashboard refresh error:", error);
+      setErrorMessage("Impossible d’actualiser les données.");
     } finally {
       setRefreshing(false);
     }
@@ -273,8 +301,42 @@ export default function ProDashboard() {
     initialLoad();
   }, []);
 
+  const kpis = useMemo(
+    () => [
+      {
+        icon: "cash-outline" as const,
+        iconColor: COLORS.success,
+        bgColor: COLORS.successBg,
+        label: "Revenu cumulé (mois en cours)",
+        value: formatFcfa(summary.monthRevenue),
+      },
+      {
+        icon: "trending-up-outline" as const,
+        iconColor: COLORS.purple,
+        bgColor: COLORS.purpleBg,
+        label: "% d'occupation",
+        value: `${summary.occupancyRate}%`,
+      },
+      {
+        icon: "people-outline" as const,
+        iconColor: COLORS.orange,
+        bgColor: COLORS.orangeBg,
+        label: "Nouveaux clients",
+        value: String(summary.newClients),
+      },
+      {
+        icon: "card-outline" as const,
+        iconColor: COLORS.red,
+        bgColor: COLORS.redBg,
+        label: "Dépenses cumulées (mois en cours)",
+        value: formatFcfa(summary.monthExpenses),
+      },
+    ],
+    [summary],
+  );
+
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: COLORS.bg }}>
+    <SafeAreaView style={styles.screen}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Espace Professionnel</Text>
         <Text style={styles.headerSub}>Accès rapide à la gestion du salon</Text>
@@ -290,58 +352,40 @@ export default function ProDashboard() {
         </View>
       ) : (
         <ScrollView
-          contentContainerStyle={{ padding: 16, paddingBottom: 28 }}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-          }
+          contentContainerStyle={styles.scrollContent}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+          showsVerticalScrollIndicator={false}
         >
+          {errorMessage ? (
+            <View style={styles.errorBox}>
+              <Ionicons name="alert-circle-outline" size={18} color={COLORS.primary} />
+              <Text style={styles.errorText}>{errorMessage}</Text>
+            </View>
+          ) : null}
+
           <TodayAppointmentsBanner count={summary.todayAppointments} />
 
           <View style={styles.kpiGrid}>
-            <KPI
-              icon="cash-outline"
-              iconColor="#16A34A"
-              bgColor="#DCFCE7"
-              label="Revenu cumulé (mois en cours)"
-              value={formatFcfa(summary.monthRevenue)}
-            />
-
-            <KPI
-              icon="trending-up-outline"
-              iconColor="#7C3AED"
-              bgColor="#EDE9FE"
-              label="% d'occupation"
-              value={`${summary.occupancyRate}%`}
-            />
-
-            <KPI
-              icon="people-outline"
-              iconColor="#EA580C"
-              bgColor="#FFEDD5"
-              label="Nouveaux clients"
-              value={String(summary.newClients)}
-            />
-
-            <KPI
-              icon="card-outline"
-              iconColor="#DC2626"
-              bgColor="#FEE2E2"
-              label="Dépenses cumulées (mois en cours)"
-              value={formatFcfa(summary.monthExpenses)}
-            />
+            {kpis.map((kpi) => (
+              <KPI
+                key={kpi.label}
+                icon={kpi.icon}
+                iconColor={kpi.iconColor}
+                bgColor={kpi.bgColor}
+                label={kpi.label}
+                value={kpi.value}
+              />
+            ))}
           </View>
 
           <QuickActions />
 
-
-              <Tile
-                title="Agenda"
-                subtitle="Planning et rendez-vous"
-                icon="calendar-outline"
-                href="/(professional)/agenda"
-              />
-        
-
+          <Tile
+            title="Agenda"
+            subtitle="Planning et rendez-vous"
+            icon="calendar-outline"
+            href="/(professional)/agenda"
+          />
 
           <Tile
             title="Caisse & Transactions"
@@ -349,12 +393,14 @@ export default function ProDashboard() {
             icon="cash-outline"
             href="/(professional)/cash-register"
           />
+
           <Tile
             title="Paramètres du Salon"
             subtitle="Infos • Photos • Horaires • Paiements • Acompte"
             icon="settings-outline"
             href="/(professional)/salon-settings"
           />
+
           <Tile
             title="Promotions & Offres"
             subtitle="Créer et piloter vos promos"
@@ -362,6 +408,7 @@ export default function ProDashboard() {
             href="/(professional)/promotions"
             tone="gold"
           />
+
           <Tile
             title="Carte de Fidélité"
             subtitle="Gestion du programme de fidélité"
@@ -369,36 +416,42 @@ export default function ProDashboard() {
             href="/(professional)/loyalty"
             tone="gold"
           />
+
           <Tile
             title="Historique Réservations"
             subtitle="Terminé • Annulé • No-show"
             icon="calendar-outline"
             href="/(professional)/booking-history"
           />
+
           <Tile
             title="Fiche Client (exemple)"
             subtitle="Détails + gestion acompte"
             icon="person-outline"
             href="/(professional)/client-details"
           />
+
           <Tile
             title="Gestion des Employés"
             subtitle="Ajouter, modifier ou supprimer des employés"
             icon="people-outline"
             href="/(professional)/EmployeeManagement"
           />
+
           <Tile
             title="Dépenses & Revenus"
             subtitle="Gestion des dépenses et revenus du salon"
             icon="cash-outline"
             href="/(professional)/ExpenseManagement"
           />
+
           <Tile
             title="Rapports Comptables"
             subtitle="Analyse des revenus et dépenses"
             icon="bar-chart-outline"
             href="/(professional)/AccountingReports"
           />
+
           <Tile
             title="Service"
             subtitle="service & promotions"
@@ -412,6 +465,11 @@ export default function ProDashboard() {
 }
 
 const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    backgroundColor: COLORS.bg,
+  },
+
   header: {
     backgroundColor: COLORS.primary,
     paddingHorizontal: 16,
@@ -435,6 +493,11 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
 
+  scrollContent: {
+    padding: 16,
+    paddingBottom: 28,
+  },
+
   loaderWrap: {
     flex: 1,
     alignItems: "center",
@@ -444,6 +507,25 @@ const styles = StyleSheet.create({
   loaderText: {
     color: COLORS.primary,
     fontWeight: "700",
+  },
+
+  errorBox: {
+    backgroundColor: `${COLORS.primary}10`,
+    borderWidth: 1,
+    borderColor: `${COLORS.primary}22`,
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  errorText: {
+    color: COLORS.primary,
+    fontSize: 13,
+    fontWeight: "600",
+    flex: 1,
   },
 
   card: {
@@ -484,7 +566,7 @@ const styles = StyleSheet.create({
   },
   kpiCard: {
     width: "48%",
-    backgroundColor: "#FFFFFF",
+    backgroundColor: COLORS.white,
     borderRadius: 18,
     padding: 14,
     marginBottom: 12,
@@ -508,7 +590,7 @@ const styles = StyleSheet.create({
   kpiValue: {
     fontSize: 16,
     fontWeight: "700",
-    color: "#3A3A3A",
+    color: COLORS.text,
   },
 
   quickActionsWrap: {

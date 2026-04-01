@@ -20,10 +20,10 @@ import { ExpensesModule } from './expenses/expenses.module';
 import { ExportsModule } from './exports/exports.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { ClientsModule } from './clients/clients.module';
-
+import { SalonSettingsModule } from './salon-settings/salon-settings.module'
 
 @Module({
-  imports: [AppConfigModule, AppointmentsModule, DashboardModule,
+  imports: [AppConfigModule, AppointmentsModule, DashboardModule,SalonSettingsModule,
     AuthModule, MeModule, PaymentMethodsModule, PaymentsModule, DiscoveryModule, UsersModule, SalonsModule, EmployeesModule, ServicesModule,
     ConfigModule.forRoot({
       isGlobal: true,
