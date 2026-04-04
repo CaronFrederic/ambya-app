@@ -3,7 +3,7 @@ import { View, Text, ScrollView, Pressable, StyleSheet, TextInput, Switch, Modal
 import * as ImagePicker from "expo-image-picker";
 import { ProHeader } from "./components/ProHeader";
 import { router } from "expo-router";
-
+import * as SecureStore from "expo-secure-store";
 const COLORS = {
   bg: "#FAF7F2",
   text: "#3A3A3A",
@@ -122,6 +122,17 @@ export default function SalonSettingsScreen() {
     if (!result.canceled) {
       const uris = result.assets.map((a) => a.uri);
       setGalleryImages((prev) => [...prev, ...uris].slice(0, 10));
+    }
+  }
+    async function handleLogout() {
+    try {
+      setShowLogoutModal(false);
+      await SecureStore.deleteItemAsync("accessToken");
+      await SecureStore.deleteItemAsync("userRole");
+      router.replace("/(auth)/login");
+    } catch (error) {
+      console.log("Logout error:", error);
+      router.replace("/(auth)/login");
     }
   }
   const [showLogoutModal, setShowLogoutModal] = useState(false);
@@ -607,14 +618,11 @@ export default function SalonSettingsScreen() {
         </Pressable>
 
         <Pressable
-          onPress={() => {
-            setShowLogoutModal(false);
-            router.replace("/(auth)/login");
-          }}
-          style={styles.logoutConfirmBtn}
-        >
-          <Text style={styles.logoutConfirmText}>Se déconnecter</Text>
-        </Pressable>
+        onPress={handleLogout}
+        style={styles.logoutConfirmBtn}
+      >
+        <Text style={styles.logoutConfirmText}>Se déconnecter</Text>
+      </Pressable>
       </View>
 
     </View>
@@ -625,6 +633,7 @@ export default function SalonSettingsScreen() {
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  
   return (
     <View style={{ gap: 8 }}>
       <Text style={styles.label}>{label}</Text>

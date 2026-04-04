@@ -46,7 +46,7 @@ export function getCashRegister(
   search.set("date", params.date);
   if (params.method) search.set("method", params.method);
 
-  return apiFetch<CashRegisterResponse>(`/api/payments/cash-register?${search.toString()}`, {
+  return apiFetch<CashRegisterResponse>(`/payments/cash-register?${search.toString()}`, {
     method: "GET",
     token,
   });

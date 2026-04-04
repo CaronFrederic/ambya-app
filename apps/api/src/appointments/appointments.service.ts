@@ -906,7 +906,7 @@ export class AppointmentsService {
     return grouped;
   }
 
-  private buildManagedAppointmentWhere(
+    private buildManagedAppointmentWhere(
     user: { userId: string; role: UserRole },
     extra: Prisma.AppointmentWhereInput,
   ): Prisma.AppointmentWhereInput {
@@ -916,6 +916,24 @@ export class AppointmentsService {
 
     if (user.role === 'ADMIN') {
       return extra;
+    }
+
+    if (user.role === 'PROFESSIONAL') {
+      return {
+        ...extra,
+        salon: {
+          ownerId: user.userId,
+        },
+      };
+    }
+
+    if (user.role === 'EMPLOYEE') {
+      return {
+        ...extra,
+        employee: {
+          userId: user.userId,
+        },
+      };
     }
 
     throw new ForbiddenException('Not allowed');
@@ -1121,5 +1139,281 @@ export class AppointmentsService {
         });
       }
     }
+  }
+
+
+  async getProCalendar(
+    user: { userId: string; role: UserRole },
+    date?: string,
+  ) {
+    if (user.role !== 'PROFESSIONAL' && user.role !== 'ADMIN') {
+      throw new ForbiddenException('Not allowed');
+    }
+
+    const salonIds =
+      user.role === 'ADMIN'
+        ? (
+            await this.prisma.salon.findMany({
+              select: { id: true },
+            })
+          ).map((salon) => salon.id)
+        : (
+            await this.prisma.salon.findMany({
+              where: { ownerId: user.userId },
+              select: { id: true },
+            })
+          ).map((salon) => salon.id);
+
+    if (!salonIds.length) {
+      return [];
+    }
+
+    const targetDate = date ? new Date(date) : new Date();
+    if (Number.isNaN(targetDate.getTime())) {
+      throw new BadRequestException('Invalid date');
+    }
+
+    const start = new Date(targetDate);
+    start.setHours(0, 0, 0, 0);
+
+    const end = new Date(targetDate);
+    end.setHours(23, 59, 59, 999);
+
+    const appointments = await this.prisma.appointment.findMany({
+      where: {
+        salonId: { in: salonIds },
+        startAt: {
+          gte: start,
+          lte: end,
+        },
+      },
+      include: {
+        client: {
+          select: {
+            id: true,
+            email: true,
+            phone: true,
+            clientProfile: {
+              select: {
+                nickname: true,
+              },
+            },
+          },
+        },
+        employee: {
+          select: {
+            id: true,
+            displayName: true,
+          },
+        },
+        service: {
+          select: {
+            id: true,
+            name: true,
+            durationMin: true,
+          },
+        },
+      },
+      orderBy: { startAt: 'asc' },
+    });
+
+    return appointments.map((appointment) => ({
+      id: appointment.id,
+      time: appointment.startAt,
+      staff: appointment.employee?.displayName ?? 'Non assigné',
+      client:
+        appointment.client.clientProfile?.nickname ||
+        appointment.client.email ||
+        appointment.client.phone ||
+        'Client',
+      service: appointment.service.name,
+      duration: `${appointment.service.durationMin}min`,
+      status: appointment.status,
+    }));
+  }
+
+  async getProPendingRequests(
+    user: { userId: string; role: UserRole },
+    date?: string,
+  ) {
+    if (user.role !== 'PROFESSIONAL' && user.role !== 'ADMIN') {
+      throw new ForbiddenException('Not allowed');
+    }
+
+    const salonIds =
+      user.role === 'ADMIN'
+        ? (
+            await this.prisma.salon.findMany({
+              select: { id: true },
+            })
+          ).map((salon) => salon.id)
+        : (
+            await this.prisma.salon.findMany({
+              where: { ownerId: user.userId },
+              select: { id: true },
+            })
+          ).map((salon) => salon.id);
+
+    if (!salonIds.length) {
+      return [];
+    }
+
+    const where: Prisma.AppointmentWhereInput = {
+      salonId: { in: salonIds },
+      status: AppointmentStatus.PENDING,
+    };
+
+    if (date) {
+      const targetDate = new Date(date);
+      if (Number.isNaN(targetDate.getTime())) {
+        throw new BadRequestException('Invalid date');
+      }
+
+      const start = new Date(targetDate);
+      start.setHours(0, 0, 0, 0);
+
+      const end = new Date(targetDate);
+      end.setHours(23, 59, 59, 999);
+
+      where.startAt = {
+        gte: start,
+        lte: end,
+      };
+    }
+
+    const appointments = await this.prisma.appointment.findMany({
+      where,
+      include: {
+        client: {
+          select: {
+            id: true,
+            email: true,
+            phone: true,
+            clientProfile: {
+              select: {
+                nickname: true,
+              },
+            },
+          },
+        },
+        service: {
+          select: {
+            id: true,
+            name: true,
+            durationMin: true,
+          },
+        },
+      },
+      orderBy: { startAt: 'asc' },
+    });
+
+    return appointments.map((appointment) => ({
+      id: appointment.id,
+      time: appointment.startAt,
+      client:
+        appointment.client.clientProfile?.nickname ||
+        appointment.client.email ||
+        appointment.client.phone ||
+        'Client',
+      service: appointment.service.name,
+      duration: `${appointment.service.durationMin}min`,
+      phone: appointment.client.phone ?? null,
+    }));
+  }
+
+  async getProHistory(
+    user: { userId: string; role: UserRole },
+    status?: string,
+  ) {
+    if (user.role !== 'PROFESSIONAL' && user.role !== 'ADMIN') {
+      throw new ForbiddenException('Not allowed');
+    }
+
+    const salonIds =
+      user.role === 'ADMIN'
+        ? (
+            await this.prisma.salon.findMany({
+              select: { id: true },
+            })
+          ).map((salon) => salon.id)
+        : (
+            await this.prisma.salon.findMany({
+              where: { ownerId: user.userId },
+              select: { id: true },
+            })
+          ).map((salon) => salon.id);
+
+    if (!salonIds.length) {
+      return [];
+    }
+
+    const allowedStatuses: AppointmentStatus[] = [
+      AppointmentStatus.COMPLETED,
+      AppointmentStatus.CANCELLED,
+      AppointmentStatus.NO_SHOW,
+    ];
+
+    const where: Prisma.AppointmentWhereInput = {
+      salonId: { in: salonIds },
+      status: {
+        in: allowedStatuses,
+      },
+    };
+
+    if (
+      status &&
+      ['COMPLETED', 'CANCELLED', 'NO_SHOW'].includes(status.toUpperCase())
+    ) {
+      where.status = status.toUpperCase() as AppointmentStatus;
+    }
+
+    const appointments = await this.prisma.appointment.findMany({
+      where,
+      include: {
+        client: {
+          select: {
+            id: true,
+            email: true,
+            phone: true,
+            clientProfile: {
+              select: {
+                nickname: true,
+              },
+            },
+          },
+        },
+        employee: {
+          select: {
+            id: true,
+            displayName: true,
+          },
+        },
+        service: {
+          select: {
+            id: true,
+            name: true,
+            price: true,
+          },
+        },
+      },
+      orderBy: { startAt: 'desc' },
+    });
+
+    return appointments.map((appointment) => ({
+      id: appointment.id,
+      startAt: appointment.startAt.toISOString(),
+      endAt: appointment.endAt.toISOString(),
+      clientId: appointment.client.id,
+      clientName:
+        appointment.client.clientProfile?.nickname ||
+        appointment.client.email ||
+        appointment.client.phone ||
+        'Client',
+      clientPhone: appointment.client.phone ?? null,
+      servicesLabel: appointment.service.name,
+      employeeName: appointment.employee?.displayName ?? null,
+      amount: appointment.totalAmount > 0 ? appointment.totalAmount : appointment.service.price,
+      status: appointment.status,
+    }));
   }
 }

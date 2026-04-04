@@ -11,8 +11,11 @@ import {
 } from "react-native";
 import { router, type Href } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { getDashboardSummary, type DashboardSummary } from "../../src/api/dashboard";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as SecureStore from "expo-secure-store";
+import {
+  getDashboardSummary,
+  type DashboardSummary,
+} from "../../src/api/dashboard";
 
 const today = new Date().toLocaleDateString("fr-FR", {
   weekday: "long",
@@ -66,7 +69,7 @@ const EMPTY_SUMMARY: DashboardSummary = {
 };
 
 async function getAccessToken(): Promise<string> {
-  const token = await AsyncStorage.getItem("accessToken");
+  const token = await SecureStore.getItemAsync("accessToken");
   if (!token) {
     throw new Error("Utilisateur non authentifié.");
   }
@@ -219,9 +222,7 @@ function QuickActions() {
           name="chevron-forward"
           size={20}
           color={COLORS.primary}
-          style={{
-            transform: [{ rotate: isOpen ? "90deg" : "0deg" }],
-          }}
+          style={{ transform: [{ rotate: isOpen ? "90deg" : "0deg" }] }}
         />
       </Pressable>
 
@@ -260,6 +261,12 @@ export default function ProDashboard() {
 
   const loadDashboard = async () => {
     const token = await getAccessToken();
+
+    if (!token) {
+      router.replace("/(auth)/login");
+      return;
+    }
+
     const data = await getDashboardSummary(token);
     setSummary({
       todayAppointments: data?.todayAppointments ?? 0,
@@ -332,7 +339,7 @@ export default function ProDashboard() {
         value: formatFcfa(summary.monthExpenses),
       },
     ],
-    [summary],
+    [summary]
   );
 
   return (

@@ -42,7 +42,7 @@ export function getAppointmentHistory(
   params?: GetAppointmentHistoryParams
 ) {
   return apiFetch<AppointmentHistoryItem[]>(
-    `/api/pro/appointments/history${buildQuery(params)}`,
+    `/pro/appointments/history${buildQuery(params)}`,
     {
       method: "GET",
       token,

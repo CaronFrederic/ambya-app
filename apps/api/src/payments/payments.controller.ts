@@ -35,14 +35,16 @@ export class PaymentsController {
     );
   }
 
-  @Get('cash-register')
-  getCashRegister(
+    @Get('cash-register')
+  cashRegister(
     @CurrentUser() user: JwtUser,
-    @Query() query: GetCashRegisterQueryDto,
+    @Query('date') date?: string,
+    @Query('method') method?: string,
   ) {
     return this.payments.getCashRegister(
       { userId: user.userId, role: user.role },
-      query,
-    );
+      date,
+      method,
+    )
   }
 }

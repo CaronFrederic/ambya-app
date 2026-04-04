@@ -1,7 +1,7 @@
 import { api } from './client'
 import * as SecureStore from 'expo-secure-store'
 
-const API_URL = process.env.EXPO_PUBLIC_API_URL
+const API_URL = process.env.EXPO_PUBLIC_API_URL?.replace(/\/+$/, '')
 
 export type LoginPayload = {
   email: string
@@ -21,20 +21,18 @@ type RegisterDto = {
 
 type RegisterResponse = {
   accessToken: string
-  user: { id: string; role: 'CLIENT' | 'PROFESSIONAL' | 'EMPLOYEE' | 'ADMIN' }
+  user: { id: string; role: 'CLIENT' | 'PROFESSIONAL' | 'EMPLOYEE' | 'ADMIN' | 'SALON_MANAGER' }
 }
 
 export async function login(payload: LoginPayload) {
-  const res = await api.post<LoginResponse>('/auth/login', payload)
+  const res = await api.post<LoginResponse>('/api/auth/login', payload)
   return res.data
 }
 
 export async function registerClient(dto: RegisterDto): Promise<RegisterResponse> {
   if (!API_URL) throw new Error('Missing EXPO_PUBLIC_API_URL')
 
-  // ✅ IMPORTANT: adapte l’URL si ton backend utilise un autre path
-  // ex: /auth/register, /auth/signup, /auth/client/register ...
-  const res = await fetch(`${API_URL}/auth/register`, {
+  const res = await fetch(`${API_URL}/api/auth/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(dto),
@@ -51,7 +49,7 @@ export async function registerClient(dto: RegisterDto): Promise<RegisterResponse
 export async function patchMeProfile(accessToken: string, payload: any) {
   if (!API_URL) throw new Error('Missing EXPO_PUBLIC_API_URL')
 
-  const res = await fetch(`${API_URL}/me/profile`, {
+  const res = await fetch(`${API_URL}/api/me/profile`, {
     method: 'PATCH',
     headers: {
       'Content-Type': 'application/json',

@@ -3,7 +3,7 @@ import * as SecureStore from "expo-secure-store";
 
 const API_BASE_URL =
   process.env.EXPO_PUBLIC_API_URL?.replace(/\/+$/, "") ||
-  "http://192.168.1.20:3000";
+  "http://192.168.1.20:3001";
 
 type RequestOptions = RequestInit & {
   token?: string | null;
@@ -16,7 +16,7 @@ async function getAuthToken(explicitToken?: string | null) {
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 30_000,
+  timeout: 30000,
   headers: {
     "Content-Type": "application/json",
   },
@@ -61,7 +61,7 @@ export async function apiFetch<T>(
         ? Array.isArray((data as { message?: unknown }).message)
           ? (data as { message: unknown[] }).message.map(String).join(", ")
           : String((data as { message?: unknown }).message)
-        : "Une erreur est survenue.";
+        : `Erreur HTTP ${response.status}`;
 
     throw new Error(message);
   }
@@ -92,7 +92,9 @@ export async function apiRequest<T = unknown>(
 
     const message = Array.isArray(axiosError.response?.data?.message)
       ? axiosError.response?.data?.message.join(", ")
-      : axiosError.response?.data?.message || "Une erreur est survenue.";
+      : axiosError.response?.data?.message ||
+        axiosError.message ||
+        "Une erreur est survenue.";
 
     throw new Error(message);
   }

@@ -315,136 +315,142 @@ export class PaymentsService {
 
   async getCashRegister(
     user: { userId: string; role: 'CLIENT' | 'PROFESSIONAL' | 'SALON_MANAGER' | 'EMPLOYEE' | 'ADMIN' },
-    query: GetCashRegisterQueryDto,
+    date?: string,
+    method?: string,
   ) {
-    if (user.role === 'CLIENT') {
+    if (!['PROFESSIONAL', 'ADMIN'].includes(user.role)) {
       throw new ForbiddenException('Not allowed');
     }
 
-    const date =
-      query.date ??
-      new Date().toISOString().slice(0, 10);
+    const salonIds =
+      user.role === 'ADMIN'
+        ? (
+            await this.prisma.salon.findMany({
+              select: { id: true },
+            })
+          ).map((salon) => salon.id)
+        : (
+            await this.prisma.salon.findMany({
+              where: { ownerId: user.userId },
+              select: { id: true },
+            })
+          ).map((salon) => salon.id);
 
-    const method = query.method ?? 'all';
-    const { start, end } = this.getDayBounds(date);
+    if (!salonIds.length) {
+      return {
+        date: date ?? new Date().toISOString().slice(0, 10),
+        totals: { total: 0, mobileMoney: 0, card: 0, cash: 0 },
+        transactions: [],
+        breakdown: [
+          { name: 'Part salon', value: 65, color: '#6B2737' },
+          { name: 'Commission AMBYA', value: 15, color: '#D4AF6A' },
+          { name: 'Frais transaction', value: 5, color: '#8B8B8B' },
+        ],
+        meta: { count: 0, paidCount: 0, pendingCount: 0, paidTotal: 0 },
+      };
+    }
 
-    const transactions = await this.prisma.paymentIntent.findMany({
-      where: {
-        status: {
-          in: [PaymentStatus.SUCCEEDED, PaymentStatus.PENDING],
-        },
-        createdAt: {
-          gte: start,
-          lte: end,
-        },
-        ...this.getUserSalonFilter(user),
+    const targetDate = date ? new Date(date) : new Date();
+    if (Number.isNaN(targetDate.getTime())) {
+      throw new BadRequestException('Invalid date');
+    }
+
+    const start = new Date(targetDate);
+    start.setHours(0, 0, 0, 0);
+
+    const end = new Date(targetDate);
+    end.setHours(23, 59, 59, 999);
+
+    const where: Prisma.PaymentIntentWhereInput = {
+      salonId: { in: salonIds },
+      transactionDate: {
+        gte: start,
+        lte: end,
       },
+    };
+
+    if (method === 'mobile-money') where.type = 'MOMO';
+    if (method === 'card') where.type = 'CARD';
+    if (method === 'cash') where.type = 'CASH';
+
+    const intents = await this.prisma.paymentIntent.findMany({
+      where,
       include: {
         appointment: {
           include: {
             client: {
-              select: {
-                id: true,
-                email: true,
-                phone: true,
-                clientProfile: {
-                  select: {
-                    nickname: true,
-                  },
-                },
+              include: {
+                clientProfile: true,
               },
             },
-            service: {
-              select: {
-                name: true,
-              },
-            },
-            employee: {
-              select: {
-                displayName: true,
-              },
-            },
+            service: true,
+            employee: true,
           },
         },
       },
-      orderBy: {
-        createdAt: 'desc',
-      },
+      orderBy: { transactionDate: 'desc' },
     });
 
-    const mapped = transactions.map((tx) => {
-      const inferredMethod = this.inferMethodFromProvider(tx.provider);
-      const clientName =
-        tx.appointment?.client?.clientProfile?.nickname ||
-        tx.appointment?.client?.phone ||
-        tx.appointment?.client?.email ||
+    const transactions = intents.map((intent) => {
+      const appointment = intent.appointment;
+      const client =
+        appointment?.client?.clientProfile?.nickname ||
+        appointment?.client?.email ||
+        appointment?.client?.phone ||
         'Client';
 
+      const methodMapped =
+        intent.type === 'MOMO'
+          ? 'mobile-money'
+          : intent.type === 'CARD'
+          ? 'card'
+          : 'cash';
+
       return {
-        id: tx.id,
-        date: tx.createdAt,
-        client: clientName,
-        clientId: tx.appointment?.client?.id ?? null,
-        services: tx.appointment?.service?.name ?? 'Prestation',
-        employee: tx.appointment?.employee?.displayName ?? 'Non assigné',
-        amount: tx.payableAmount > 0 ? tx.payableAmount : tx.amount,
-        method: inferredMethod,
-        status: tx.status === PaymentStatus.SUCCEEDED ? 'paid' : 'pending',
-        provider: tx.provider,
+        id: intent.id,
+        date: intent.transactionDate.toISOString(),
+        client,
+        clientId: appointment?.clientId ?? null,
+        services: appointment?.service?.name ?? 'Service',
+        employee: appointment?.employee?.displayName ?? 'Non assigné',
+        amount: intent.payableAmount || intent.amount,
+        method: methodMapped as 'mobile-money' | 'card' | 'cash',
+        status: intent.status === 'SUCCEEDED' ? 'paid' : 'pending',
+        provider: intent.provider ?? null,
       };
     });
 
-    const filteredTransactions =
-      method === 'all'
-        ? mapped
-        : mapped.filter((tx) => tx.method === method);
+    const paidTransactions = transactions.filter((tx) => tx.status === 'paid');
 
-    const totals = filteredTransactions.reduce(
+    const totals = paidTransactions.reduce(
       (acc, tx) => {
-        if (tx.status !== 'paid') return acc;
-
         acc.total += tx.amount;
         if (tx.method === 'mobile-money') acc.mobileMoney += tx.amount;
         if (tx.method === 'card') acc.card += tx.amount;
         if (tx.method === 'cash') acc.cash += tx.amount;
-
         return acc;
       },
       { total: 0, mobileMoney: 0, card: 0, cash: 0 },
     );
 
-    const paidTotal = totals.total || 1;
-
-    const breakdown = [
-      {
-        name: 'Part salon',
-        value: Math.round((65 / 100) * 100),
-        color: '#6B2737',
-      },
-      {
-        name: 'Commission AMBYA',
-        value: Math.round((15 / 100) * 100),
-        color: '#D4AF6A',
-      },
-      {
-        name: 'Frais transaction',
-        value: Math.round((5 / 100) * 100),
-        color: '#8B8B8B',
-      },
-    ];
-
     return {
-      date,
+      date: date ?? targetDate.toISOString().slice(0, 10),
       totals,
-      transactions: filteredTransactions,
-      breakdown,
+      transactions,
+      breakdown: [
+        { name: 'Part salon', value: 65, color: '#6B2737' },
+        { name: 'Commission AMBYA', value: 15, color: '#D4AF6A' },
+        { name: 'Frais transaction', value: 5, color: '#8B8B8B' },
+      ],
       meta: {
-        count: filteredTransactions.length,
-        paidCount: filteredTransactions.filter((t) => t.status === 'paid').length,
-        pendingCount: filteredTransactions.filter((t) => t.status === 'pending').length,
-        paidTotal,
+        count: transactions.length,
+        paidCount: transactions.filter((tx) => tx.status === 'paid').length,
+        pendingCount: transactions.filter((tx) => tx.status === 'pending').length,
+        paidTotal: totals.total,
       },
     };
   }
+
+  
 
 }
