@@ -15,7 +15,7 @@ import {
   getAppointmentHistory,
   type AppointmentHistoryItem,
 } from "../../src/api/appointments";
-
+import * as SecureStore from "expo-secure-store";
 const COLORS = {
   bg: "#FAF7F2",
   text: "#3A3A3A",
@@ -38,7 +38,11 @@ type Booking = {
 };
 
 async function getAccessToken(): Promise<string> {
-  return "TON_TOKEN_ICI";
+  const token = await SecureStore.getItemAsync("accessToken");
+  if (!token) {
+    throw new Error("Utilisateur non authentifié.");
+  }
+  return token;
 }
 
 function mapApiAppointmentToBooking(item: AppointmentHistoryItem): Booking | null {

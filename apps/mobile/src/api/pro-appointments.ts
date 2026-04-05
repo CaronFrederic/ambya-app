@@ -1,34 +1,37 @@
 import { apiFetch } from "./client";
 
-export type ProAppointmentStatus =
-  | "PENDING"
-  | "CONFIRMED"
-  | "CANCELLED"
-  | "COMPLETED"
-  | "NO_SHOW"
-  | "REJECTED";
-
 export type ProAppointmentCalendarItem = {
   id: string;
   startAt: string;
   endAt: string;
-  clientId: string | null;
+  status: "PENDING" | "CONFIRMED" | "CANCELLED" | "COMPLETED" | "NO_SHOW";
   clientName: string;
   clientPhone: string | null;
   serviceName: string;
   employeeName: string | null;
-  status: ProAppointmentStatus;
 };
 
 export type ProPendingAppointmentItem = {
   id: string;
   startAt: string;
   endAt: string;
-  clientId: string | null;
+  status: "PENDING";
   clientName: string;
   clientPhone: string | null;
   serviceName: string;
-  status: "PENDING";
+  employeeName: string | null;
+};
+
+export type ProAppointmentHistoryItem = {
+  id: string;
+  startAt: string;
+  endAt: string;
+  status: "COMPLETED" | "CANCELLED" | "NO_SHOW" | "CONFIRMED" | "PENDING";
+  clientName: string;
+  clientPhone: string | null;
+  serviceName: string;
+  employeeName: string | null;
+  amount: number;
 };
 
 export function getCalendarAppointments(token: string, date: string) {
@@ -51,8 +54,31 @@ export function getPendingAppointments(token: string, date: string) {
   );
 }
 
+export function getAppointmentHistory(
+  token: string,
+  status?: "all" | "completed" | "cancelled" | "no-show"
+) {
+  const search = new URLSearchParams();
+
+  if (status && status !== "all") {
+    if (status === "completed") search.set("status", "COMPLETED");
+    if (status === "cancelled") search.set("status", "CANCELLED");
+    if (status === "no-show") search.set("status", "NO_SHOW");
+  }
+
+  const qs = search.toString();
+
+  return apiFetch<ProAppointmentHistoryItem[]>(
+    `/api/pro/appointments/history${qs ? `?${qs}` : ""}`,
+    {
+      method: "GET",
+      token,
+    }
+  );
+}
+
 export function confirmAppointment(token: string, appointmentId: string) {
-  return apiFetch<{ success: true }>(
+  return apiFetch<{ id: string; status: string }>(
     `/api/pro/appointments/${appointmentId}/confirm`,
     {
       method: "PATCH",
@@ -62,7 +88,7 @@ export function confirmAppointment(token: string, appointmentId: string) {
 }
 
 export function rejectAppointment(token: string, appointmentId: string) {
-  return apiFetch<{ success: true }>(
+  return apiFetch<{ id: string; status: string }>(
     `/api/pro/appointments/${appointmentId}/reject`,
     {
       method: "PATCH",

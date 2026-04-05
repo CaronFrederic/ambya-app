@@ -1416,4 +1416,73 @@ export class AppointmentsService {
       status: appointment.status,
     }));
   }
+
+  async confirmAppointment(
+  user: { userId: string; role: UserRole },
+  appointmentId: string,
+) {
+  if (user.role !== 'PROFESSIONAL' && user.role !== 'ADMIN') {
+    throw new ForbiddenException('Not allowed');
+  }
+
+  const appt = await this.prisma.appointment.findUnique({
+    where: { id: appointmentId },
+    include: {
+      salon: { select: { ownerId: true } },
+    },
+  });
+
+  if (!appt) throw new NotFoundException('Appointment not found');
+
+  const isOwner =
+    user.role === 'PROFESSIONAL' && appt.salon.ownerId === user.userId;
+
+  if (!isOwner && user.role !== 'ADMIN') {
+    throw new ForbiddenException('Not allowed');
+  }
+
+  if (appt.status !== AppointmentStatus.PENDING) {
+    throw new BadRequestException('Only pending appointments can be confirmed');
+  }
+
+  return this.prisma.appointment.update({
+    where: { id: appointmentId },
+    data: { status: AppointmentStatus.CONFIRMED },
+  });
+}
+async rejectAppointment(
+  user: { userId: string; role: UserRole },
+  appointmentId: string,
+) {
+  if (user.role !== 'PROFESSIONAL' && user.role !== 'ADMIN') {
+    throw new ForbiddenException('Not allowed');
+  }
+
+  const appt = await this.prisma.appointment.findUnique({
+    where: { id: appointmentId },
+    include: {
+      salon: { select: { ownerId: true } },
+    },
+  });
+
+  if (!appt) throw new NotFoundException('Appointment not found');
+
+  const isOwner =
+    user.role === 'PROFESSIONAL' && appt.salon.ownerId === user.userId;
+
+  if (!isOwner && user.role !== 'ADMIN') {
+    throw new ForbiddenException('Not allowed');
+  }
+
+  if (appt.status !== AppointmentStatus.PENDING) {
+    throw new BadRequestException('Only pending appointments can be rejected');
+  }
+
+  return this.prisma.appointment.update({
+    where: { id: appointmentId },
+    data: { status: AppointmentStatus.CANCELLED },
+  });
+}
+
+
 }

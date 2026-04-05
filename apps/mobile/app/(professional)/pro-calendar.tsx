@@ -14,10 +14,12 @@ import { Ionicons } from "@expo/vector-icons";
 import { ProHeader } from "./components/ProHeader";
 import {
   confirmAppointment,
+  getCalendarAppointments,
   getPendingAppointments,
   rejectAppointment,
   type ProPendingAppointmentItem,
 } from "../../src/api/pro-appointments";
+import * as SecureStore from "expo-secure-store";
 
 type PendingRequest = {
   id: string;
@@ -31,8 +33,13 @@ type PendingRequest = {
 const AGENDA_HREF: Href = "/(professional)/agenda";
 
 async function getAccessToken(): Promise<string> {
-  return "TON_TOKEN_ICI";
+  const token = await SecureStore.getItemAsync("accessToken");
+  if (!token) {
+    throw new Error("Utilisateur non authentifié.");
+  }
+  return token;
 }
+
 
 function buildWeekDays() {
   const base = new Date();

@@ -2,8 +2,7 @@ import axios, { AxiosError, AxiosRequestConfig } from "axios";
 import * as SecureStore from "expo-secure-store";
 
 const API_BASE_URL =
-  process.env.EXPO_PUBLIC_API_URL?.replace(/\/+$/, "") ||
-  "http://192.168.1.20:3001";
+  process.env.EXPO_PUBLIC_API_URL?.trim().replace(/\/+$/, "") || "";
 
 type RequestOptions = RequestInit & {
   token?: string | null;
@@ -25,8 +24,9 @@ export const api = axios.create({
 api.interceptors.request.use(async (config) => {
   const token = await getAuthToken();
 
+  config.headers = config.headers ?? {};
+
   if (token) {
-    config.headers = config.headers ?? {};
     config.headers.Authorization = `Bearer ${token}`;
   }
 

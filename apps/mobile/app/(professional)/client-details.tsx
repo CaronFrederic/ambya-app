@@ -23,7 +23,7 @@ import {
   type ClientPreferredEmployee,
   type ClientPreferredService,
 } from "../../src/api/clients";
-
+import * as SecureStore from "expo-secure-store";
 const COLORS = {
   bg: "#FAF7F2",
   white: "#FFFFFF",
@@ -57,7 +57,11 @@ type PreferredEmployee = {
 };
 
 async function getAccessToken(): Promise<string> {
-  return "TON_TOKEN_ICI";
+  const token = await SecureStore.getItemAsync("accessToken");
+  if (!token) {
+    throw new Error("Utilisateur non authentifié.");
+  }
+  return token;
 }
 
 function formatFcfa(value: number) {

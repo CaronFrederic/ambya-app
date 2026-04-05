@@ -68,12 +68,9 @@ const EMPTY_SUMMARY: DashboardSummary = {
   occupancyRate: 0,
 };
 
-async function getAccessToken(): Promise<string> {
+async function getAccessToken(): Promise<string | null> {
   const token = await SecureStore.getItemAsync("accessToken");
-  if (!token) {
-    throw new Error("Utilisateur non authentifié.");
-  }
-  return token;
+  return token ?? null;
 }
 
 function formatFcfa(value: number) {
@@ -260,49 +257,52 @@ export default function ProDashboard() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const loadDashboard = async () => {
-    const token = await getAccessToken();
+  const token = await getAccessToken();
 
-    if (!token) {
-      router.replace("/(auth)/login");
-      return;
-    }
+  if (!token) {
+    setSummary(EMPTY_SUMMARY);
+    setErrorMessage(null);
+    router.replace("/(auth)/login");
+    return;
+  }
 
-    const data = await getDashboardSummary(token);
-    setSummary({
-      todayAppointments: data?.todayAppointments ?? 0,
-      monthRevenue: data?.monthRevenue ?? 0,
-      monthExpenses: data?.monthExpenses ?? 0,
-      newClients: data?.newClients ?? 0,
-      occupancyRate: data?.occupancyRate ?? 0,
-    });
-  };
+  const data = await getDashboardSummary(token);
 
-  const initialLoad = async () => {
-    try {
-      setLoading(true);
-      setErrorMessage(null);
-      await loadDashboard();
-    } catch (error) {
-      console.error("Dashboard load error:", error);
-      setErrorMessage("Impossible de charger le dashboard.");
-      setSummary(EMPTY_SUMMARY);
-    } finally {
-      setLoading(false);
-    }
-  };
+  setSummary({
+    todayAppointments: data?.todayAppointments ?? 0,
+    monthRevenue: data?.monthRevenue ?? 0,
+    monthExpenses: data?.monthExpenses ?? 0,
+    newClients: data?.newClients ?? 0,
+    occupancyRate: data?.occupancyRate ?? 0,
+  });
+};
+
+const initialLoad = async () => {
+  try {
+    setLoading(true);
+    setErrorMessage(null);
+    await loadDashboard();
+  } catch (error) {
+    console.error("Dashboard load error:", error);
+    setErrorMessage("Impossible de charger le dashboard.");
+    setSummary(EMPTY_SUMMARY);
+  } finally {
+    setLoading(false);
+  }
+};
 
   const onRefresh = async () => {
-    try {
-      setRefreshing(true);
-      setErrorMessage(null);
-      await loadDashboard();
-    } catch (error) {
-      console.error("Dashboard refresh error:", error);
-      setErrorMessage("Impossible d’actualiser les données.");
-    } finally {
-      setRefreshing(false);
-    }
-  };
+  try {
+    setRefreshing(true);
+    setErrorMessage(null);
+    await loadDashboard();
+  } catch (error) {
+    console.error("Dashboard refresh error:", error);
+    setErrorMessage("Impossible d’actualiser les données.");
+  } finally {
+    setRefreshing(false);
+  }
+};
 
   useEffect(() => {
     initialLoad();

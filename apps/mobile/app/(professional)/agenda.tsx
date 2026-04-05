@@ -16,7 +16,7 @@ import {
   getCalendarAppointments,
   type ProAppointmentCalendarItem,
 } from "../../src/api/pro-appointments";
-
+import * as SecureStore from "expo-secure-store";
 type AppointmentStatus = "confirmed" | "pending" | "cancelled";
 
 type Appointment = {
@@ -38,7 +38,11 @@ type DayItem = {
 const CALENDAR_HREF: Href = "/(professional)/pro-calendar";
 
 async function getAccessToken(): Promise<string> {
-  return "TON_TOKEN_ICI";
+  const token = await SecureStore.getItemAsync("accessToken");
+  if (!token) {
+    throw new Error("Utilisateur non authentifié.");
+  }
+  return token;
 }
 
 function formatTime(dateString: string) {
