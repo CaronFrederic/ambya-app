@@ -14,5 +14,13 @@
   "keywords": [],
   "author": "LAN Consulting",
   "license": "ISC",
-  "packageManager": "pnpm@10.29.3"
+  "packageManager": "pnpm@10.29.3",
+  "devDependencies": {
+    "@types/bcrypt": "^6.0.0",
+    "@types/passport-jwt": "^4.0.1"
+  },
+  "dependencies": {
+    "@prisma/adapter-pg": "^7.5.0",
+    "pg": "^8.20.0"
+  }
 }

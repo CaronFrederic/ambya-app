@@ -1,16 +1,23 @@
-version: "3.9"
-
 services:
+
+
+
+
+
+
+
+
+
   postgres:
     image: postgres:16
     container_name: ambya-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: postgres
+      POSTGRES_USER: ambya
+      POSTGRES_PASSWORD: ambya_password
+      POSTGRES_DB: ambya
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - ambya_postgres_data:/var/lib/postgresql/data
 
