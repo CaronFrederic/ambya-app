@@ -1,4 +1,5 @@
 import {
+  Prisma,
   PrismaClient,
   User,
   SalonClient,
@@ -11,9 +12,12 @@ import {
   ExpenseStatus,
   ServiceStatus,
   LoyaltyTier,
-}  from "src/generated/prisma";
+  PromotionType,
+  ClientPreferenceType,
+  LoyaltyReason,
+} from "@prisma/client";
 import bcrypt from "bcrypt";
-import { Prisma } from "src/generated/prisma";
+
 export async function seedTest(prisma: PrismaClient) {
   const hashedPassword = await bcrypt.hash("password123", 10);
 
@@ -384,7 +388,7 @@ export async function seedTest(prisma: PrismaClient) {
   await prisma.clientPreference.create({
     data: {
       salonClientId: salonClients[0].id,
-      type: "SERVICE",
+      type: ClientPreferenceType.SERVICE,
       value: "Tresses simples",
       serviceId: tresses.id,
     },
@@ -393,7 +397,7 @@ export async function seedTest(prisma: PrismaClient) {
   await prisma.clientPreference.create({
     data: {
       salonClientId: salonClients[0].id,
-      type: "EMPLOYEE",
+      type: ClientPreferenceType.EMPLOYEE,
       value: "Marie Kouassi",
       employeeId: marie.id,
     },
@@ -417,7 +421,7 @@ export async function seedTest(prisma: PrismaClient) {
 
   console.log("🎁 Creating loyalty accounts...");
 
-  await prisma.loyaltyAccount.create({
+  const loyalty1 = await prisma.loyaltyAccount.create({
     data: {
       userId: clientUsers[0].id,
       tier: LoyaltyTier.BRONZE,
@@ -427,7 +431,7 @@ export async function seedTest(prisma: PrismaClient) {
     },
   });
 
-  await prisma.loyaltyAccount.create({
+  const loyalty2 = await prisma.loyaltyAccount.create({
     data: {
       userId: clientUsers[1].id,
       tier: LoyaltyTier.SILVER,
@@ -439,11 +443,30 @@ export async function seedTest(prisma: PrismaClient) {
     },
   });
 
+  await prisma.loyaltyTransaction.create({
+    data: {
+      loyaltyAccountId: loyalty1.id,
+      deltaPoints: 280,
+      reason: LoyaltyReason.BOOKING,
+      meta: { source: "seed" },
+    },
+  });
+
+  await prisma.loyaltyTransaction.create({
+    data: {
+      loyaltyAccountId: loyalty2.id,
+      deltaPoints: 620,
+      reason: LoyaltyReason.BOOKING,
+      meta: { source: "seed" },
+    },
+  });
+
   const now = new Date();
+
   const at = (base: Date, days: number, hour: number, minute = 0) => {
     const d = new Date(base);
-    d.setUTCDate(d.getUTCDate() + days);
-    d.setUTCHours(hour, minute, 0, 0);
+    d.setDate(d.getDate() + days);
+    d.setHours(hour, minute, 0, 0);
     return d;
   };
 
@@ -588,6 +611,10 @@ export async function seedTest(prisma: PrismaClient) {
   ];
 
   for (const item of appointments) {
+    const depositAmount = salon.depositEnabled
+      ? Math.round(item.totalAmount * (salon.depositPercentage / 100))
+      : 0;
+
     const appointment = await prisma.appointment.create({
       data: {
         salonId: salon.id,
@@ -603,10 +630,8 @@ export async function seedTest(prisma: PrismaClient) {
         subtotalAmount: item.totalAmount,
         discountAmount: 0,
         totalAmount: item.totalAmount,
-        depositAmount: salon.depositEnabled ? Math.round(item.totalAmount * 0.3) : 0,
-        remainingAmount: salon.depositEnabled
-          ? item.totalAmount - Math.round(item.totalAmount * 0.3)
-          : item.totalAmount,
+        depositAmount,
+        remainingAmount: item.totalAmount - depositAmount,
         createdById: proUser.id,
       },
     });
@@ -699,7 +724,7 @@ export async function seedTest(prisma: PrismaClient) {
       salonId: salon.id,
       title: "Promo coiffure semaine",
       description: "Réduction spéciale sur le brushing",
-      type: "PERCENTAGE",
+      type: PromotionType.PERCENTAGE,
       value: 10,
       startDate: at(now, -1, 0),
       endDate: at(now, 7, 23),
@@ -716,4 +741,4 @@ export async function seedTest(prisma: PrismaClient) {
   });
 
   console.log("✅ Test seed completed successfully");
-}
+  }

@@ -1,9 +1,12 @@
 import { PrismaClient, UserRole, EmployeeStatus, AppointmentStatus, AppointmentSource, PaymentStatus, PaymentType, ExpenseStatus } from "src/generated/prisma";
 import bcrypt from "bcrypt";
-
+import { User, SalonClient } from "@prisma/client";
 export async function seedTest(prisma: PrismaClient) {
   const password = await bcrypt.hash("password123", 10);
-
+type SeedClient = {
+  user: User;
+  salonClient: SalonClient;
+};
   await prisma.paymentIntent.deleteMany();
   await prisma.appointment.deleteMany();
   await prisma.clientNote.deleteMany();
@@ -195,7 +198,7 @@ export async function seedTest(prisma: PrismaClient) {
     }),
   ]);
 
-  const clients = [];
+  const clients: SeedClient[] = [];
   for (let i = 1; i <= 6; i++) {
     const user = await prisma.user.create({
       data: {

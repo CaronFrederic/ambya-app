@@ -195,7 +195,16 @@ export async function seedTest(prisma: PrismaClient) {
     }),
   ]);
 
-  const clients = [];
+  type SeedClientRef = {
+  user: {
+    id: string;
+  };
+  salonClient: {
+    id: string;
+  };
+};
+
+const clients: SeedClientRef[] = [];
   for (let i = 1; i <= 6; i++) {
     const user = await prisma.user.create({
       data: {
