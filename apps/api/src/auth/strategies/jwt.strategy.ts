@@ -1,9 +1,9 @@
-import { Injectable } from '@nestjs/common'
-import { PassportStrategy } from '@nestjs/passport'
-import { ConfigService } from '@nestjs/config'
-import { ExtractJwt, Strategy } from 'passport-jwt'
-import { UserRole } from '@prisma/client'
-import { JwtPayload } from 'src/common/interfaces/jwt-payload.interface'
+import { Injectable } from '@nestjs/common';
+import { PassportStrategy } from '@nestjs/passport';
+import { ConfigService } from '@nestjs/config';
+import { ExtractJwt, Strategy } from 'passport-jwt';
+import { UserRole } from '@prisma/client';
+import { JwtPayload } from 'src/common/interfaces/jwt-payload.interface';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
@@ -11,12 +11,18 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       secretOrKey: config.get<string>('JWT_SECRET') ?? 'dev-secret-change-me',
-    })
+    });
   }
 
-  validate(payload: { sub: string; role: UserRole  }) {
-    return { userId: payload.sub, role: payload.role }
+  validate(payload: JwtPayload) {
+    return {
+      sub: payload.sub,
+      userId: payload.sub,
+      email: payload.email ?? null,
+      phone: payload.phone ?? null,
+      role: payload.role,
+      salonId: payload.salonId ?? null,
+      employeeId: payload.employeeId ?? null,
+    };
   }
-  
-
 }

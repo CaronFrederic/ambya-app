@@ -35,55 +35,55 @@ export type MarkAbsencePayload = {
   reason?: string;
 };
 
-export function getEmployees(token: string) {
+export function getEmployees() {
   return apiFetch<ApiEmployee[]>("/api/pro/employees", {
     method: "GET",
-    token,
+    
   });
 }
 
-export function createEmployee(token: string, payload: CreateEmployeePayload) {
+export function createEmployee( payload: CreateEmployeePayload) {
   return apiFetch<ApiEmployee>("/api/pro/employees", {
     method: "POST",
-    token,
+    
     body: JSON.stringify(payload),
   });
 }
 
 export function updateEmployee(
-  token: string,
+  
   id: string,
   payload: UpdateEmployeePayload
 ) {
   return apiFetch<ApiEmployee>(`/api/pro/employees/${id}`, {
     method: "PATCH",
-    token,
+    
     body: JSON.stringify(payload),
   });
 }
 
-export function deleteEmployee(token: string, id: string) {
+export function deleteEmployee( id: string) {
   return apiFetch<ApiEmployee>(`/api/pro/employees/${id}`, {
     method: "DELETE",
-    token,
+    
   });
 }
 
 export function markEmployeeAbsent(
-  token: string,
+  
   id: string,
   payload: MarkAbsencePayload
 ) {
   return apiFetch(`/api/pro/employees/${id}/mark-absent`, {
     method: "PATCH",
-    token,
+    
     body: JSON.stringify(payload),
   });
 }
 
-export function markEmployeeActive(token: string, id: string) {
+export function markEmployeeActive( id: string) {
   return apiFetch<ApiEmployee>(`/api/pro/employees/${id}/mark-active`, {
     method: "PATCH",
-    token,
+    
   });
 }

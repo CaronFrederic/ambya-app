@@ -24,7 +24,7 @@ import {
   updateEmployee,
   type ApiEmployee,
 } from "../../src/api/employees";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+
 
 type EmployeeStatus = "active" | "leave" | "absent";
 
@@ -49,13 +49,7 @@ type AppointmentRequest = {
   status: RequestStatus;
 };
 
-async function getAccessToken(): Promise<string> {
-  const token = await AsyncStorage.getItem("accessToken");
-  if (!token) {
-    throw new Error("Utilisateur non authentifié.");
-  }
-  return token;
-}
+
 
 function mapApiEmployeeToUi(employee: ApiEmployee): Employee {
   let status: EmployeeStatus = "active";
@@ -173,8 +167,8 @@ export default function EmployeeManagement() {
   };
 
   const loadEmployees = async () => {
-    const token = await getAccessToken();
-    const data = await getEmployees(token);
+    
+    const data = await getEmployees();
     setEmployees(data.map(mapApiEmployeeToUi));
   };
 
@@ -293,10 +287,10 @@ export default function EmployeeManagement() {
 
     try {
       setSubmitting(true);
-      const token = await getAccessToken();
+      
 
       if (editingEmployee) {
-        await updateEmployee(token, editingEmployee, {
+        await updateEmployee( editingEmployee, {
           displayName: fullName,
           roleLabel: resolvedRole,
           photoUrl: editFormData.photo ?? undefined,
@@ -306,7 +300,7 @@ export default function EmployeeManagement() {
 
         toast("Employé modifié");
       } else {
-        await createEmployee(token, {
+        await createEmployee( {
           displayName: fullName,
           firstName: editFormData.firstName || undefined,
           roleLabel: resolvedRole,
@@ -331,8 +325,8 @@ export default function EmployeeManagement() {
 
   const handleDeleteEmployee = async (id: string) => {
     try {
-      const token = await getAccessToken();
-      await deleteEmployee(token, id);
+      
+      await deleteEmployee( id);
       await loadEmployees();
       setShowDeleteConfirm(null);
       toast("Employé supprimé");
@@ -357,8 +351,8 @@ export default function EmployeeManagement() {
 
   const handleMarkActive = async (employeeId: string, name?: string) => {
     try {
-      const token = await getAccessToken();
-      await markEmployeeActive(token, employeeId);
+      
+      await markEmployeeActive(employeeId);
       await loadEmployees();
       toast(`${name ?? "Employé"} est marqué(e) présent(e)`);
     } catch (error) {
@@ -372,8 +366,8 @@ export default function EmployeeManagement() {
     const emp = employees.find((e) => e.id === showAbsenceModal);
 
     try {
-      const token = await getAccessToken();
-      await markEmployeeAbsent(token, showAbsenceModal, {
+      
+      await markEmployeeAbsent(showAbsenceModal, {
         startDate: absenceStartDate,
         endDate: absenceEndDate || undefined,
         reason: absenceReason || undefined,

@@ -259,12 +259,11 @@ export default function ProDashboard() {
   const loadDashboard = async () => {
   const token = await getAccessToken();
 
-  if (!token) {
-    setSummary(EMPTY_SUMMARY);
-    setErrorMessage(null);
-    router.replace("/(auth)/login");
-    return;
-  }
+ if (!token) {
+  setSummary(EMPTY_SUMMARY);
+  setErrorMessage("Session expirée.");
+  return;
+}
 
   const data = await getDashboardSummary(token);
 
@@ -282,8 +281,17 @@ const initialLoad = async () => {
     setLoading(true);
     setErrorMessage(null);
     await loadDashboard();
-  } catch (error) {
+  } catch (error: any) {
     console.error("Dashboard load error:", error);
+
+    const message = String(error?.message ?? "");
+
+    if (message.toLowerCase().includes("unauthorized")) {
+      setSummary(EMPTY_SUMMARY);
+      setErrorMessage("Session expirée.");
+      return;
+    }
+
     setErrorMessage("Impossible de charger le dashboard.");
     setSummary(EMPTY_SUMMARY);
   } finally {
@@ -296,8 +304,17 @@ const initialLoad = async () => {
     setRefreshing(true);
     setErrorMessage(null);
     await loadDashboard();
-  } catch (error) {
+  } catch (error: any) {
     console.error("Dashboard refresh error:", error);
+
+    const message = String(error?.message ?? "");
+
+    if (message.toLowerCase().includes("unauthorized")) {
+      setSummary(EMPTY_SUMMARY);
+      setErrorMessage("Session expirée.");
+      return;
+    }
+
     setErrorMessage("Impossible d’actualiser les données.");
   } finally {
     setRefreshing(false);
@@ -305,8 +322,27 @@ const initialLoad = async () => {
 };
 
   useEffect(() => {
-    initialLoad();
-  }, []);
+  let cancelled = false;
+
+  const run = async () => {
+    const token = await getAccessToken();
+
+    if (!token || cancelled) {
+      setLoading(false);
+      setSummary(EMPTY_SUMMARY);
+      setErrorMessage("Session expirée.");
+      return;
+    }
+
+    await initialLoad();
+  };
+
+  run();
+
+  return () => {
+    cancelled = true;
+  };
+}, []);
 
   const kpis = useMemo(
     () => [

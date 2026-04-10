@@ -104,11 +104,11 @@ async function apiFetch<T>(path: string, token: string, init?: RequestInit): Pro
 }
 
 export function getSalonSettings(token: string) {
-  return apiFetch<SalonSettingsResponse>("/pro/salon-settings", token)
+  return apiFetch<SalonSettingsResponse>("/api/pro/salon-settings", token)
 }
 
 export function updateSalonSettings(token: string, payload: UpdateSalonSettingsPayload) {
-  return apiFetch<SalonSettingsResponse>("/pro/salon-settings", token, {
+  return apiFetch<SalonSettingsResponse>("/api/pro/salon-settings", token, {
     method: "PUT",
     body: JSON.stringify(payload),
   })

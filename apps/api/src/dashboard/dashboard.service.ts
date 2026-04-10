@@ -204,11 +204,11 @@ const totalRelevant = monthAppointments.filter((a) =>
     }
 
     return {
-      todayAppointments,
-      monthlyRevenue,
-      occupancyRate,
-      newClients,
-      monthlyExpenses,
+     todayAppointments,
+  monthRevenue: monthlyRevenue,
+  occupancyRate,
+  newClients,
+  monthExpenses: monthlyExpenses,
     };
   }
 }

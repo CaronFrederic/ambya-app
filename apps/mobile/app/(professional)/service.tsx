@@ -27,7 +27,7 @@ import {
   updateService,
   type ApiService,
 } from "../../src/api/services";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+
 type ServiceCategory =
   | "Coiffure"
   | "Barbier"
@@ -62,13 +62,7 @@ const COLORS = {
   success: "#16a34a",
 };
 
-async function getAccessToken(): Promise<string> {
-  const token = await AsyncStorage.getItem("accessToken");
-  if (!token) {
-    throw new Error("Utilisateur non authentifié.");
-  }
-  return token;
-}
+
 
 function normalizeCategory(value?: string | null): ServiceCategory {
   const allowed: ServiceCategory[] = [
@@ -158,8 +152,8 @@ export default function ServicesScreen() {
   };
 
   const loadServices = async () => {
-    const token = await getAccessToken();
-    const data = await getServices(token);
+   
+    const data = await getServices();
     setServices(data.map(mapApiServiceToUi));
   };
 
@@ -229,10 +223,10 @@ export default function ServicesScreen() {
 
     try {
       setSubmitting(true);
-      const token = await getAccessToken();
+      
 
       if (editingId) {
-        await updateService(token, editingId, {
+        await updateService( editingId, {
           name: form.name.trim(),
           category: form.category,
           price,
@@ -241,14 +235,14 @@ export default function ServicesScreen() {
         });
 
         if (form.isActive) {
-          await activateService(token, editingId);
+          await activateService(editingId);
         } else {
-          await deactivateService(token, editingId);
+          await deactivateService(editingId);
         }
 
         toast("Service modifié ✅");
       } else {
-        const created = await createService(token, {
+        const created = await createService( {
           name: form.name.trim(),
           category: form.category,
           price,
@@ -257,7 +251,7 @@ export default function ServicesScreen() {
         });
 
         if (!form.isActive) {
-          await deactivateService(token, created.id);
+          await deactivateService(created.id);
         }
 
         toast("Service ajouté ✅");
@@ -277,8 +271,8 @@ export default function ServicesScreen() {
     if (!deleteId) return;
 
     try {
-      const token = await getAccessToken();
-      await deleteService(token, deleteId);
+      
+      await deleteService( deleteId);
       await loadServices();
       setDeleteId(null);
       toast("Service supprimé 🗑️");
@@ -308,13 +302,13 @@ export default function ServicesScreen() {
 
   const toggleServiceStatus = async (id: string, isActive: boolean) => {
     try {
-      const token = await getAccessToken();
+      
 
       if (isActive) {
-        await deactivateService(token, id);
+        await deactivateService( id);
         toast("Service désactivé");
       } else {
-        await activateService(token, id);
+        await activateService(id);
         toast("Service activé");
       }
 

@@ -23,7 +23,7 @@ import {
   getExpenses,
   type ApiExpense,
 } from "../../src/api/expenses";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as SecureStore from "expo-secure-store";
 
 type Expense = {
   id: string;
@@ -47,11 +47,11 @@ const COLORS = {
 const DASHBOARD_HREF: Href = "/(professional)/dashboard";
 
 async function getAccessToken(): Promise<string> {
-const token = await AsyncStorage.getItem("accessToken");
-if (!token) {
-throw new Error("Utilisateur non authentifié.");
-}
-return token;
+  const token = await SecureStore.getItemAsync("accessToken");
+  if (!token) {
+    throw new Error("Utilisateur non authentifié.");
+  }
+  return token;
 }
 
 function formatDateToYmd(value: string) {

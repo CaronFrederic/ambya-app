@@ -13,15 +13,29 @@ import { ListExpensesDto } from './dto/list-expenses.dto';
 export class ExpensesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private ensureSalon(user: any) {
-    if (!user?.salonId) {
+  private async ensureSalon(user: any) {
+    if (!user?.sub) {
+      throw new ForbiddenException('Utilisateur non authentifié');
+    }
+
+    const salon = await this.prisma.salon.findFirst({
+      where: {
+        ownerId: user.sub,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (!salon) {
       throw new ForbiddenException('Salon introuvable pour cet utilisateur');
     }
-    return user.salonId as string;
+
+    return salon.id;
   }
 
   async findAll(user: any, query: ListExpensesDto) {
-    const salonId = this.ensureSalon(user);
+    const salonId = await this.ensureSalon(user);
 
     const where: any = {
       salonId,
@@ -52,7 +66,7 @@ export class ExpensesService {
   }
 
   async create(user: any, dto: CreateExpenseDto) {
-    const salonId = this.ensureSalon(user);
+    const salonId = await this.ensureSalon(user);
 
     return this.prisma.expense.create({
       data: {
@@ -69,7 +83,7 @@ export class ExpensesService {
   }
 
   async update(user: any, id: string, dto: UpdateExpenseDto) {
-    const salonId = this.ensureSalon(user);
+    const salonId = await this.ensureSalon(user);
 
     const expense = await this.prisma.expense.findFirst({
       where: {
@@ -96,7 +110,7 @@ export class ExpensesService {
   }
 
   async remove(user: any, id: string) {
-    const salonId = this.ensureSalon(user);
+    const salonId = await this.ensureSalon(user);
 
     const expense = await this.prisma.expense.findFirst({
       where: {

@@ -23,16 +23,32 @@ import { ClientsModule } from './clients/clients.module';
 import { SalonSettingsModule } from './salon-settings/salon-settings.module'
 
 @Module({
-  imports: [AppConfigModule, AppointmentsModule, DashboardModule,SalonSettingsModule,
-    AuthModule, MeModule, PaymentMethodsModule, PaymentsModule, DiscoveryModule, UsersModule, SalonsModule, EmployeesModule, ServicesModule,
-    ConfigModule.forRoot({
-      isGlobal: true,
-      envFilePath: [
-        join(process.cwd(), 'apps/api/.env'),
-        join(process.cwd(), '.env'),
-        join(__dirname, '../.env'),
-      ],
-    }), HealthModule, PrismaModule],
+  imports: [
+  AppConfigModule,
+  AppointmentsModule,
+  DashboardModule,
+  SalonSettingsModule,
+  AuthModule,
+  MeModule,
+  PaymentMethodsModule,
+  PaymentsModule,
+  DiscoveryModule,
+  UsersModule,
+  SalonsModule,
+  EmployeesModule,
+  ServicesModule,
+  ExpensesModule,
+  ConfigModule.forRoot({
+    isGlobal: true,
+    envFilePath: [
+      join(process.cwd(), 'apps/api/.env'),
+      join(process.cwd(), '.env'),
+      join(__dirname, '../.env'),
+    ],
+  }),
+  HealthModule,
+  PrismaModule,
+],
   controllers: [AppController],
   providers: [AppService],
 })
