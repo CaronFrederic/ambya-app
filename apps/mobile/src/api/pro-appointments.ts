@@ -34,28 +34,28 @@ export type ProAppointmentHistoryItem = {
   amount: number;
 };
 
-export function getCalendarAppointments(token: string, date: string) {
+export function getCalendarAppointments( date: string) {
   return apiFetch<ProAppointmentCalendarItem[]>(
     `/api/pro/appointments/calendar?date=${encodeURIComponent(date)}`,
     {
       method: "GET",
-      token,
+      
     }
   );
 }
 
-export function getPendingAppointments(token: string, date: string) {
+export function getPendingAppointments( date: string) {
   return apiFetch<ProPendingAppointmentItem[]>(
     `/api/pro/appointments/pending?date=${encodeURIComponent(date)}`,
     {
       method: "GET",
-      token,
+      
     }
   );
 }
 
 export function getAppointmentHistory(
-  token: string,
+  
   status?: "all" | "completed" | "cancelled" | "no-show"
 ) {
   const search = new URLSearchParams();
@@ -72,27 +72,27 @@ export function getAppointmentHistory(
     `/api/pro/appointments/history${qs ? `?${qs}` : ""}`,
     {
       method: "GET",
-      token,
+      
     }
   );
 }
 
-export function confirmAppointment(token: string, appointmentId: string) {
+export function confirmAppointment( appointmentId: string) {
   return apiFetch<{ id: string; status: string }>(
     `/api/pro/appointments/${appointmentId}/confirm`,
     {
       method: "PATCH",
-      token,
+      
     }
   );
 }
 
-export function rejectAppointment(token: string, appointmentId: string) {
+export function rejectAppointment( appointmentId: string) {
   return apiFetch<{ id: string; status: string }>(
     `/api/pro/appointments/${appointmentId}/reject`,
     {
       method: "PATCH",
-      token,
+      
     }
   );
 }

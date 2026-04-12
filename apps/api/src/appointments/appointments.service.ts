@@ -1218,18 +1218,19 @@ export class AppointmentsService {
     });
 
     return appointments.map((appointment) => ({
-      id: appointment.id,
-      time: appointment.startAt,
-      staff: appointment.employee?.displayName ?? 'Non assigné',
-      client:
-        appointment.client.clientProfile?.nickname ||
-        appointment.client.email ||
-        appointment.client.phone ||
-        'Client',
-      service: appointment.service.name,
-      duration: `${appointment.service.durationMin}min`,
-      status: appointment.status,
-    }));
+  id: appointment.id,
+  startAt: appointment.startAt.toISOString(),
+  endAt: appointment.endAt.toISOString(),
+  status: appointment.status,
+  clientName:
+    appointment.client.clientProfile?.nickname ||
+    appointment.client.email ||
+    appointment.client.phone ||
+    'Client',
+  clientPhone: appointment.client.phone ?? null,
+  serviceName: appointment.service.name,
+  employeeName: appointment.employee?.displayName ?? null,
+}));
   }
 
   async getProPendingRequests(
@@ -1296,6 +1297,12 @@ export class AppointmentsService {
             },
           },
         },
+        employee: {
+          select: {
+            id: true,
+            displayName: true,
+          },
+        },
         service: {
           select: {
             id: true,
@@ -1307,18 +1314,20 @@ export class AppointmentsService {
       orderBy: { startAt: 'asc' },
     });
 
-    return appointments.map((appointment) => ({
-      id: appointment.id,
-      time: appointment.startAt,
-      client:
-        appointment.client.clientProfile?.nickname ||
-        appointment.client.email ||
-        appointment.client.phone ||
-        'Client',
-      service: appointment.service.name,
-      duration: `${appointment.service.durationMin}min`,
-      phone: appointment.client.phone ?? null,
-    }));
+   return appointments.map((appointment) => ({
+  id: appointment.id,
+  startAt: appointment.startAt.toISOString(),
+  endAt: appointment.endAt.toISOString(),
+  status: appointment.status,
+  clientName:
+    appointment.client.clientProfile?.nickname ||
+    appointment.client.email ||
+    appointment.client.phone ||
+    'Client',
+  clientPhone: appointment.client.phone ?? null,
+  serviceName: appointment.service.name,
+  employeeName: appointment.employee?.displayName ?? null,
+}));
   }
 
   async getProHistory(

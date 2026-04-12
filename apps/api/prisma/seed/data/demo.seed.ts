@@ -1,7 +1,16 @@
-import { PrismaClient, UserRole, EmployeeStatus, AppointmentStatus, AppointmentSource, PaymentStatus, PaymentType, ExpenseStatus } from "src/generated/prisma";
+import {
+  PrismaClient,
+  UserRole,
+  EmployeeStatus,
+  AppointmentStatus,
+  AppointmentSource,
+  PaymentStatus,
+  PaymentType,
+  ExpenseStatus,
+} from "@prisma/client";
 import bcrypt from "bcrypt";
 
-export async function seedTest(prisma: PrismaClient) {
+export async function seedDemo(prisma: PrismaClient) {
   const password = await bcrypt.hash("password123", 10);
 
   await prisma.paymentIntent.deleteMany();

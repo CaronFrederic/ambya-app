@@ -76,4 +76,43 @@ export class AppointmentsController {
   ) {
     return this.service.createGroupReview(user, groupId, dto)
   }
+  @Get('pro/calendar')
+getProCalendar(
+  @CurrentUser() user: JwtUser,
+  @Query('date') date?: string,
+) {
+  return this.service.getProCalendar(user, date);
+}
+
+@Get('pro/pending')
+getProPending(
+  @CurrentUser() user: JwtUser,
+  @Query('date') date?: string,
+) {
+  return this.service.getProPendingRequests(user, date);
+}
+
+@Get('pro/history')
+getProHistory(
+  @CurrentUser() user: JwtUser,
+  @Query('status') status?: string,
+) {
+  return this.service.getProHistory(user, status);
+}
+
+@Patch('pro/:id/confirm')
+confirm(
+  @CurrentUser() user: JwtUser,
+  @Param('id') id: string,
+) {
+  return this.service.confirmAppointment(user, id);
+}
+
+@Patch('pro/:id/reject')
+reject(
+  @CurrentUser() user: JwtUser,
+  @Param('id') id: string,
+) {
+  return this.service.rejectAppointment(user, id);
+}
 }

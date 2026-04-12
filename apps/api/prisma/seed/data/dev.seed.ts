@@ -1,7 +1,18 @@
-import { PrismaClient, UserRole, EmployeeStatus, AppointmentStatus, AppointmentSource, PaymentStatus, PaymentType, ExpenseStatus } from "src/generated/prisma";
+import {
+  PrismaClient,
+  UserRole,
+  EmployeeStatus,
+  AppointmentStatus,
+  AppointmentSource,
+  PaymentStatus,
+  PaymentType,
+  ExpenseStatus,
+  User,
+  SalonClient,
+} from "@prisma/client";
 import bcrypt from "bcrypt";
-import { User, SalonClient } from "@prisma/client";
-export async function seedTest(prisma: PrismaClient) {
+
+export async function seedDev(prisma: PrismaClient) {
   const password = await bcrypt.hash("password123", 10);
 type SeedClient = {
   user: User;

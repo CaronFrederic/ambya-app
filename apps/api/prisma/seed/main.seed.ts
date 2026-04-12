@@ -3,7 +3,9 @@ import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
 
+import { seedDev } from "./data/dev.seed";
 import { seedTest } from "./data/test.seed";
+import { seedDemo } from "./data/demo.seed";
 
 const connectionString = process.env.DATABASE_URL;
 
@@ -19,23 +21,24 @@ const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
 
 async function main() {
-  const mode = process.argv[2] ?? "dev";
+  const mode = process.env.SEED_SCENARIO || process.env.APP_ENV || "dev";
 
   console.log(`🌱 Running seed mode: ${mode}`);
 
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("Seeding is disabled in production");
+  }
+
   switch (mode) {
     case "dev":
-      await seedTest(prisma);
+      await seedDev(prisma);
       break;
-
     case "test":
       await seedTest(prisma);
       break;
-
     case "demo":
-      await seedTest(prisma);
+      await seedDemo(prisma);
       break;
-
     default:
       throw new Error(`Unknown seed mode: ${mode}`);
   }

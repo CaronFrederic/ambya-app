@@ -19,7 +19,7 @@ import {
   rejectAppointment,
   type ProPendingAppointmentItem,
 } from "../../src/api/pro-appointments";
-import * as SecureStore from "expo-secure-store";
+
 
 type PendingRequest = {
   id: string;
@@ -32,13 +32,7 @@ type PendingRequest = {
 
 const AGENDA_HREF: Href = "/(professional)/agenda";
 
-async function getAccessToken(): Promise<string> {
-  const token = await SecureStore.getItemAsync("accessToken");
-  if (!token) {
-    throw new Error("Utilisateur non authentifié.");
-  }
-  return token;
-}
+
 
 
 function buildWeekDays() {
@@ -86,8 +80,8 @@ function mapPendingRequest(item: ProPendingAppointmentItem): PendingRequest {
   return {
     id: item.id,
     time: formatTime(item.startAt),
-    client: item.clientName,
-    service: item.serviceName,
+    client: item.clientName || "Client non renseigné",
+    service: item.serviceName || "Service non renseigné",
     duration: formatDuration(item.startAt, item.endAt),
     phone: item.clientPhone ?? "Non renseigné",
   };
@@ -110,10 +104,12 @@ export default function ProCalendarScreen() {
   }, [pendingRequests.length]);
 
   const loadPendingRequests = async (dateToLoad: string) => {
-    const token = await getAccessToken();
-    const data = await getPendingAppointments(token, dateToLoad);
-    setPendingRequests(data.map(mapPendingRequest));
-  };
+  const data = await getPendingAppointments(dateToLoad);
+
+  console.log("PENDING RAW DATA", JSON.stringify(data, null, 2));
+
+  setPendingRequests(data.map(mapPendingRequest));
+};
 
   const initialLoad = async () => {
     try {
@@ -152,8 +148,8 @@ export default function ProCalendarScreen() {
   const acceptCurrentAppointment = async (id: string) => {
     try {
       setProcessingId(id);
-      const token = await getAccessToken();
-      await confirmAppointment(token, id);
+      
+      await confirmAppointment(id);
       setPendingRequests((prev) => prev.filter((req) => req.id !== id));
       setSelectedRequest(null);
       setModalType(null);
@@ -167,8 +163,8 @@ export default function ProCalendarScreen() {
   const rejectCurrentAppointment = async (id: string) => {
     try {
       setProcessingId(id);
-      const token = await getAccessToken();
-      await rejectAppointment(token, id);
+      
+      await rejectAppointment(id);
       setPendingRequests((prev) => prev.filter((req) => req.id !== id));
       setSelectedRequest(null);
       setModalType(null);

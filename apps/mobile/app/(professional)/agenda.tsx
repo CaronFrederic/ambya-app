@@ -16,7 +16,7 @@ import {
   getCalendarAppointments,
   type ProAppointmentCalendarItem,
 } from "../../src/api/pro-appointments";
-import * as SecureStore from "expo-secure-store";
+
 type AppointmentStatus = "confirmed" | "pending" | "cancelled";
 
 type Appointment = {
@@ -37,25 +37,34 @@ type DayItem = {
 
 const CALENDAR_HREF: Href = "/(professional)/pro-calendar";
 
-async function getAccessToken(): Promise<string> {
-  const token = await SecureStore.getItemAsync("accessToken");
-  if (!token) {
-    throw new Error("Utilisateur non authentifié.");
-  }
-  return token;
+
+
+function safeDate(value?: string | null) {
+  if (!value) return null;
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
 }
 
-function formatTime(dateString: string) {
-  return new Date(dateString).toLocaleTimeString("fr-FR", {
+function formatTime(dateString?: string | null) {
+  const d = safeDate(dateString);
+  if (!d) return "Heure invalide";
+
+  return d.toLocaleTimeString("fr-FR", {
     hour: "2-digit",
     minute: "2-digit",
   });
 }
 
-function formatDuration(startAt: string, endAt: string) {
-  const start = new Date(startAt).getTime();
-  const end = new Date(endAt).getTime();
-  const diffMin = Math.max(0, Math.round((end - start) / 60000));
+function formatDuration(startAt?: string | null, endAt?: string | null) {
+  const start = safeDate(startAt);
+  const end = safeDate(endAt);
+
+  if (!start || !end) return "Durée inconnue";
+
+  const diffMin = Math.max(
+    0,
+    Math.round((end.getTime() - start.getTime()) / 60000)
+  );
 
   if (diffMin >= 60) {
     const h = Math.floor(diffMin / 60);
@@ -116,23 +125,24 @@ export default function AgendaScreen() {
     router.push(CALENDAR_HREF);
   };
 
-  const loadAgenda = async (dateToLoad: string) => {
-    const token = await getAccessToken();
-    const data = await getCalendarAppointments(token, dateToLoad);
+ const loadAgenda = async (dateToLoad: string) => {
+  const data = await getCalendarAppointments(dateToLoad);
 
-    const mapped = data.map((item) => ({
-      id: item.id,
-      time: formatTime(item.startAt),
-      staff: item.employeeName ?? "Non assigné",
-      client: item.clientName,
-      service: item.serviceName,
-      duration: formatDuration(item.startAt, item.endAt),
-      status: mapStatus(item.status),
-    }));
+  console.log("AGENDA RAW DATA", JSON.stringify(data, null, 2));
 
-    setAppointments(mapped);
-    setPendingCount(data.filter((a) => a.status === "PENDING").length);
-  };
+  const mapped = data.map((item) => ({
+    id: item.id,
+    time: formatTime(item.startAt),
+    staff: item.employeeName || "Non assigné",
+    client: item.clientName || "Client non renseigné",
+    service: item.serviceName || "Service non renseigné",
+    duration: formatDuration(item.startAt, item.endAt),
+    status: mapStatus(item.status),
+  }));
+
+  setAppointments(mapped);
+  setPendingCount(data.filter((a) => a.status === "PENDING").length);
+};
 
   const initialLoad = async () => {
     try {

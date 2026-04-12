@@ -3,11 +3,22 @@
   "version": "1.0.0",
   "main": "index.ts",
   "scripts": {
-    "start": "expo start",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
-    "web": "expo start --web",
-    "dev": "expo start"
+   "start": "dotenv -e .env.development -- expo start",
+    "start:dev": "dotenv -e .env.development -- expo start",
+    "start:test": "dotenv -e .env.test -- expo start",
+    "start:demo": "dotenv -e .env.demo -- expo start",
+
+    "android:dev": "dotenv -e .env.development -- expo start --android",
+    "android:test": "dotenv -e .env.test -- expo start --android",
+    "android:demo": "dotenv -e .env.demo -- expo start --android",
+
+    "ios:dev": "dotenv -e .env.development -- expo start --ios",
+    "ios:test": "dotenv -e .env.test -- expo start --ios",
+    "ios:demo": "dotenv -e .env.demo -- expo start --ios",
+
+    "web:dev": "dotenv -e .env.development -- expo start --web",
+    "web:test": "dotenv -e .env.test -- expo start --web",
+    "web:demo": "dotenv -e .env.demo -- expo start --web"
   },
   "dependencies": {
     "@ambya/shared": "workspace:*",
@@ -31,6 +42,7 @@
   "devDependencies": {
     "@expo/ngrok": "^4.1.3",
     "@types/react": "~19.1.0",
+    "dotenv-cli": "^11.0.0",
     "typescript": "~5.9.2"
   },
   "private": true
