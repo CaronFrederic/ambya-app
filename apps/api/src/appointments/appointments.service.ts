@@ -19,6 +19,8 @@ import {
   UserRole,
 } from '@prisma/client';
 import { Prisma } from '@prisma/client';
+import ExcelJS from "exceljs";
+import { Response } from "express";
 
 const CLIENT_CANCELLATION_NOTICE_HOURS = 24;
 
@@ -28,6 +30,85 @@ type DbClient = PrismaService | TxClient;
 @Injectable()
 export class AppointmentsService {
   constructor(private prisma: PrismaService) {}
+
+ async exportProHistory(
+  user: { userId: string; role: UserRole },
+  status: string | undefined,
+  res: Response,
+) {
+  let normalizedStatus: string | undefined = undefined;
+
+  if (status === "completed") normalizedStatus = "COMPLETED";
+  else if (status === "cancelled") normalizedStatus = "CANCELLED";
+  else if (status === "no-show") normalizedStatus = "NO_SHOW";
+  else if (status === "COMPLETED" || status === "CANCELLED" || status === "NO_SHOW") {
+    normalizedStatus = status;
+  }
+
+  const items = await this.getProHistory(user, normalizedStatus);
+
+  const workbook = new ExcelJS.Workbook();
+  const worksheet = workbook.addWorksheet("Historique réservations");
+
+  worksheet.columns = [
+    { header: "ID réservation", key: "id", width: 26 },
+    { header: "Date", key: "date", width: 22 },
+    { header: "Client", key: "clientName", width: 24 },
+    { header: "Téléphone", key: "clientPhone", width: 18 },
+    { header: "Services", key: "servicesLabel", width: 28 },
+    { header: "Employé", key: "employeeName", width: 24 },
+    { header: "Montant", key: "amount", width: 14 },
+    { header: "Statut", key: "status", width: 14 },
+  ];
+
+  worksheet.getRow(1).font = { bold: true };
+  worksheet.getRow(1).alignment = { vertical: "middle", horizontal: "center" };
+
+  for (const item of items) {
+    worksheet.addRow({
+      id: item.id,
+      date: new Date(item.startAt).toLocaleString("fr-FR"),
+      clientName: item.clientName,
+      clientPhone: item.clientPhone ?? "Non renseigné",
+      servicesLabel: item.servicesLabel,
+      employeeName: item.employeeName ?? "Non assigné",
+      amount: item.amount,
+      status:
+        item.status === "COMPLETED"
+          ? "Terminé"
+          : item.status === "CANCELLED"
+          ? "Annulé"
+          : item.status === "NO_SHOW"
+          ? "No-show"
+          : item.status,
+    });
+  }
+
+  worksheet.eachRow((row, rowNumber) => {
+    row.alignment = { vertical: "middle" };
+
+    if (rowNumber > 1) {
+      row.getCell(7).numFmt = '#,##0 "FCFA"';
+    }
+  });
+
+  const safeStatus = normalizedStatus ? normalizedStatus.toLowerCase() : "all";
+  const filename = `booking-history-${safeStatus}-${new Date()
+    .toISOString()
+    .slice(0, 10)}.xlsx`;
+
+  res.setHeader(
+    "Content-Type",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  );
+  res.setHeader(
+    "Content-Disposition",
+    `attachment; filename="${filename}"`,
+  );
+
+  await workbook.xlsx.write(res);
+  res.end();
+}
 
   async listForUser(
     user: { userId: string; role: UserRole },

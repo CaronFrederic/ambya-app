@@ -1,5 +1,5 @@
 import { apiFetch } from "./client";
-
+import * as SecureStore from "expo-secure-store";
 export type AppointmentHistoryStatus =
   | "COMPLETED"
   | "CANCELLED"
@@ -48,4 +48,27 @@ export function getAppointmentHistory(
       token,
     }
   );
+  
+}
+const API_BASE_URL =
+  process.env.EXPO_PUBLIC_API_URL?.trim().replace(/\/+$/, "") || "";
+
+export async function getAppointmentHistoryExportUrl(
+  status?: "all" | "completed" | "cancelled" | "no-show"
+) {
+  const token = await SecureStore.getItemAsync("accessToken");
+
+  if (!token) {
+    throw new Error("Utilisateur non authentifié.");
+  }
+
+  const search = new URLSearchParams();
+
+  if (status && status !== "all") {
+    search.set("status", status);
+  }
+
+  search.set("token", token);
+
+  return `${API_BASE_URL}/api/pro/appointments/history/export?${search.toString()}`;
 }

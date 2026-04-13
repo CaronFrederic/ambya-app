@@ -22,6 +22,10 @@ const COLORS = {
   primary: "#6B2737",
   gold: "#D4AF6A",
 };
+import { Alert, Linking } from "react-native";
+import { getAppointmentHistoryExportUrl } from "../../src/api/appointments";
+
+
 
 type Status = "completed" | "cancelled" | "no-show";
 
@@ -74,6 +78,25 @@ export default function BookingHistoryScreen() {
   const [refreshing, setRefreshing] = useState(false);
 
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [exporting, setExporting] = useState(false);
+
+const handleExportExcel = async () => {
+  try {
+    setExporting(true);
+
+    const url = await getAppointmentHistoryExportUrl(filter);
+    await Linking.openURL(url);
+  } catch (error) {
+    console.error("Booking history export error:", error);
+    Alert.alert(
+      "Export impossible",
+      error instanceof Error ? error.message : "Une erreur est survenue."
+    );
+  } finally {
+    setExporting(false);
+  }
+};
+
 
   const loadHistory = async (currentFilter?: "all" | Status) => {
     const token = await getAccessToken();
@@ -180,9 +203,18 @@ export default function BookingHistoryScreen() {
             })}
           </ScrollView>
 
-          <Pressable style={[styles.primaryBtn, { backgroundColor: "#16A34A" }]}>
-            <Text style={styles.primaryBtnText}>⬇︎ Exporter en Excel</Text>
-          </Pressable>
+          <Pressable
+  onPress={handleExportExcel}
+  disabled={exporting}
+  style={[
+    styles.primaryBtn,
+    { backgroundColor: "#16A34A", opacity: exporting ? 0.7 : 1 },
+  ]}
+>
+  <Text style={styles.primaryBtnText}>
+    {exporting ? "Export en cours..." : "⬇︎ Exporter en Excel"}
+  </Text>
+</Pressable>
 
           <View style={{ gap: 10, marginTop: 12 }}>
             {filtered.map((b) => (
@@ -236,7 +268,7 @@ export default function BookingHistoryScreen() {
                   </View>
                 </View>
 
-                <Pressable
+                {/* <Pressable
                   onPress={() =>
                     router.push({
                       pathname: "/(professional)/client-details",
@@ -249,7 +281,7 @@ export default function BookingHistoryScreen() {
                   style={styles.detailsBtn}
                 >
                   <Text style={styles.detailsBtnText}>Voir détails</Text>
-                </Pressable>
+                </Pressable> */}
               </View>
             ))}
 

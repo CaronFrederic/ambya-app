@@ -21,6 +21,10 @@ import { ExportsModule } from './exports/exports.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { ClientsModule } from './clients/clients.module';
 import { SalonSettingsModule } from './salon-settings/salon-settings.module'
+import { AccountingReportsModule } from './accounting-reports/accounting-reports.module';
+
+import { PromotionsModule } from './promotions/promotions.module';
+import { LoyaltyModule } from "./loyalty/loyalty.module";
 
 @Module({
   imports: [
@@ -38,6 +42,9 @@ import { SalonSettingsModule } from './salon-settings/salon-settings.module'
   EmployeesModule,
   ServicesModule,
   ExpensesModule,
+  PromotionsModule,
+  LoyaltyModule,
+  AccountingReportsModule,
   ConfigModule.forRoot({
     isGlobal: true,
     envFilePath: [

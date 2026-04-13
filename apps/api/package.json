@@ -8,15 +8,15 @@
     "db:push:dev": "dotenv -e .env -- pnpm exec prisma db push",
     "db:push:test": "dotenv -e .env.test -- pnpm exec prisma db push",
     "db:push:demo": "dotenv -e .env.demo -- pnpm exec prisma db push",
-   "seed:dev": "dotenv -e .env -- tsx prisma/seed/main.seed.ts",
+    "seed:dev": "dotenv -e .env -- tsx prisma/seed/main.seed.ts",
     "seed:test": "dotenv -e .env.test -- tsx prisma/seed/main.seed.ts",
     "seed:demo": "dotenv -e .env.demo -- tsx prisma/seed/main.seed.ts",
     "reset:dev": "dotenv -e .env -- pnpm exec prisma migrate reset --force",
     "reset:test": "dotenv -e .env.test -- pnpm exec prisma migrate reset --force",
     "reset:demo": "dotenv -e .env.demo -- pnpm exec prisma migrate reset --force",
     "check:pro:dev": "dotenv -e .env -- pnpm exec tsx scripts/checks/check-pro-suite.ts",
-"check:pro:test": "dotenv -e .env.test -- pnpm exec tsx scripts/checks/check-pro-suite.ts",
-"check:pro:demo": "dotenv -e .env.demo -- pnpm exec tsx scripts/checks/check-pro-suite.ts"
+    "check:pro:test": "dotenv -e .env.test -- pnpm exec tsx scripts/checks/check-pro-suite.ts",
+    "check:pro:demo": "dotenv -e .env.demo -- pnpm exec tsx scripts/checks/check-pro-suite.ts"
   },
   "devDependencies": {
     "@nestjs/cli": "^11.0.19",
@@ -50,6 +50,7 @@
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
     "dotenv": "^17.4.1",
+    "exceljs": "^4.4.0",
     "node-fetch": "^2.7.0",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",

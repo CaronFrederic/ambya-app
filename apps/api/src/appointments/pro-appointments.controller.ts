@@ -1,9 +1,10 @@
-import { Controller, Get, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Query, Res, UseGuards, Param, Patch } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { JwtUser } from '../auth/decorators/current-user.decorator';
 import { AppointmentsService } from './appointments.service';
-import { Param, Patch } from '@nestjs/common';
+import type { Response } from "express";
+
 @Controller('pro/appointments')
 @UseGuards(JwtAuthGuard)
 export class ProAppointmentsController {
@@ -18,20 +19,20 @@ export class ProAppointmentsController {
   }
 
   @Patch(':id/confirm')
-confirm(
-  @CurrentUser() user: JwtUser,
-  @Param('id') id: string,
-) {
-  return this.service.confirmAppointment(user, id);
-}
+  confirm(
+    @CurrentUser() user: JwtUser,
+    @Param('id') id: string,
+  ) {
+    return this.service.confirmAppointment(user, id);
+  }
 
-@Patch(':id/reject')
-reject(
-  @CurrentUser() user: JwtUser,
-  @Param('id') id: string,
-) {
-  return this.service.rejectAppointment(user, id);
-}
+  @Patch(':id/reject')
+  reject(
+    @CurrentUser() user: JwtUser,
+    @Param('id') id: string,
+  ) {
+    return this.service.rejectAppointment(user, id);
+  }
 
   @Get('pending')
   getPending(
@@ -48,4 +49,13 @@ reject(
   ) {
     return this.service.getProHistory(user, status);
   }
+
+ @Get('history/export')
+exportHistory(
+  @CurrentUser() user: JwtUser,
+  @Res() res: Response,
+  @Query('status') status?: string,
+) {
+  return this.service.exportProHistory(user, status, res);
+}
 }
