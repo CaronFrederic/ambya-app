@@ -13,32 +13,33 @@ if (!connectionString) {
   throw new Error("DATABASE_URL is missing in environment variables");
 }
 
-const pool = new Pool({
-  connectionString,
-});
+if (process.env.NODE_ENV === "production") {
+  throw new Error("Seeding is disabled in production");
+}
 
+const pool = new Pool({ connectionString });
 const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
 
 async function main() {
-  const mode = process.env.SEED_SCENARIO || process.env.APP_ENV || "dev";
+  const mode = process.env.SEED_SCENARIO || process.env.APP_ENV || "development";
 
   console.log(`🌱 Running seed mode: ${mode}`);
 
-  if (process.env.NODE_ENV === "production") {
-    throw new Error("Seeding is disabled in production");
-  }
-
   switch (mode) {
+    case "development":
     case "dev":
       await seedDev(prisma);
       break;
+
     case "test":
       await seedTest(prisma);
       break;
+
     case "demo":
       await seedDemo(prisma);
       break;
+
     default:
       throw new Error(`Unknown seed mode: ${mode}`);
   }

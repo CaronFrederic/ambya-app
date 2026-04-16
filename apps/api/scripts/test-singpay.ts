@@ -5,7 +5,7 @@ const BASE_URL = "https://client.singpay.ga";
 // Remplace ces valeurs par celles de ton compte SingPay
 const CLIENT_ID = "10d29120-bb03-49de-a4b3-72d690aea870";
 const CLIENT_SECRET = "1a9d5ac06558c2f5bf5116772b0b329d834b2c44d651948a2645411d752b647e";
-// const WALLET_ID = "TON_WALLET_ID";
+const WALLET_ID = "69ddd370e4424db4a46291b6";
 
 async function testSingPayExt() {
   const reference = `AMBYA-TEST-${Date.now()}`;
