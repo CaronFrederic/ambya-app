@@ -3,6 +3,7 @@ import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { CreateOwnerDto } from './dto/create-owner.dto';
 import { RegisterDto } from './dto/register.dto';
+import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 
@@ -29,5 +30,20 @@ export class AuthController {
   @Get('me')
   me(@CurrentUser() user: { sub: string }) {
     return this.authService.me(user.sub);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('verify-otp')
+  verifyOtp(
+    @CurrentUser() user: { sub: string },
+    @Body() dto: VerifyOtpDto,
+  ) {
+    return this.authService.verifyOtp(user.sub, dto);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('resend-otp')
+  resendOtp(@CurrentUser() user: { sub: string }) {
+    return this.authService.resendOtp(user.sub);
   }
 }

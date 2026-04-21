@@ -1,4 +1,5 @@
-import { api } from "./client";
+import { router } from "expo-router";
+import { api, apiFetch } from "./client";
 import * as SecureStore from "expo-secure-store";
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL?.trim().replace(/\/+$/, "");
@@ -6,6 +7,9 @@ const API_URL = process.env.EXPO_PUBLIC_API_URL?.trim().replace(/\/+$/, "");
 export type LoginPayload = {
   email: string;
   password: string;
+};
+export type VerifyOtpPayload = {
+  code: string;
 };
 
 export type LoginResponse = {
@@ -17,6 +21,43 @@ export type LoginResponse = {
     phone?: string | null;
   };
 };
+
+export type VerifyOtpResponse = {
+  success: boolean;
+  message: string;
+  user: {
+    id: string;
+    email?: string | null;
+    phone?: string | null;
+    role: string;
+    isActive: boolean;
+    phoneVerified?: boolean;
+    emailVerified?: boolean;
+    preferredLoginMethod?: string | null;
+  };
+};
+
+export type ResendOtpResponse = {
+  success: boolean;
+  message: string;
+  verificationChannel: "sms" | "email";
+  otpDebugCode?: string | null;
+  expiresAt?: string;
+};
+
+export function verifyOtp(payload: { code: string }) {
+  return apiFetch<VerifyOtpResponse>("/api/auth/verify-otp", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function resendOtp() {
+  return apiFetch<ResendOtpResponse>("/api/auth/resend-otp", {
+    method: "POST",
+  });
+}
+
 
 type RegisterDto = {
   email?: string;
@@ -84,4 +125,14 @@ export async function persistAuth(accessToken: string, role: string) {
 export async function clearAuth() {
   await SecureStore.deleteItemAsync("accessToken");
   await SecureStore.deleteItemAsync("userRole");
+}
+
+export async function logout(refreshAuth?: () => Promise<void>) {
+  await clearAuth();
+
+  if (refreshAuth) {
+    await refreshAuth();
+  }
+
+  router.replace("/(auth)/login");
 }

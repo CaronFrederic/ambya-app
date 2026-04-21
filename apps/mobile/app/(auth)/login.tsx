@@ -89,7 +89,7 @@ export default function Login() {
       return;
     }
 
-    // router.push('/(auth)/pro-signup')
+     router.push('/(auth)/pro-signup')
   };
 
   return (

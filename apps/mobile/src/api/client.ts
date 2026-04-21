@@ -12,6 +12,10 @@ async function getAuthToken(explicitToken?: string | null) {
   if (explicitToken) return explicitToken;
   return SecureStore.getItemAsync("accessToken");
 }
+async function clearStoredAuth() {
+  await SecureStore.deleteItemAsync("accessToken");
+  await SecureStore.deleteItemAsync("userRole");
+}
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
@@ -56,6 +60,10 @@ export async function apiFetch<T>(
   const data = isJson ? await response.json() : await response.text();
 
   if (!response.ok) {
+  if (response.status === 401) {
+    await clearStoredAuth();
+    throw new Error("SESSION_EXPIRED");
+  }
     const message =
       typeof data === "object" && data && "message" in data
         ? Array.isArray((data as { message?: unknown }).message)
@@ -84,18 +92,26 @@ export async function apiRequest<T = unknown>(
       },
     });
 
+    
+
     return response.data;
   } catch (error) {
     const axiosError = error as AxiosError<{
       message?: string | string[];
     }>;
+    
 
     const message = Array.isArray(axiosError.response?.data?.message)
       ? axiosError.response?.data?.message.join(", ")
       : axiosError.response?.data?.message ||
         axiosError.message ||
         "Une erreur est survenue.";
+        if (axiosError.response?.status === 401) {
+  await clearStoredAuth();
+  throw new Error("SESSION_EXPIRED");
+}
 
     throw new Error(message);
   }
+  
 }
