@@ -16,4 +16,8 @@ export class GetAccountingReportDto {
   @IsString()
   @Matches(/^\d{4}-\d{2}-\d{2}$/)
   endDate?: string;
+
+  @IsOptional()
+  @IsIn(["excel"])
+  format?: "excel";
 }

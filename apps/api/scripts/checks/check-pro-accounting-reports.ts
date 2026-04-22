@@ -36,6 +36,14 @@ async function main() {
       throw new Error("Accounting report response is invalid");
     }
 
+    if (
+      typeof data?.summary?.totalRevenue !== "number" ||
+      typeof data?.summary?.totalExpenses !== "number" ||
+      typeof data?.summary?.netResult !== "number"
+    ) {
+      throw new Error("Accounting report summary is invalid");
+    }
+
     console.log("✅ PRO ACCOUNTING REPORTS CHECK PASSED");
     console.log(data);
   } catch (error) {

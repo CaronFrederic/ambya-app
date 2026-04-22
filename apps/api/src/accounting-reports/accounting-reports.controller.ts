@@ -31,10 +31,9 @@ export class AccountingReportsController {
   exportReport(
     @CurrentUser() user: JwtUser,
     @Query() dto: GetAccountingReportDto,
-    @Query("format") format: string,
     @Res() res: Response,
   ) {
-    if (format !== "excel") {
+    if (dto.format !== "excel") {
       return res.status(400).json({
         message: "Seul le format excel est supporté pour le moment",
       });

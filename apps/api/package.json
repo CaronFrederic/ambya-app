@@ -3,35 +3,30 @@
     "start:dev": "dotenv -e .env -- pnpm exec nest start --watch",
     "start:test": "dotenv -e .env.test -- pnpm exec nest start --watch",
     "start:demo": "dotenv -e .env.demo -- pnpm exec nest start --watch",
-
     "db:generate": "pnpm exec prisma generate",
     "db:studio": "dotenv -e .env -- pnpm exec prisma studio",
-
     "db:push:dev": "dotenv -e .env -- pnpm exec prisma db push",
     "db:push:test": "dotenv -e .env.test -- pnpm exec prisma db push",
     "db:push:demo": "dotenv -e .env.demo -- pnpm exec prisma db push",
-
     "seed:dev": "dotenv -e .env -- pnpm exec tsx prisma/seed/main.seed.ts",
     "seed:test": "dotenv -e .env.test -- pnpm exec tsx prisma/seed/main.seed.ts",
     "seed:demo": "dotenv -e .env.demo -- pnpm exec tsx prisma/seed/main.seed.ts",
-
-    "reset:dev": "dotenv -e .env -- pnpm exec prisma migrate reset --force",
-    "reset:test": "dotenv -e .env.test -- pnpm exec prisma migrate reset --force",
-    "reset:demo": "dotenv -e .env.demo -- pnpm exec prisma migrate reset --force",
-
+    "reset:dev": "dotenv -e .env -- pnpm exec prisma migrate reset --force && pnpm seed:dev",
+    "reset:test": "dotenv -e .env.test -- pnpm exec prisma migrate reset --force && pnpm seed:test",
+    "reset:demo": "dotenv -e .env.demo -- pnpm exec prisma migrate reset --force && pnpm seed:demo",
+   
     "check:pro:dev": "dotenv -e .env -- pnpm exec tsx scripts/checks/check-pro-suite.ts",
     "check:pro:test": "dotenv -e .env.test -- pnpm exec tsx scripts/checks/check-pro-suite.ts",
     "check:pro:demo": "dotenv -e .env.demo -- pnpm exec tsx scripts/checks/check-pro-suite.ts",
-
     "check:pro:crud:dev": "dotenv -e .env -- pnpm exec tsx scripts/checks/check-pro-crud-suite.ts",
     "check:pro:crud:test": "dotenv -e .env.test -- pnpm exec tsx scripts/checks/check-pro-crud-suite.ts",
     "check:pro:crud:demo": "dotenv -e .env.demo -- pnpm exec tsx scripts/checks/check-pro-crud-suite.ts",
-
+    "check:pro:full:test": "pnpm reset:test && pnpm check:pro:test && pnpm reset:test && pnpm check:pro:crud:test && pnpm reset:test",
     "check:pro:full:dev": "pnpm check:pro:dev && pnpm check:pro:crud:dev",
-    "check:pro:full:test": "pnpm check:pro:test && pnpm check:pro:crud:test",
     "check:pro:full:demo": "pnpm check:pro:demo && pnpm check:pro:crud:demo"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@nestjs/cli": "^11.0.19",
     "@nestjs/schematics": "^11.0.10",
     "@nestjs/testing": "^11.1.18",
@@ -42,12 +37,14 @@
     "@types/node-fetch": "^2.6.13",
     "@types/supertest": "^7.2.0",
     "dotenv-cli": "^11.0.0",
-    
+    "eslint-plugin-prettier": "^5.5.5",
+    "globals": "^17.5.0",
     "prisma": "^7.7.0",
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
     "tsx": "^4.21.0",
-    "typescript": "~5.9.3"
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.59.0"
   },
   "dependencies": {
     "@nestjs/common": "^11.1.18",

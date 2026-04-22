@@ -1,4 +1,3 @@
-
 import { runScript } from "./scripts/checks/utils/run-script";
 
 async function main() {
@@ -7,7 +6,7 @@ async function main() {
     "scripts/checks/check-pro-services-crud.ts",
     "scripts/checks/check-pro-expenses-crud.ts",
     "scripts/checks/check-pro-promotions-crud.ts",
-    "scripts/checks/check-pro-loyalty-update.ts",
+    "scripts/checks/check-pro-accounting-reports-crud.ts",
   ];
 
   for (const script of scripts) {
