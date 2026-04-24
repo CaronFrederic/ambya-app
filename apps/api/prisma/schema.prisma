@@ -24,6 +24,26 @@ enum AppointmentStatus {
   NO_SHOW
 }
 
+enum EmployeeSpecialty {
+  HAIR_STYLIST
+  ESTHETICIAN
+  BARBER
+  MASSAGE_THERAPIST
+  MANICURIST
+  FITNESS_COACH
+  OTHER
+}
+
+enum ServiceCategory {
+  HAIR
+  BARBER
+  NAILS
+  FACE
+  BODY
+  FITNESS
+  OTHER
+}
+
 enum AppointmentSource {
   CLIENT_APP
   PRO_DASHBOARD
@@ -273,6 +293,8 @@ model Employee {
   absences            EmployeeAbsence[]
   preferredByClients  SalonClientPreferredEmployee[]
 
+  specialties EmployeeSpecialtyAssignment[]
+
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
   clientPreferences ClientPreference[]
@@ -280,6 +302,20 @@ model Employee {
   @@index([salonId])
   @@index([isActive])
   @@index([status])
+}
+
+model EmployeeSpecialtyAssignment {
+  id String @id @default(cuid())
+
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  specialty EmployeeSpecialty
+
+  createdAt DateTime @default(now())
+
+  @@unique([employeeId, specialty])
+  @@index([specialty])
 }
 
 model Service {
@@ -301,6 +337,7 @@ model Service {
   appointments        Appointment[]
   appointmentServices AppointmentService[]
   promotionLinks      PromotionService[]
+  servicecategory     ServiceCategory      @default(OTHER)
 
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt

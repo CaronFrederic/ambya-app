@@ -32,6 +32,7 @@ import {
 const CLIENT_CANCELLATION_NOTICE_HOURS = 24;
 
 type DbClient = PrismaService | Prisma.TransactionClient;
+type ServiceCategoryInput = ServiceCategory | string | null;
 
 @Injectable()
 export class AppointmentsService {
@@ -1552,7 +1553,7 @@ export class AppointmentsService {
     startAt: Date,
     endAt: Date,
     excludedAppointmentIds: string[],
-    serviceCategory: ServiceCategory,
+    serviceCategory: ServiceCategoryInput,
     requestedEmployeeId?: string | null,
     allowFallbackToAnyAvailable = false,
   ) {
@@ -1576,7 +1577,7 @@ export class AppointmentsService {
         throw new BadRequestException('Employee not found for this salon');
       }
 
-      if (!employeeCanPerformCategory(employee.specialties, serviceCategory)) {
+      if (!this.canEmployeePerformServiceCategory(employee.specialties, serviceCategory)) {
         if (!allowFallbackToAnyAvailable) {
           throw new BadRequestException(
             'Selected employee cannot perform this service',
@@ -1620,7 +1621,7 @@ export class AppointmentsService {
     });
 
     for (const employee of employees) {
-      if (!employeeCanPerformCategory(employee.specialties, serviceCategory)) {
+      if (!this.canEmployeePerformServiceCategory(employee.specialties, serviceCategory)) {
         continue;
       }
 
@@ -1711,6 +1712,20 @@ export class AppointmentsService {
 
     return Boolean(appointmentConflict || blockedSlotConflict || leaveConflict);
   }
+
+private canEmployeePerformServiceCategory(
+  specialties: Array<{ specialty: any }>,
+  serviceCategory: ServiceCategoryInput,
+) {
+  if (!serviceCategory) {
+    return true;
+  }
+
+  return employeeCanPerformCategory(
+    specialties,
+    serviceCategory as ServiceCategory,
+  );
+}
 
   private mapEmployeeSummary(employee: {
     id: string;
