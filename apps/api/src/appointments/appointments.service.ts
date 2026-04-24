@@ -27,7 +27,7 @@ import {
   employeeCanPerformCategory,
   getEmployeeSpecialtyLabels,
   getPrimaryEmployeeSpecialtyLabel,
-} from '../common/employee-specialties';
+} from '../common/employee-specialties'
 
 const CLIENT_CANCELLATION_NOTICE_HOURS = 24;
 
