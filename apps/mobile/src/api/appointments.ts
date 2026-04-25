@@ -151,7 +151,7 @@ export async function assignEmployee(
   appointmentId: string,
   employeeId?: string,
 ) {
-  const res = await api.patch(`/appointments/${appointmentId}/assign-employee`, {
+  const res = await api.patch(`/api/appointments/${appointmentId}/assign-employee`, {
     employeeId,
   });
   return res.data;
@@ -160,13 +160,13 @@ export async function assignEmployee(
 export async function createAppointmentsFromCart(
   payload: CreateAppointmentsFromCartPayload,
 ) {
-  const res = await api.post("/appointments/from-cart", payload);
+  const res = await api.post("/api/appointments/from-cart", payload);
   return res.data;
 }
 
 export async function fetchAppointmentGroupDetails(groupId: string) {
   const res = await api.get<AppointmentGroupDetails>(
-    `/appointments/group/${groupId}`,
+    `/api/appointments/group/${groupId}`,
   );
   return res.data;
 }
@@ -192,7 +192,7 @@ export function useUpdateAppointmentGroup() {
 
   return useMutation({
     mutationFn: async ({ groupId, ...payload }: UpdateAppointmentGroupPayload) => {
-      const res = await api.patch(`/appointments/group/${groupId}`, payload);
+      const res = await api.patch(`/api/appointments/group/${groupId}`, payload);
       return res.data;
     },
     onSuccess: async (_data, variables) => {
@@ -215,7 +215,7 @@ export function useCancelAppointmentGroup() {
       groupId: string;
       reason?: string;
     }) => {
-      const res = await api.patch(`/appointments/group/${groupId}/cancel`, {
+      const res = await api.patch(`/api/appointments/group/${groupId}/cancel`, {
         reason,
       });
       return res.data;
@@ -242,7 +242,7 @@ export function useCreateAppointmentReview() {
       rating: number;
       comment: string;
     }) => {
-      const res = await api.post(`/appointments/group/${groupId}/review`, {
+      const res = await api.post(`/api/appointments/group/${groupId}/review`, {
         rating,
         comment,
       });
@@ -276,7 +276,7 @@ export function getAppointmentHistory(
   params?: GetAppointmentHistoryParams,
 ) {
   return apiFetch<AppointmentHistoryItem[]>(
-    `/appointments/pro/history${buildHistoryQuery(params)}`,
+    `/api/appointments/pro/history${buildHistoryQuery(params)}`,
     {
       method: "GET",
       token,
@@ -304,5 +304,5 @@ export async function getAppointmentHistoryExportUrl(
 
   search.set("token", token);
 
-  return `${API_BASE_URL}/appointments/pro/history/export?${search.toString()}`;
+  return `${API_BASE_URL}/api/appointments/pro/history/export?${search.toString()}`;
 }
