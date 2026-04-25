@@ -4,8 +4,9 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import * as bcrypt from 'bcrypt';
+import * as bcrypt from 'bcryptjs';
 import { Prisma, UserRole } from '@prisma/client';
+
 import { PrismaService } from '../prisma/prisma.service';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
@@ -20,7 +21,7 @@ type AppMobileMoneyOperator = 'AIRTEL' | 'MOOV' | 'MTN' | 'ORANGE';
 export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly jwtService: JwtService,
+    private readonly jwt: JwtService,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -86,7 +87,7 @@ export class AuthService {
             country: dto.profile.country,
             allergies: dto.profile.allergies ?? null,
             comments: dto.profile.comments ?? null,
-            questionnaire: dto.profile.questionnaire ?? undefined,
+            questionnaire: dto.profile.questionnaire ?? Prisma.DbNull,
           },
           select: { id: true },
         });
@@ -191,8 +192,7 @@ export class AuthService {
       }
     }
 
-    const salonName =
-      dto.establishmentName?.trim() || dto.salonName?.trim();
+    const salonName = dto.establishmentName?.trim() || dto.salonName?.trim();
 
     if (!salonName) {
       throw new BadRequestException("Le nom de l'établissement est requis");
@@ -204,36 +204,34 @@ export class AuthService {
       dto.loginMethod === 'email'
         ? 'EMAIL'
         : dto.loginMethod === 'phone'
-        ? 'PHONE'
-        : phone
-        ? 'PHONE'
-        : 'EMAIL';
+          ? 'PHONE'
+          : phone
+            ? 'PHONE'
+            : 'EMAIL';
 
     const paymentMethod: AppSalonPayoutMethod | undefined =
       dto.paymentMethod === 'mobile-money'
         ? 'MOBILE_MONEY'
         : dto.paymentMethod === 'bank'
-        ? 'BANK'
-        : undefined;
+          ? 'BANK'
+          : undefined;
 
     const mobileMoneyOperator: AppMobileMoneyOperator | undefined =
       dto.mobileMoneyOperator === 'airtel'
         ? 'AIRTEL'
         : dto.mobileMoneyOperator === 'moov'
-        ? 'MOOV'
-        : dto.mobileMoneyOperator === 'mtn'
-        ? 'MTN'
-        : dto.mobileMoneyOperator === 'orange'
-        ? 'ORANGE'
-        : undefined;
+          ? 'MOOV'
+          : dto.mobileMoneyOperator === 'mtn'
+            ? 'MTN'
+            : dto.mobileMoneyOperator === 'orange'
+              ? 'ORANGE'
+              : undefined;
 
     const generatedOtp =
       loginMethod === 'PHONE' ? this.generateOtp() : undefined;
 
     const otpExpiresAt =
-      generatedOtp != null
-        ? new Date(Date.now() + 10 * 60 * 1000)
-        : undefined;
+      generatedOtp != null ? new Date(Date.now() + 10 * 60 * 1000) : undefined;
 
     const district =
       dto.district === 'autre'
@@ -280,9 +278,11 @@ export class AuthService {
       });
 
       const descriptionParts: string[] = [];
+
       if (establishmentType) {
         descriptionParts.push(establishmentType);
       }
+
       if (categories.length) {
         descriptionParts.push(categories.join(', '));
       }
@@ -294,8 +294,11 @@ export class AuthService {
         city: dto.city?.trim() || undefined,
         country: dto.countryCode?.trim() || undefined,
         phone: phone || undefined,
+        email: email || undefined,
         description:
-          descriptionParts.length > 0 ? descriptionParts.join(' • ') : undefined,
+          descriptionParts.length > 0
+            ? descriptionParts.join(' • ')
+            : undefined,
         establishmentType,
         district,
         categories,
@@ -345,6 +348,7 @@ export class AuthService {
         const openingHoursData = Object.entries(dto.schedule).flatMap(
           ([dayKey, dayValue]) => {
             const dayOfWeek = dayMap[dayKey];
+
             if (!dayOfWeek || !dayValue?.slots?.length) {
               return [];
             }
@@ -374,6 +378,7 @@ export class AuthService {
             description: service.description?.trim() || undefined,
             price: service.price,
             durationMin: Number(service.duration) || 30,
+            category: this.mapServiceCategory(service.category) as any,
             isActive: true,
           };
 
@@ -417,10 +422,7 @@ export class AuthService {
 
     const user = await this.prisma.user.findFirst({
       where: {
-        OR: [
-          ...(email ? [{ email }] : []),
-          ...(phone ? [{ phone }] : []),
-        ],
+        OR: [...(email ? [{ email }] : []), ...(phone ? [{ phone }] : [])],
       },
       select: {
         id: true,
@@ -494,129 +496,129 @@ export class AuthService {
     });
   }
 
- async verifyOtp(userId: string, dto: VerifyOtpDto) {
-  const user = await this.prisma.user.findUnique({
-    where: { id: userId },
-    select: {
-      id: true,
-      phone: true,
-      email: true,
-      otpCode: true,
-      otpExpiresAt: true,
-      otpChannel: true,
-      phoneVerified: true,
-      emailVerified: true,
-    },
-  });
+  async verifyOtp(userId: string, dto: VerifyOtpDto) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        phone: true,
+        email: true,
+        otpCode: true,
+        otpExpiresAt: true,
+        otpChannel: true,
+        phoneVerified: true,
+        emailVerified: true,
+      },
+    });
 
-  if (!user) {
-    throw new UnauthorizedException('Utilisateur introuvable');
+    if (!user) {
+      throw new UnauthorizedException('Utilisateur introuvable');
+    }
+
+    if (!user.otpCode || !user.otpExpiresAt) {
+      throw new BadRequestException(
+        "Aucun code OTP actif n'a été trouvé pour ce compte",
+      );
+    }
+
+    const otpExpiresAt = new Date(user.otpExpiresAt);
+
+    if (otpExpiresAt.getTime() < Date.now()) {
+      throw new BadRequestException('Le code OTP a expiré');
+    }
+
+    if (user.otpCode !== dto.code) {
+      throw new BadRequestException('Code OTP invalide');
+    }
+
+    const dataToUpdate: Record<string, unknown> = {
+      otpCode: null,
+      otpExpiresAt: null,
+    };
+
+    if (user.otpChannel === 'PHONE') {
+      dataToUpdate.phoneVerified = true;
+    }
+
+    if (user.otpChannel === 'EMAIL') {
+      dataToUpdate.emailVerified = true;
+    }
+
+    const updatedUser = await this.prisma.user.update({
+      where: { id: userId },
+      data: dataToUpdate as any,
+      select: {
+        id: true,
+        email: true,
+        phone: true,
+        role: true,
+        isActive: true,
+        phoneVerified: true,
+        emailVerified: true,
+        preferredLoginMethod: true,
+      },
+    });
+
+    return {
+      success: true,
+      message: 'OTP vérifié avec succès',
+      user: updatedUser,
+    };
   }
 
-  if (!user.otpCode || !user.otpExpiresAt) {
-    throw new BadRequestException(
-      "Aucun code OTP actif n'a été trouvé pour ce compte",
-    );
+  async resendOtp(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        phone: true,
+        email: true,
+        otpChannel: true,
+        phoneVerified: true,
+        emailVerified: true,
+      },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('Utilisateur introuvable');
+    }
+
+    if (user.otpChannel === 'PHONE' && user.phoneVerified) {
+      throw new BadRequestException('Le téléphone est déjà vérifié');
+    }
+
+    if (user.otpChannel === 'EMAIL' && user.emailVerified) {
+      throw new BadRequestException("L'email est déjà vérifié");
+    }
+
+    if (!user.otpChannel) {
+      throw new BadRequestException(
+        "Aucun canal OTP n'est configuré pour ce compte",
+      );
+    }
+
+    const newOtp = this.generateOtp();
+    const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        otpCode: newOtp,
+        otpExpiresAt,
+      } as any,
+    });
+
+    return {
+      success: true,
+      message:
+        user.otpChannel === 'PHONE'
+          ? 'Un nouveau code SMS a été généré'
+          : 'Un nouveau code email a été généré',
+      verificationChannel: user.otpChannel === 'PHONE' ? 'sms' : 'email',
+      otpDebugCode: newOtp,
+      expiresAt: otpExpiresAt,
+    };
   }
-
-  const otpExpiresAt = new Date(user.otpExpiresAt);
-
-  if (otpExpiresAt.getTime() < Date.now()) {
-    throw new BadRequestException('Le code OTP a expiré');
-  }
-
-  if (user.otpCode !== dto.code) {
-    throw new BadRequestException('Code OTP invalide');
-  }
-
-  const dataToUpdate: Record<string, unknown> = {
-    otpCode: null,
-    otpExpiresAt: null,
-  };
-
-  if (user.otpChannel === 'PHONE') {
-    dataToUpdate.phoneVerified = true;
-  }
-
-  if (user.otpChannel === 'EMAIL') {
-    dataToUpdate.emailVerified = true;
-  }
-
-  const updatedUser = await this.prisma.user.update({
-    where: { id: userId },
-    data: dataToUpdate as any,
-    select: {
-      id: true,
-      email: true,
-      phone: true,
-      role: true,
-      isActive: true,
-      phoneVerified: true,
-      emailVerified: true,
-      preferredLoginMethod: true,
-    },
-  });
-
-  return {
-    success: true,
-    message: 'OTP vérifié avec succès',
-    user: updatedUser,
-  };
-}
-
- async resendOtp(userId: string) {
-  const user = await this.prisma.user.findUnique({
-    where: { id: userId },
-    select: {
-      id: true,
-      phone: true,
-      email: true,
-      otpChannel: true,
-      phoneVerified: true,
-      emailVerified: true,
-    },
-  });
-
-  if (!user) {
-    throw new UnauthorizedException('Utilisateur introuvable');
-  }
-
-  if (user.otpChannel === 'PHONE' && user.phoneVerified) {
-    throw new BadRequestException('Le téléphone est déjà vérifié');
-  }
-
-  if (user.otpChannel === 'EMAIL' && user.emailVerified) {
-    throw new BadRequestException("L'email est déjà vérifié");
-  }
-
-  if (!user.otpChannel) {
-    throw new BadRequestException(
-      "Aucun canal OTP n'est configuré pour ce compte",
-    );
-  }
-
-  const newOtp = this.generateOtp();
-  const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
-
-  await this.prisma.user.update({
-    where: { id: userId },
-    data: {
-      otpCode: newOtp,
-      otpExpiresAt,
-    } as any,
-  });
-
-  return {
-    success: true,
-    message:
-      user.otpChannel === 'PHONE'
-        ? 'Un nouveau code SMS a été généré'
-        : 'Un nouveau code email a été généré',
-    verificationChannel: user.otpChannel === 'PHONE' ? 'sms' : 'email',
-    otpDebugCode: newOtp,
-    expiresAt: otpExpiresAt,
-  };
-}
 
   private async signAccessToken(payload: {
     sub: string;
@@ -626,10 +628,30 @@ export class AuthService {
     salonId: string | null;
     employeeId: string | null;
   }) {
-    return this.jwtService.signAsync(payload);
+    return this.jwt.signAsync(payload);
   }
 
   private generateOtp() {
     return Math.floor(100000 + Math.random() * 900000).toString();
+  }
+
+  private mapServiceCategory(category?: string | null) {
+    if (!category) return undefined;
+
+    const normalized = category.trim().toLowerCase();
+
+    if (normalized === 'beaute' || normalized === 'beauté') return 'BEAUTE';
+    if (normalized === 'fitness') return 'FITNESS';
+    if (normalized === 'bienetre' || normalized === 'bien-être') {
+      return 'BIENETRE';
+    }
+    if (normalized === 'formation') return 'FORMATION';
+
+    if (category === 'BEAUTE') return 'BEAUTE';
+    if (category === 'FITNESS') return 'FITNESS';
+    if (category === 'BIENETRE') return 'BIENETRE';
+    if (category === 'FORMATION') return 'FORMATION';
+
+    return undefined;
   }
 }
