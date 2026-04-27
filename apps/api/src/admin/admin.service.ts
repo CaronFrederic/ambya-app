@@ -901,9 +901,8 @@ export class AdminService {
           country: dto.country ?? undefined,
           phone: dto.phone ?? undefined,
           isActive: dto.isActive ?? undefined,
-          openingHoursJson: dto.openingHours
-  ? this.normalizeOpeningHours(dto.openingHours)
-  : undefined,
+          
+  
         },
       })
 

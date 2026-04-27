@@ -146,26 +146,26 @@ export class SalonServicesService {
     })
   }
 
-  private mapServiceCategory(category?: string | null): ServiceCategory {
-    if (!category) return ServiceCategory.OTHER
+ private mapServiceCategory(category?: string | null): ServiceCategory {
+  if (!category) return ServiceCategory.OTHER
 
-    const normalized = category.trim().toUpperCase()
+  const normalized = category.trim().toUpperCase()
 
-    if (normalized in ServiceCategory) {
-      return ServiceCategory[normalized as keyof typeof ServiceCategory]
-    }
-
-    if (category === 'beaute') return ServiceCategory.BEAUTE
-    if (category === 'bienetre') return ServiceCategory.BIENETRE
-    if (category === 'formation') return ServiceCategory.FORMATION
-    if (category === 'fitness') return ServiceCategory.FITNESS
-    if (category === 'barbier') return ServiceCategory.BARBER
-    if (category === 'onglerie') return ServiceCategory.NAILS
-    if (category === 'massage') return ServiceCategory.BODY
-    if (category === 'spa') return ServiceCategory.BIENETRE
-    if (category === 'salon-coiffure') return ServiceCategory.HAIR
-    if (category === 'institut-beaute') return ServiceCategory.BEAUTE
-
-    return ServiceCategory.OTHER
+  if (normalized in ServiceCategory) {
+    return ServiceCategory[normalized as keyof typeof ServiceCategory]
   }
+
+  if (category === 'beaute') return ServiceCategory.FACE
+  if (category === 'bienetre') return ServiceCategory.BODY
+  if (category === 'formation') return ServiceCategory.OTHER
+  if (category === 'fitness') return ServiceCategory.FITNESS
+  if (category === 'barbier') return ServiceCategory.BARBER
+  if (category === 'onglerie') return ServiceCategory.NAILS
+  if (category === 'massage') return ServiceCategory.BODY
+  if (category === 'spa') return ServiceCategory.BODY
+  if (category === 'salon-coiffure') return ServiceCategory.HAIR
+  if (category === 'institut-beaute') return ServiceCategory.FACE
+
+  return ServiceCategory.OTHER
+}
 }

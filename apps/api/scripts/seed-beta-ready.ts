@@ -913,7 +913,14 @@ async function ensureDiscoverySalons(ownerId: string) {
               instagram: 'https://instagram.com/ambya.demo',
               facebook: 'https://facebook.com/ambya.demo',
             },
-            openingHours: buildDefaultOpeningHours(),
+           openingHours: {
+  create: buildDefaultOpeningHours().map((item, index) => ({
+    dayOfWeek: index + 1,
+    isOpen: !item.closed,
+    startTime: item.open ?? '08:00',
+    endTime: item.close ?? '18:00',
+  })),
+},
           },
         })
 
