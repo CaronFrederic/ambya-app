@@ -26,13 +26,13 @@ export function usePaymentMethods(enabled = true) {
     queryKey: ["me", "payment-methods"],
     enabled,
     queryFn: async () => {
-      const res = await api.get<PaymentMethod[]>("/me/payment-methods");
+      const res = await api.get<PaymentMethod[]>("/api/me/payment-methods");
       return res.data;
     },
   });
 }
 
 export async function createPaymentMethod(payload: CreatePaymentMethodPayload) {
-  const res = await api.post<PaymentMethod>("/me/payment-methods", payload);
+  const res = await api.post<PaymentMethod>("/api/me/payment-methods", payload);
   return res.data;
 }

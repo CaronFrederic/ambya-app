@@ -1,8 +1,8 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common'
-import { PaymentType, Prisma } from '@prisma/client'
+import { PaymentType } from '@prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
 import { CreatePaymentMethodDto } from './dto/create-payment-method.dto'
-
+import { Prisma } from '@prisma/client';
 @Injectable()
 export class PaymentMethodsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -41,7 +41,7 @@ export class PaymentMethodsService {
           type: dto.type,
           provider: dto.provider ?? null,
           providerRef: null,
-          providerData: Prisma.DbNull,
+          providerData: undefined,
           label: dto.label ?? null,
           phone: dto.phone ?? null,
           last4: dto.last4 ?? null,
