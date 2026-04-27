@@ -1,104 +1,122 @@
-import { useState } from 'react'
+import { useState } from "react";
 import {
   View,
   Text,
   StyleSheet,
   Image,
   Pressable,
-} from 'react-native'
-import { router } from 'expo-router'
-import * as SecureStore from 'expo-secure-store'
+  Alert,
+} from "react-native";
+import { router } from "expo-router";
+import * as SecureStore from "expo-secure-store";
+import { Screen } from "../../src/components/Screen";
+import { Card } from "../../src/components/Card";
+import { Input } from "../../src/components/Input";
+import { Button } from "../../src/components/Button";
+import { login } from "../../src/api/auth";
 
-import { Screen } from '../../src/components/Screen'
-import { Card } from '../../src/components/Card'
-import { Input } from '../../src/components/Input'
-import { Button } from '../../src/components/Button'
-import { login } from '../../src/api/auth'
+import { colors } from "../../src/theme/colors";
+import { overlays } from "../../src/theme/colors";
+import { spacing } from "../../src/theme/spacing";
+import { radius } from "../../src/theme/radius";
+import { useQueryClient } from "@tanstack/react-query";
+import { fetchMeLoyalty, fetchMeSummary } from "../../src/api/me";
+import { useAuthRefresh } from "../../src/providers/AuthRefreshProvider";
 
-import { colors } from '../../src/theme/colors'
-import { overlays } from '../../src/theme/colors'
-import { spacing } from '../../src/theme/spacing'
-import { radius } from '../../src/theme/radius'
-import { useQueryClient } from '@tanstack/react-query'
-import { fetchMeLoyalty, fetchMeSummary } from '../../src/api/me'
-import { useAuthRefresh } from '../../src/providers/AuthRefreshProvider'
-
-const logo = require('../../assets/splash-logo.png')
+const logo = require("../../assets/splash-logo.png");
 
 export default function Login() {
-  const { refreshAuth } = useAuthRefresh()
-  const [activeTab, setActiveTab] = useState<'login' | 'signup'>('login')
-  const [userType, setUserType] = useState<'client' | 'professional'>('client')
+  const { refreshAuth } = useAuthRefresh();
+  const [activeTab, setActiveTab] = useState<"login" | "signup">("login");
+  const [userType, setUserType] = useState<"client" | "professional">("client");
 
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
-  const qc = useQueryClient()
+  const qc = useQueryClient();
 
   const onSubmit = async () => {
-    try {
-      const data = await login({ email, password })
-
-      await SecureStore.setItemAsync('accessToken', data.accessToken)
-      await SecureStore.setItemAsync('userRole', data.user.role)
-
-      const summary = await fetchMeSummary()
-      qc.setQueryData(['me', 'summary'], summary)
-
-      const loyalty = await fetchMeLoyalty()
-      qc.setQueryData(['me', 'loyalty'], loyalty)
-
-      await refreshAuth()
-
-      if (data.user.role === 'PROFESSIONAL') router.replace('/(professional)/dashboard' as never)
-      else if (data.user.role === 'EMPLOYEE') router.replace('/(employee)/dashboard' as never)
-      else if (data.user.role === 'ADMIN') router.replace('/(admin)/dashboard' as never)
-      else router.replace('/(tabs)/home' as never)
-
-    } catch (e) {
-      console.log(e)
+    if (!email.trim() || !password.trim()) {
+      Alert.alert("Connexion", "Veuillez renseigner votre email et votre mot de passe.");
+      return;
     }
-  }
+
+    try {
+      setSubmitting(true);
+
+      const data = await login({
+        email: email.trim(),
+        password,
+      });
+
+      await SecureStore.setItemAsync("accessToken", data.accessToken);
+      await SecureStore.setItemAsync("userRole", data.user.role);
+
+      try {
+        const summary = await fetchMeSummary();
+        qc.setQueryData(["me", "summary"], summary);
+      } catch {}
+
+      try {
+        const loyalty = await fetchMeLoyalty();
+        qc.setQueryData(["me", "loyalty"], loyalty);
+      } catch {}
+
+      await refreshAuth();
+
+      if (data.user.role === "PROFESSIONAL") {
+        router.replace("/(professional)/dashboard");
+      } else if (data.user.role === "EMPLOYEE") {
+        router.replace("/(employee)/dashboard");
+      } else {
+        router.replace("/(tabs)/home");
+      }
+    } catch (error) {
+      console.log(error);
+      Alert.alert(
+        "Connexion impossible",
+        "Email ou mot de passe incorrect, ou serveur indisponible."
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const onSignupPress = () => {
-    if (userType === 'client') {
-      router.push('/(auth)/client-signup')
-      return
+    if (userType === "client") {
+      router.push("/(auth)/client-signup");
+      return;
     }
 
-    // Pro (placeholder pour l’instant)
-    //router.push('/(auth)/pro-signup')
-  }
+     router.push('/(auth)/pro-signup')
+  };
 
   return (
     <Screen style={styles.container}>
-      {/* HEADER BORDEAUX */}
       <View style={styles.header}>
         <Text style={styles.title}>
-          {userType === 'professional'
-            ? 'AMBYA Pro'
-            : 'Bienvenue sur AMBYA'}
+          {userType === "professional" ? "AMBYA Pro" : "Bienvenue sur AMBYA"}
         </Text>
 
         <Text style={styles.subtitle}>
-          {userType === 'professional'
-            ? 'Espace Professionnel'
+          {userType === "professional"
+            ? "Espace Professionnel"
             : "L'élégance à portée de main"}
         </Text>
 
-        {/* Toggle Client / Pro */}
         <View style={styles.toggleWrap}>
           <Pressable
-            onPress={() => setUserType('client')}
+            onPress={() => setUserType("client")}
             style={[
               styles.toggleBtn,
-              userType === 'client' && styles.toggleActive,
+              userType === "client" && styles.toggleActive,
             ]}
           >
             <Text
               style={[
                 styles.toggleText,
-                userType === 'client' && styles.toggleTextActive,
+                userType === "client" && styles.toggleTextActive,
               ]}
             >
               Client
@@ -106,16 +124,16 @@ export default function Login() {
           </Pressable>
 
           <Pressable
-            onPress={() => setUserType('professional')}
+            onPress={() => setUserType("professional")}
             style={[
               styles.toggleBtn,
-              userType === 'professional' && styles.toggleActive,
+              userType === "professional" && styles.toggleActive,
             ]}
           >
             <Text
               style={[
                 styles.toggleText,
-                userType === 'professional' && styles.toggleTextActive,
+                userType === "professional" && styles.toggleTextActive,
               ]}
             >
               Professionnel
@@ -124,21 +142,16 @@ export default function Login() {
         </View>
       </View>
 
-      {/* BODY */}
       <View style={styles.body}>
-        {/* Tabs Connexion / Inscription */}
         <View style={styles.tabRow}>
           <Pressable
-            onPress={() => setActiveTab('login')}
-            style={[
-              styles.tab,
-              activeTab === 'login' && styles.tabActive,
-            ]}
+            onPress={() => setActiveTab("login")}
+            style={[styles.tab, activeTab === "login" && styles.tabActive]}
           >
             <Text
               style={[
                 styles.tabText,
-                activeTab === 'login' && styles.tabTextActive,
+                activeTab === "login" && styles.tabTextActive,
               ]}
             >
               Connexion
@@ -146,16 +159,13 @@ export default function Login() {
           </Pressable>
 
           <Pressable
-            onPress={() => setActiveTab('signup')}
-            style={[
-              styles.tab,
-              activeTab === 'signup' && styles.tabActive,
-            ]}
+            onPress={() => setActiveTab("signup")}
+            style={[styles.tab, activeTab === "signup" && styles.tabActive]}
           >
             <Text
               style={[
                 styles.tabText,
-                activeTab === 'signup' && styles.tabTextActive,
+                activeTab === "signup" && styles.tabTextActive,
               ]}
             >
               Inscription
@@ -163,15 +173,14 @@ export default function Login() {
           </Pressable>
         </View>
 
-        {/* Card */}
         <Card style={styles.card}>
-          {activeTab === 'login' ? (
+          {activeTab === "login" ? (
             <View style={{ gap: spacing.md }}>
               <Input
                 placeholder={
-                  userType === 'professional'
-                    ? 'Email professionnel'
-                    : 'Email ou téléphone'
+                  userType === "professional"
+                    ? "Email professionnel"
+                    : "Email ou téléphone"
                 }
                 value={email}
                 onChangeText={setEmail}
@@ -185,25 +194,21 @@ export default function Login() {
               />
 
               <Button
-                title="Se connecter"
+                title={submitting ? "Connexion..." : "Se connecter"}
                 onPress={onSubmit}
               />
             </View>
           ) : (
             <View style={styles.signupWrap}>
               <View style={styles.logoBox}>
-                <Image
-                  source={logo}
-                  resizeMode="contain"
-                  style={styles.logo}
-                />
+                <Image source={logo} resizeMode="contain" style={styles.logo} />
               </View>
 
               <Button
                 title={
-                  userType === 'professional'
-                    ? 'Inscription Professionnelle'
-                    : 'Créer un compte'
+                  userType === "professional"
+                    ? "Inscription Professionnelle"
+                    : "Créer un compte"
                 }
                 onPress={onSignupPress}
               />
@@ -212,7 +217,7 @@ export default function Login() {
         </Card>
       </View>
     </Screen>
-  )
+  );
 }
 
 const styles = StyleSheet.create({
@@ -232,13 +237,13 @@ const styles = StyleSheet.create({
   title: {
     color: colors.brandForeground,
     fontSize: 22,
-    fontWeight: '600',
-    textAlign: 'center',
+    fontWeight: "600",
+    textAlign: "center",
   },
 
   subtitle: {
     color: colors.premium,
-    textAlign: 'center',
+    textAlign: "center",
     marginTop: spacing.xs,
   },
 
@@ -247,14 +252,14 @@ const styles = StyleSheet.create({
     backgroundColor: overlays.white10,
     borderRadius: 999,
     padding: 4,
-    flexDirection: 'row',
+    flexDirection: "row",
   },
 
   toggleBtn: {
     flex: 1,
     paddingVertical: spacing.sm,
     borderRadius: 999,
-    alignItems: 'center',
+    alignItems: "center",
   },
 
   toggleActive: {
@@ -263,7 +268,7 @@ const styles = StyleSheet.create({
 
   toggleText: {
     color: colors.brandForeground,
-    fontWeight: '500',
+    fontWeight: "500",
   },
 
   toggleTextActive: {
@@ -276,7 +281,7 @@ const styles = StyleSheet.create({
   },
 
   tabRow: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: spacing.sm,
     marginBottom: spacing.lg,
   },
@@ -288,7 +293,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: overlays.brand20,
     paddingVertical: spacing.sm,
-    alignItems: 'center',
+    alignItems: "center",
   },
 
   tabActive: {
@@ -298,7 +303,7 @@ const styles = StyleSheet.create({
 
   tabText: {
     color: colors.text,
-    fontWeight: '500',
+    fontWeight: "500",
   },
 
   tabTextActive: {
@@ -311,7 +316,7 @@ const styles = StyleSheet.create({
 
   signupWrap: {
     gap: spacing.lg,
-    alignItems: 'center',
+    alignItems: "center",
   },
 
   logoBox: {
@@ -324,4 +329,4 @@ const styles = StyleSheet.create({
     width: 120,
     height: 120,
   },
-})
+});
