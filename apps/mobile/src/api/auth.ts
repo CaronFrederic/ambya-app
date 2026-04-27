@@ -65,19 +65,19 @@ type RegisterResponse = {
 };
 
 export async function login(payload: LoginPayload) {
-  const res = await api.post<LoginResponse>("/auth/login", payload);
+  const res = await api.post<LoginResponse>("/api/auth/login", payload);
   return res.data;
 }
 
 export function verifyOtp(payload: VerifyOtpPayload) {
-  return apiFetch<VerifyOtpResponse>("/auth/verify-otp", {
+  return apiFetch<VerifyOtpResponse>("/api/auth/verify-otp", {
     method: "POST",
     body: JSON.stringify(payload),
   });
 }
 
 export function resendOtp() {
-  return apiFetch<ResendOtpResponse>("/auth/resend-otp", {
+  return apiFetch<ResendOtpResponse>("/api/auth/resend-otp", {
     method: "POST",
   });
 }
@@ -87,7 +87,7 @@ export async function registerClient(
 ): Promise<RegisterResponse> {
   if (!API_URL) throw new Error("Missing EXPO_PUBLIC_API_URL");
 
-  const res = await fetch(`${API_URL}/auth/register`, {
+  const res = await fetch(`${API_URL}/api/auth/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(dto),
@@ -104,7 +104,7 @@ export async function registerClient(
 export async function patchMeProfile(accessToken: string, payload: unknown) {
   if (!API_URL) throw new Error("Missing EXPO_PUBLIC_API_URL");
 
-  const res = await fetch(`${API_URL}/me/profile`, {
+  const res = await fetch(`${API_URL}/api/me/profile`, {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
@@ -115,7 +115,7 @@ export async function patchMeProfile(accessToken: string, payload: unknown) {
 
   if (!res.ok) {
     const msg = await res.text().catch(() => "");
-    throw new Error(msg || `PATCH /me/profile failed (${res.status})`);
+    throw new Error(msg || `PATCH /api/me/profile failed (${res.status})`);
   }
 
   return res.json();
