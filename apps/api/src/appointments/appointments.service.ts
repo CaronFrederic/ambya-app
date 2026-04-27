@@ -1,9 +1,21 @@
 import {
   BadRequestException,
-  Injectable,
   ForbiddenException,
+  Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { Response } from 'express';
+import ExcelJS from 'exceljs';
+import {
+  AppointmentStatus,
+  LoyaltyReason,
+  LoyaltyTier,
+  PaymentStatus,
+  Prisma,
+  ServiceCategory,
+  UserRole,
+} from '@prisma/client';
+
 import { PrismaService } from '../prisma/prisma.service';
 import { ListAppointmentsDto } from './dto/list-appointments.dto';
 import { CreateAppointmentDto } from './dto/create-appointment.dto';
@@ -12,51 +24,50 @@ import { CreateAppointmentsFromCartDto } from './dto/create-appointments-from-ca
 import { UpdateAppointmentGroupDto } from './dto/update-appointment-group.dto';
 import { CreateReviewDto } from './dto/create-review.dto';
 import {
-  LoyaltyReason,
-  LoyaltyTier,
-  AppointmentStatus,
-  PaymentStatus,
-  Prisma,
-  ServiceCategory,
-  UserRole,
-} from '@prisma/client';
-import {
   employeeCanPerformCategory,
   getEmployeeSpecialtyLabels,
   getPrimaryEmployeeSpecialtyLabel,
-} from '../common/employee-specialties';
+} from '../common/employee-specialties'
 
 const CLIENT_CANCELLATION_NOTICE_HOURS = 24;
 
+type DbClient = PrismaService | Prisma.TransactionClient;
+type ServiceCategoryInput = ServiceCategory | string | null;
+
 @Injectable()
 export class AppointmentsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   async listForUser(
     user: { userId: string; role: UserRole },
     q: ListAppointmentsDto,
   ) {
-    const where: any = {};
+    const where: Prisma.AppointmentWhereInput = {};
 
-    if (user.role === 'CLIENT') {
+    if (user.role === UserRole.CLIENT) {
       where.clientId = user.userId;
     }
 
-    if (user.role === 'EMPLOYEE') {
+    if (user.role === UserRole.EMPLOYEE) {
       const employee = await this.prisma.employee.findUnique({
         where: { userId: user.userId },
         select: { id: true },
       });
-      if (!employee) throw new ForbiddenException();
+
+      if (!employee) {
+        throw new ForbiddenException();
+      }
+
       where.employeeId = employee.id;
     }
 
-    if (user.role === 'PROFESSIONAL') {
+    if (user.role === UserRole.PROFESSIONAL) {
       const salons = await this.prisma.salon.findMany({
         where: { ownerId: user.userId },
         select: { id: true },
       });
-      where.salonId = { in: salons.map((s) => s.id) };
+
+      where.salonId = { in: salons.map((salon) => salon.id) };
     }
 
     const [items, total] = await Promise.all([
@@ -68,7 +79,12 @@ export class AppointmentsService {
         include: {
           salon: { select: { id: true, name: true } },
           service: {
-            select: { id: true, name: true, durationMin: true, price: true },
+            select: {
+              id: true,
+              name: true,
+              durationMin: true,
+              price: true,
+            },
           },
           employee: {
             select: {
@@ -106,7 +122,7 @@ export class AppointmentsService {
     user: { userId: string; role: UserRole },
     dto: CreateAppointmentDto,
   ) {
-    if (user.role !== 'CLIENT') {
+    if (user.role !== UserRole.CLIENT) {
       throw new BadRequestException('Only CLIENT can create appointments');
     }
 
@@ -114,23 +130,25 @@ export class AppointmentsService {
     if (Number.isNaN(startAt.getTime())) {
       throw new BadRequestException('Invalid startAt');
     }
+
     this.assertStartInFuture(startAt);
 
     const service = await this.prisma.service.findFirst({
-      where: { id: dto.serviceId, salonId: dto.salonId, isActive: true },
-      select: { id: true, durationMin: true, price: true, category: true },
+      where: {
+        id: dto.serviceId,
+        salonId: dto.salonId,
+        isActive: true,
+      },
+      select: {
+        id: true,
+        durationMin: true,
+        price: true,
+        category: true,
+      },
     });
+
     if (!service) {
       throw new BadRequestException('Service not found for this salon');
-    }
-
-    if (dto.employeeId) {
-      const emp = await this.prisma.employee.findFirst({
-        where: { id: dto.employeeId, salonId: dto.salonId, isActive: true },
-        select: { id: true },
-      });
-      if (!emp)
-        throw new BadRequestException('Employee not found for this salon');
     }
 
     const endAt = new Date(startAt.getTime() + service.durationMin * 60_000);
@@ -147,12 +165,14 @@ export class AppointmentsService {
       );
     }
 
-    // ---- PaymentIntent (beta) with fixed discount ----
     const currency = 'XAF';
 
     const loyalty = await this.prisma.loyaltyAccount.findUnique({
       where: { userId: user.userId },
-      select: { pendingDiscountAmount: true, pendingDiscountTier: true },
+      select: {
+        pendingDiscountAmount: true,
+        pendingDiscountTier: true,
+      },
     });
 
     const pendingDiscountAmount = loyalty?.pendingDiscountAmount ?? 0;
@@ -162,7 +182,7 @@ export class AppointmentsService {
     );
     const payableAmount = Math.max(0, service.price - discountAmount);
     const appliedDiscountTier =
-      discountAmount > 0 ? (loyalty?.pendingDiscountTier ?? null) : null;
+      discountAmount > 0 ? loyalty?.pendingDiscountTier ?? null : null;
 
     const platformFeePct = 10;
     const platformFeeAmount = Math.floor(
@@ -190,7 +210,12 @@ export class AppointmentsService {
           include: {
             salon: { select: { id: true, name: true } },
             service: {
-              select: { id: true, name: true, durationMin: true, price: true },
+              select: {
+                id: true,
+                name: true,
+                durationMin: true,
+                price: true,
+              },
             },
             employee: {
               select: {
@@ -210,20 +235,15 @@ export class AppointmentsService {
             userId: user.userId,
             salonId: dto.salonId,
             appointmentId: appointment.id,
-
             amount: service.price,
             currency,
             status: PaymentStatus.CREATED,
-
             provider: null,
             providerRef: null,
             providerData: Prisma.DbNull,
-
             platformFeeAmount,
             providerFeeAmount,
             netAmount,
-
-            // ✅ fixed discount applied (but NOT consumed yet)
             discountAmount,
             payableAmount,
             appliedDiscountTier,
@@ -238,208 +258,227 @@ export class AppointmentsService {
   }
 
   async createFromCart(
-  user: { userId: string; role: UserRole },
-  dto: CreateAppointmentsFromCartDto,
-) {
-  if (user.role !== 'CLIENT') {
-    throw new BadRequestException('Only CLIENT can create appointments');
-  }
+    user: { userId: string; role: UserRole },
+    dto: CreateAppointmentsFromCartDto,
+  ) {
+    if (user.role !== UserRole.CLIENT) {
+      throw new BadRequestException('Only CLIENT can create appointments');
+    }
 
-  const startAt = new Date(dto.startAt);
-  if (Number.isNaN(startAt.getTime())) {
-    throw new BadRequestException('Invalid startAt');
-  }
-  this.assertStartInFuture(startAt);
+    const startAt = new Date(dto.startAt);
+    if (Number.isNaN(startAt.getTime())) {
+      throw new BadRequestException('Invalid startAt');
+    }
 
-  const expandedServiceIds = dto.items.flatMap((item) =>
-    Array.from({ length: item.quantity }, () => item.serviceId),
-  );
+    this.assertStartInFuture(startAt);
 
-  const services = await this.prisma.service.findMany({
-    where: {
-      id: { in: Array.from(new Set(expandedServiceIds)) },
-      salonId: dto.salonId,
-      isActive: true,
-    },
-    select: { id: true, name: true, durationMin: true, price: true, category: true },
-  });
+    const expandedServiceIds = dto.items.flatMap((item) =>
+      Array.from({ length: item.quantity }, () => item.serviceId),
+    );
 
-  if (services.length === 0) {
-    throw new BadRequestException('No valid services found for this salon');
-  }
+    const services = await this.prisma.service.findMany({
+      where: {
+        id: { in: Array.from(new Set(expandedServiceIds)) },
+        salonId: dto.salonId,
+        isActive: true,
+      },
+      select: {
+        id: true,
+        name: true,
+        durationMin: true,
+        price: true,
+        category: true,
+      },
+    });
 
-  const byId = new Map(services.map((service) => [service.id, service]));
+    if (services.length === 0) {
+      throw new BadRequestException('No valid services found for this salon');
+    }
 
-  for (const serviceId of expandedServiceIds) {
-    if (!byId.has(serviceId)) {
+    const byId = new Map(services.map((service) => [service.id, service]));
+
+    for (const serviceId of expandedServiceIds) {
+      if (!byId.has(serviceId)) {
+        throw new BadRequestException(
+          `Service not found for this salon: ${serviceId}`,
+        );
+      }
+    }
+
+    const employees = await this.prisma.employee.findMany({
+      where: { salonId: dto.salonId, isActive: true },
+      select: {
+        id: true,
+        displayName: true,
+        specialties: {
+          select: { specialty: true },
+          orderBy: { specialty: 'asc' },
+        },
+      },
+    });
+
+    if (employees.length === 0) {
       throw new BadRequestException(
-        `Service not found for this salon: ${serviceId}`,
+        'No active employee available for this salon',
       );
     }
-  }
 
-  const employees = await this.prisma.employee.findMany({
-    where: { salonId: dto.salonId, isActive: true },
-    select: {
-      id: true,
-      displayName: true,
-      specialties: {
-        select: { specialty: true },
-        orderBy: { specialty: 'asc' },
-      },
-    },
-  });
+    if (
+      dto.employeeId &&
+      !employees.some((employee) => employee.id === dto.employeeId)
+    ) {
+      throw new BadRequestException('Employee not found for this salon');
+    }
 
-  if (employees.length === 0) {
-    throw new BadRequestException(
-      'No active employee available for this salon',
-    );
-  }
+    const bookingGroupId = `cart-${Date.now()}-${Math.random()
+      .toString(36)
+      .slice(2, 8)}`;
 
-  if (
-    dto.employeeId &&
-    !employees.some((employee) => employee.id === dto.employeeId)
-  ) {
-    throw new BadRequestException('Employee not found for this salon');
-  }
+    const paymentMethod = dto.paymentMethod ?? 'CASH';
+    const isInternalPaymentCaptured = paymentMethod !== 'CASH';
 
-  const bookingGroupId = `cart-${Date.now()}-${Math.random()
-    .toString(36)
-    .slice(2, 8)}`;
-  const paymentMethod = dto.paymentMethod ?? 'CASH'
-  const isInternalPaymentCaptured = paymentMethod !== 'CASH'
-
-  const appointments = await this.prisma.$transaction(async (tx) => {
-    const created: Prisma.AppointmentGetPayload<{
-      include: {
-        salon: { select: { id: true; name: true } };
-        service: { select: { id: true; name: true; durationMin: true; price: true } };
-        employee: {
-          select: {
-            id: true;
-            displayName: true;
-            specialties: {
-              select: { specialty: true };
+    const appointments = await this.prisma.$transaction(async (tx) => {
+      const created: Prisma.AppointmentGetPayload<{
+        include: {
+          salon: { select: { id: true; name: true } };
+          service: {
+            select: {
+              id: true;
+              name: true;
+              durationMin: true;
+              price: true;
+            };
+          };
+          employee: {
+            select: {
+              id: true;
+              displayName: true;
+              specialties: {
+                select: { specialty: true };
+              };
             };
           };
         };
-      };
-    }>[] = [];
+      }>[] = [];
 
-    let cursorStart = startAt;
+      let cursorStart = startAt;
 
-    for (const serviceId of expandedServiceIds) {
-      const service = byId.get(serviceId)!;
+      for (const serviceId of expandedServiceIds) {
+        const service = byId.get(serviceId)!;
+        const endAt = new Date(
+          cursorStart.getTime() + service.durationMin * 60_000,
+        );
 
-      const endAt = new Date(
-        cursorStart.getTime() + service.durationMin * 60_000,
-      );
-
-      const assignedEmployeeId = await this.resolveEmployeeForSlot(
-        tx,
-        dto.salonId,
-        cursorStart,
-        endAt,
-        [],
-        service.category,
-        dto.employeeId ?? null,
-      );
-
-      const noteWithGroup = dto.note
-        ? `[BOOKING_GROUP:${bookingGroupId}] ${dto.note}`
-        : `[BOOKING_GROUP:${bookingGroupId}]`;
-
-      const appointment = await tx.appointment.create({
-        data: {
-          salonId: dto.salonId,
-          serviceId,
-          clientId: user.userId,
-          employeeId: assignedEmployeeId,
-          note: noteWithGroup,
-          startAt: cursorStart,
+        const assignedEmployeeId = await this.resolveEmployeeForSlot(
+          tx,
+          dto.salonId,
+          cursorStart,
           endAt,
-          status: AppointmentStatus.PENDING,
-        },
-        include: {
-          salon: { select: { id: true, name: true } },
-          service: {
-            select: { id: true, name: true, durationMin: true, price: true },
+          [],
+          service.category,
+          dto.employeeId ?? null,
+        );
+
+        const noteWithGroup = dto.note
+          ? `[BOOKING_GROUP:${bookingGroupId}] ${dto.note}`
+          : `[BOOKING_GROUP:${bookingGroupId}]`;
+
+        const appointment = await tx.appointment.create({
+          data: {
+            salonId: dto.salonId,
+            serviceId,
+            clientId: user.userId,
+            employeeId: assignedEmployeeId,
+            note: noteWithGroup,
+            startAt: cursorStart,
+            endAt,
+            status: AppointmentStatus.PENDING,
           },
-          employee: {
-            select: {
-              id: true,
-              displayName: true,
-              specialties: {
-                select: { specialty: true },
-                orderBy: { specialty: 'asc' },
+          include: {
+            salon: { select: { id: true, name: true } },
+            service: {
+              select: {
+                id: true,
+                name: true,
+                durationMin: true,
+                price: true,
+              },
+            },
+            employee: {
+              select: {
+                id: true,
+                displayName: true,
+                specialties: {
+                  select: { specialty: true },
+                  orderBy: { specialty: 'asc' },
+                },
               },
             },
           },
-        },
-      });
+        });
 
-      await tx.paymentIntent.create({
-        data: {
-          userId: user.userId,
-          salonId: dto.salonId,
-          appointmentId: appointment.id,
-          amount: service.price,
-          discountAmount: 0,
-          payableAmount: service.price,
-          currency: 'XAF',
-          status: isInternalPaymentCaptured
-            ? PaymentStatus.SUCCEEDED
-            : PaymentStatus.CREATED,
-          provider: isInternalPaymentCaptured ? 'INTERNAL_BETA' : null,
-          providerRef: isInternalPaymentCaptured
-            ? `client-beta-${paymentMethod.toLowerCase()}-${appointment.id}`
-            : null,
-          providerData: isInternalPaymentCaptured
-            ? {
-                source: 'client_beta',
-                paymentMethod,
-                bookingGroupId,
-              }
-            : Prisma.DbNull,
-          platformFeeAmount: 0,
-          providerFeeAmount: 0,
-          netAmount: service.price,
-        },
-      });
+        await tx.paymentIntent.create({
+          data: {
+            userId: user.userId,
+            salonId: dto.salonId,
+            appointmentId: appointment.id,
+            amount: service.price,
+            discountAmount: 0,
+            payableAmount: service.price,
+            currency: 'XAF',
+            status: isInternalPaymentCaptured
+              ? PaymentStatus.SUCCEEDED
+              : PaymentStatus.CREATED,
+            provider: isInternalPaymentCaptured ? 'INTERNAL_BETA' : null,
+            providerRef: isInternalPaymentCaptured
+              ? `client-beta-${paymentMethod.toLowerCase()}-${appointment.id}`
+              : null,
+            providerData: isInternalPaymentCaptured
+              ? {
+                  source: 'client_beta',
+                  paymentMethod,
+                  bookingGroupId,
+                }
+              : Prisma.DbNull,
+            platformFeeAmount: 0,
+            providerFeeAmount: 0,
+            netAmount: service.price,
+          },
+        });
 
-      created.push(appointment);
+        created.push(appointment);
+        cursorStart = endAt;
+      }
 
-      cursorStart = endAt;
-    }
+      return created;
+    });
 
-    return created;
-  });
-
-  return {
-    bookingGroupId,
-    items: appointments,
-    total: appointments.length,
-    totalDurationMin: appointments.reduce(
-      (sum, appointment) => sum + appointment.service.durationMin,
-      0,
-    ),
-    totalAmount: appointments.reduce(
-      (sum, appointment) => sum + appointment.service.price,
-      0,
-    ),
-    payment: {
-      method: paymentMethod,
-      status: isInternalPaymentCaptured ? PaymentStatus.SUCCEEDED : PaymentStatus.CREATED,
-    },
-  };
-}
+    return {
+      bookingGroupId,
+      items: appointments,
+      total: appointments.length,
+      totalDurationMin: appointments.reduce(
+        (sum, appointment) => sum + appointment.service.durationMin,
+        0,
+      ),
+      totalAmount: appointments.reduce(
+        (sum, appointment) => sum + appointment.service.price,
+        0,
+      ),
+      payment: {
+        method: paymentMethod,
+        status: isInternalPaymentCaptured
+          ? PaymentStatus.SUCCEEDED
+          : PaymentStatus.CREATED,
+      },
+    };
+  }
 
   async assignEmployee(
     user: { userId: string; role: UserRole },
     appointmentId: string,
     dto: AssignEmployeeDto,
   ) {
-    // On récupère le RDV + salon ownerId pour check permissions
     const appt = await this.prisma.appointment.findUnique({
       where: { id: appointmentId },
       select: {
@@ -453,19 +492,20 @@ export class AppointmentsService {
         salon: { select: { ownerId: true } },
       },
     });
-    if (!appt) throw new NotFoundException('Appointment not found');
+
+    if (!appt) {
+      throw new NotFoundException('Appointment not found');
+    }
 
     const isOwner =
-      user.role === 'PROFESSIONAL' && appt.salon.ownerId === user.userId;
-    const isAdmin = user.role === 'ADMIN';
-    const isClient = user.role === 'CLIENT' && appt.clientId === user.userId;
+      user.role === UserRole.PROFESSIONAL && appt.salon.ownerId === user.userId;
+    const isAdmin = user.role === UserRole.ADMIN;
+    const isClient = user.role === UserRole.CLIENT && appt.clientId === user.userId;
 
-    // MVP: autorise PRO owner + ADMIN (et optionnellement CLIENT si tu veux)
     if (!isOwner && !isAdmin && !isClient) {
       throw new ForbiddenException('Not allowed');
     }
 
-    // Unassign
     if (!dto.employeeId) {
       return this.prisma.appointment.update({
         where: { id: appointmentId },
@@ -473,7 +513,12 @@ export class AppointmentsService {
         include: {
           salon: { select: { id: true, name: true } },
           service: {
-            select: { id: true, name: true, durationMin: true, price: true },
+            select: {
+              id: true,
+              name: true,
+              durationMin: true,
+              price: true,
+            },
           },
           employee: {
             select: {
@@ -500,13 +545,18 @@ export class AppointmentsService {
       });
     }
 
-    // Vérifie que l’employé existe et appartient au salon
     const emp = await this.prisma.employee.findFirst({
-      where: { id: dto.employeeId, salonId: appt.salonId, isActive: true },
+      where: {
+        id: dto.employeeId,
+        salonId: appt.salonId,
+        isActive: true,
+      },
       select: { id: true },
     });
-    if (!emp)
+
+    if (!emp) {
       throw new BadRequestException('Employee not found for this salon');
+    }
 
     await this.resolveEmployeeForSlot(
       this.prisma,
@@ -611,30 +661,42 @@ export class AppointmentsService {
           this.canManageAppointment(appointment.status, appointment.startAt),
         )
       ) {
-        throw new BadRequestException('Only pending or confirmed appointments can be modified');
+        throw new BadRequestException(
+          'Only pending or confirmed appointments can be modified',
+        );
       }
 
-      const startAt = dto.startAt ? new Date(dto.startAt) : appointments[0].startAt;
+      const startAt = dto.startAt
+        ? new Date(dto.startAt)
+        : appointments[0].startAt;
+
       if (Number.isNaN(startAt.getTime())) {
         throw new BadRequestException('Invalid startAt');
       }
+
       this.assertStartInFuture(startAt);
-      const timeChanged = appointments[0].startAt.getTime() !== startAt.getTime();
+      this.assertStartMatchesSalonSchedulingSlots(startAt);
+
+      const timeChanged =
+        appointments[0].startAt.getTime() !== startAt.getTime();
 
       const targetEmployeeId =
         dto.employeeId === undefined ? undefined : dto.employeeId || null;
 
       if (targetEmployeeId) {
         const employee = await tx.employee.findFirst({
-          where: { id: targetEmployeeId, salonId: primary.salonId, isActive: true },
+          where: {
+            id: targetEmployeeId,
+            salonId: primary.salonId,
+            isActive: true,
+          },
           select: { id: true },
         });
+
         if (!employee) {
           throw new BadRequestException('Employee not found for this salon');
         }
       }
-
-      this.assertStartMatchesSalonSchedulingSlots(startAt);
 
       let cursor = new Date(startAt);
 
@@ -644,6 +706,7 @@ export class AppointmentsService {
         );
 
         this.assertWithinSalonBusinessHours(cursor, nextEnd);
+
         const employeeId =
           targetEmployeeId === undefined
             ? appointment.employeeId
@@ -673,6 +736,7 @@ export class AppointmentsService {
       }
 
       const refreshed = await this.getManagedAppointments(user, groupId, tx);
+
       return {
         groupId,
         cancellationPolicy: this.getCancellationPolicy(refreshed[0].startAt),
@@ -697,6 +761,7 @@ export class AppointmentsService {
   ) {
     return this.prisma.$transaction(async (tx) => {
       const appointments = await this.getManagedAppointments(user, groupId, tx);
+
       const cancellable = appointments.filter((appointment) =>
         this.canManageAppointment(appointment.status, appointment.startAt),
       );
@@ -715,6 +780,7 @@ export class AppointmentsService {
         });
 
         const paymentIntent = appointment.paymentIntents[0];
+
         if (
           paymentIntent &&
           paymentIntent.status === PaymentStatus.SUCCEEDED &&
@@ -724,7 +790,9 @@ export class AppointmentsService {
             where: { id: paymentIntent.id },
             data: { status: PaymentStatus.REFUNDED },
           });
+
           refundedAppointmentIds.push(appointment.id);
+
           await this.rollbackLoyaltyAfterRefund(
             tx,
             appointment.clientId,
@@ -749,22 +817,25 @@ export class AppointmentsService {
     groupId: string,
     dto: CreateReviewDto,
   ) {
-    if (user.role !== 'CLIENT') {
+    if (user.role !== UserRole.CLIENT) {
       throw new ForbiddenException('Only clients can create reviews');
     }
 
     const appointments = await this.getManagedAppointments(user, groupId);
     const primary = appointments[0];
+
     const hasCompletedAppointment = appointments.some(
       (appointment) =>
         appointment.status === AppointmentStatus.COMPLETED &&
         appointment.startAt.getTime() <= Date.now(),
     );
+
     const comment = dto.comment.trim();
 
     if (!hasCompletedAppointment) {
       throw new BadRequestException('Only completed appointments can be reviewed');
     }
+
     if (!comment) {
       throw new BadRequestException('Comment is required');
     }
@@ -797,25 +868,28 @@ export class AppointmentsService {
           salon: { select: { ownerId: true } },
         },
       });
-      if (!appt) throw new NotFoundException('Appointment not found');
+
+      if (!appt) {
+        throw new NotFoundException('Appointment not found');
+      }
 
       const isOwner =
-        user.role === 'PROFESSIONAL' && appt.salon.ownerId === user.userId;
-      const isAdmin = user.role === 'ADMIN';
-      const isClient = user.role === 'CLIENT' && appt.clientId === user.userId;
-      const isEmployee = user.role === 'EMPLOYEE'; // optionnel
+        user.role === UserRole.PROFESSIONAL &&
+        appt.salon.ownerId === user.userId;
+      const isAdmin = user.role === UserRole.ADMIN;
+      const isClient =
+        user.role === UserRole.CLIENT && appt.clientId === user.userId;
+      const isEmployee = user.role === UserRole.EMPLOYEE;
 
       if (!isOwner && !isAdmin && !isClient && !isEmployee) {
         throw new ForbiddenException('Not allowed');
       }
 
-      // Cancel appointment
       const cancelled = await tx.appointment.update({
         where: { id: appointmentId },
         data: { status: AppointmentStatus.CANCELLED },
       });
 
-      // get last intent
       const lastIntent = await tx.paymentIntent.findFirst({
         where: { appointmentId },
         orderBy: { createdAt: 'desc' },
@@ -829,11 +903,10 @@ export class AppointmentsService {
         },
       });
 
-      // If paid, refund + rollback loyalty
       if (lastIntent && lastIntent.status === PaymentStatus.SUCCEEDED) {
-        const canRefund = user.role === 'PROFESSIONAL' || user.role === 'ADMIN';
+        const canRefund =
+          user.role === UserRole.PROFESSIONAL || user.role === UserRole.ADMIN;
 
-        // ✅ EMPLOYEE / CLIENT : annulation OK mais refund doit être fait par PRO/ADMIN
         if (!canRefund) {
           return {
             appointment: cancelled,
@@ -842,91 +915,451 @@ export class AppointmentsService {
           };
         }
 
-        // ✅ PRO/ADMIN : refund + rollback loyalty
         await tx.paymentIntent.update({
           where: { id: lastIntent.id },
           data: { status: PaymentStatus.REFUNDED },
         });
 
-        const payable =
-          lastIntent.payableAmount && lastIntent.payableAmount > 0
-            ? lastIntent.payableAmount
-            : lastIntent.amount;
-
-        const earnedPoints = Math.floor(payable / 100);
-
-        const loyalty = await tx.loyaltyAccount.findUnique({
-          where: { userId: appt.clientId },
-          select: { id: true, currentPoints: true, lifetimePoints: true },
-        });
-
-        if (loyalty && earnedPoints > 0) {
-          await tx.loyaltyTransaction.create({
-            data: {
-              loyaltyAccountId: loyalty.id,
-              deltaPoints: -earnedPoints,
-              reason: LoyaltyReason.ADJUSTMENT,
-              meta: {
-                appointmentId,
-                refundPaymentIntentId: lastIntent.id,
-                reason: dto.reason ?? null,
-              },
-            },
-          });
-
-          const newCurrent = Math.max(0, loyalty.currentPoints - earnedPoints);
-          const newLifetime = Math.max(
-            0,
-            loyalty.lifetimePoints - earnedPoints,
-          );
-
-          const tierFromPoints = (pts: number): LoyaltyTier => {
-            if (pts >= 5000) return 'PLATINUM';
-            if (pts >= 2000) return 'GOLD';
-            if (pts >= 500) return 'SILVER';
-            return 'BRONZE';
-          };
-
-          await tx.loyaltyAccount.update({
-            where: { userId: appt.clientId },
-            data: {
-              currentPoints: newCurrent,
-              lifetimePoints: newLifetime,
-              tier: tierFromPoints(newLifetime),
-            },
-          });
-        }
-
-        // (Option bêta) restore discount if it was used on this intent
-        if ((lastIntent.discountAmount ?? 0) > 0) {
-          const acc = await tx.loyaltyAccount.findUnique({
-            where: { userId: appt.clientId },
-            select: { pendingDiscountAmount: true },
-          });
-
-          if ((acc?.pendingDiscountAmount ?? 0) === 0) {
-            await tx.loyaltyAccount.update({
-              where: { userId: appt.clientId },
-              data: {
-                pendingDiscountAmount: lastIntent.discountAmount,
-                pendingDiscountTier: lastIntent.appliedDiscountTier ?? null,
-                pendingDiscountIssuedAt: new Date(),
-                pendingDiscountConsumedAt: null,
-                pendingDiscountConsumedIntentId: null,
-              },
-            });
-          }
-        }
+        await this.rollbackLoyaltyAfterRefund(
+          tx,
+          appt.clientId,
+          appointmentId,
+          lastIntent,
+          dto.reason,
+        );
       }
 
       return { appointment: cancelled };
     });
   }
 
+  async getProCalendar(
+    user: { userId: string; role: UserRole },
+    date?: string,
+  ) {
+    if (user.role !== UserRole.PROFESSIONAL && user.role !== UserRole.ADMIN) {
+      throw new ForbiddenException('Not allowed');
+    }
+
+    const salonIds = await this.getManagedSalonIds(user);
+
+    if (!salonIds.length) {
+      return [];
+    }
+
+    const targetDate = date ? new Date(date) : new Date();
+
+    if (Number.isNaN(targetDate.getTime())) {
+      throw new BadRequestException('Invalid date');
+    }
+
+    const start = new Date(targetDate);
+    start.setHours(0, 0, 0, 0);
+
+    const end = new Date(targetDate);
+    end.setHours(23, 59, 59, 999);
+
+    const appointments = await this.prisma.appointment.findMany({
+      where: {
+        salonId: { in: salonIds },
+        startAt: {
+          gte: start,
+          lte: end,
+        },
+      },
+      include: {
+        client: {
+          select: {
+            id: true,
+            email: true,
+            phone: true,
+            clientProfile: {
+              select: { nickname: true },
+            },
+          },
+        },
+        employee: {
+          select: {
+            id: true,
+            displayName: true,
+            specialties: {
+              select: { specialty: true },
+              orderBy: { specialty: 'asc' },
+            },
+          },
+        },
+        service: {
+          select: {
+            id: true,
+            name: true,
+            durationMin: true,
+          },
+        },
+      },
+      orderBy: { startAt: 'asc' },
+    });
+
+    return appointments.map((appointment) => ({
+      id: appointment.id,
+      startAt: appointment.startAt.toISOString(),
+      endAt: appointment.endAt.toISOString(),
+      status: appointment.status,
+      clientName:
+        appointment.client.clientProfile?.nickname ||
+        appointment.client.email ||
+        appointment.client.phone ||
+        'Client',
+      clientPhone: appointment.client.phone ?? null,
+      serviceName: appointment.service.name,
+      employeeName: appointment.employee?.displayName ?? null,
+      employee: appointment.employee
+        ? this.mapEmployeeSummary(appointment.employee)
+        : null,
+    }));
+  }
+
+  async getProPendingRequests(
+    user: { userId: string; role: UserRole },
+    date?: string,
+  ) {
+    if (user.role !== UserRole.PROFESSIONAL && user.role !== UserRole.ADMIN) {
+      throw new ForbiddenException('Not allowed');
+    }
+
+    const salonIds = await this.getManagedSalonIds(user);
+
+    if (!salonIds.length) {
+      return [];
+    }
+
+    const where: Prisma.AppointmentWhereInput = {
+      salonId: { in: salonIds },
+      status: AppointmentStatus.PENDING,
+    };
+
+    if (date) {
+      const targetDate = new Date(date);
+
+      if (Number.isNaN(targetDate.getTime())) {
+        throw new BadRequestException('Invalid date');
+      }
+
+      const start = new Date(targetDate);
+      start.setHours(0, 0, 0, 0);
+
+      const end = new Date(targetDate);
+      end.setHours(23, 59, 59, 999);
+
+      where.startAt = {
+        gte: start,
+        lte: end,
+      };
+    }
+
+    const appointments = await this.prisma.appointment.findMany({
+      where,
+      include: {
+        client: {
+          select: {
+            id: true,
+            email: true,
+            phone: true,
+            clientProfile: {
+              select: { nickname: true },
+            },
+          },
+        },
+        employee: {
+          select: {
+            id: true,
+            displayName: true,
+            specialties: {
+              select: { specialty: true },
+              orderBy: { specialty: 'asc' },
+            },
+          },
+        },
+        service: {
+          select: {
+            id: true,
+            name: true,
+            durationMin: true,
+          },
+        },
+      },
+      orderBy: { startAt: 'asc' },
+    });
+
+    return appointments.map((appointment) => ({
+      id: appointment.id,
+      startAt: appointment.startAt.toISOString(),
+      endAt: appointment.endAt.toISOString(),
+      status: appointment.status,
+      clientName:
+        appointment.client.clientProfile?.nickname ||
+        appointment.client.email ||
+        appointment.client.phone ||
+        'Client',
+      clientPhone: appointment.client.phone ?? null,
+      serviceName: appointment.service.name,
+      employeeName: appointment.employee?.displayName ?? null,
+      employee: appointment.employee
+        ? this.mapEmployeeSummary(appointment.employee)
+        : null,
+    }));
+  }
+
+  async getProHistory(
+    user: { userId: string; role: UserRole },
+    status?: string,
+  ) {
+    if (user.role !== UserRole.PROFESSIONAL && user.role !== UserRole.ADMIN) {
+      throw new ForbiddenException('Not allowed');
+    }
+
+    const salonIds = await this.getManagedSalonIds(user);
+
+    if (!salonIds.length) {
+      return [];
+    }
+
+    const allowedStatuses: AppointmentStatus[] = [
+      AppointmentStatus.COMPLETED,
+      AppointmentStatus.CANCELLED,
+      AppointmentStatus.NO_SHOW,
+    ];
+
+    const where: Prisma.AppointmentWhereInput = {
+      salonId: { in: salonIds },
+      status: {
+        in: allowedStatuses,
+      },
+    };
+
+    if (
+      status &&
+      ['COMPLETED', 'CANCELLED', 'NO_SHOW'].includes(status.toUpperCase())
+    ) {
+      where.status = status.toUpperCase() as AppointmentStatus;
+    }
+
+    const appointments = await this.prisma.appointment.findMany({
+      where,
+      include: {
+        client: {
+          select: {
+            id: true,
+            email: true,
+            phone: true,
+            clientProfile: {
+              select: { nickname: true },
+            },
+          },
+        },
+        employee: {
+          select: {
+            id: true,
+            displayName: true,
+            specialties: {
+              select: { specialty: true },
+              orderBy: { specialty: 'asc' },
+            },
+          },
+        },
+        service: {
+          select: {
+            id: true,
+            name: true,
+            price: true,
+          },
+        },
+      },
+      orderBy: { startAt: 'desc' },
+    });
+
+    return appointments.map((appointment) => ({
+      id: appointment.id,
+      startAt: appointment.startAt.toISOString(),
+      endAt: appointment.endAt.toISOString(),
+      clientId: appointment.client.id,
+      clientName:
+        appointment.client.clientProfile?.nickname ||
+        appointment.client.email ||
+        appointment.client.phone ||
+        'Client',
+      clientPhone: appointment.client.phone ?? null,
+      servicesLabel: appointment.service.name,
+      employeeName: appointment.employee?.displayName ?? null,
+      employee: appointment.employee
+        ? this.mapEmployeeSummary(appointment.employee)
+        : null,
+      amount:
+        appointment.totalAmount > 0
+          ? appointment.totalAmount
+          : appointment.service.price,
+      status: appointment.status,
+    }));
+  }
+
+  async exportProHistory(
+    user: { userId: string; role: UserRole },
+    status: string | undefined,
+    res: Response,
+  ) {
+    let normalizedStatus: string | undefined;
+
+    if (status === 'completed') normalizedStatus = 'COMPLETED';
+    else if (status === 'cancelled') normalizedStatus = 'CANCELLED';
+    else if (status === 'no-show') normalizedStatus = 'NO_SHOW';
+    else if (
+      status === 'COMPLETED' ||
+      status === 'CANCELLED' ||
+      status === 'NO_SHOW'
+    ) {
+      normalizedStatus = status;
+    }
+
+    const items = await this.getProHistory(user, normalizedStatus);
+
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Historique réservations');
+
+    worksheet.columns = [
+      { header: 'ID réservation', key: 'id', width: 26 },
+      { header: 'Date', key: 'date', width: 22 },
+      { header: 'Client', key: 'clientName', width: 24 },
+      { header: 'Téléphone', key: 'clientPhone', width: 18 },
+      { header: 'Services', key: 'servicesLabel', width: 28 },
+      { header: 'Employé', key: 'employeeName', width: 24 },
+      { header: 'Montant', key: 'amount', width: 14 },
+      { header: 'Statut', key: 'status', width: 14 },
+    ];
+
+    worksheet.getRow(1).font = { bold: true };
+    worksheet.getRow(1).alignment = {
+      vertical: 'middle',
+      horizontal: 'center',
+    };
+
+    for (const item of items) {
+      worksheet.addRow({
+        id: item.id,
+        date: new Date(item.startAt).toLocaleString('fr-FR'),
+        clientName: item.clientName,
+        clientPhone: item.clientPhone ?? 'Non renseigné',
+        servicesLabel: item.servicesLabel,
+        employeeName: item.employeeName ?? 'Non assigné',
+        amount: item.amount,
+        status:
+          item.status === AppointmentStatus.COMPLETED
+            ? 'Terminé'
+            : item.status === AppointmentStatus.CANCELLED
+              ? 'Annulé'
+              : item.status === AppointmentStatus.NO_SHOW
+                ? 'No-show'
+                : item.status,
+      });
+    }
+
+    worksheet.eachRow((row, rowNumber) => {
+      row.alignment = { vertical: 'middle' };
+
+      if (rowNumber > 1) {
+        row.getCell(7).numFmt = '#,##0 "FCFA"';
+      }
+    });
+
+    const safeStatus = normalizedStatus ? normalizedStatus.toLowerCase() : 'all';
+    const filename = `booking-history-${safeStatus}-${new Date()
+      .toISOString()
+      .slice(0, 10)}.xlsx`;
+
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+    await workbook.xlsx.write(res);
+    res.end();
+  }
+
+  async confirmAppointment(
+    user: { userId: string; role: UserRole },
+    appointmentId: string,
+  ) {
+    if (user.role !== UserRole.PROFESSIONAL && user.role !== UserRole.ADMIN) {
+      throw new ForbiddenException('Not allowed');
+    }
+
+    const appt = await this.prisma.appointment.findUnique({
+      where: { id: appointmentId },
+      include: {
+        salon: { select: { ownerId: true } },
+      },
+    });
+
+    if (!appt) {
+      throw new NotFoundException('Appointment not found');
+    }
+
+    const isOwner =
+      user.role === UserRole.PROFESSIONAL && appt.salon.ownerId === user.userId;
+
+    if (!isOwner && user.role !== UserRole.ADMIN) {
+      throw new ForbiddenException('Not allowed');
+    }
+
+    if (appt.status !== AppointmentStatus.PENDING) {
+      throw new BadRequestException('Only pending appointments can be confirmed');
+    }
+
+    return this.prisma.appointment.update({
+      where: { id: appointmentId },
+      data: { status: AppointmentStatus.CONFIRMED },
+    });
+  }
+
+  async rejectAppointment(
+    user: { userId: string; role: UserRole },
+    appointmentId: string,
+  ) {
+    if (user.role !== UserRole.PROFESSIONAL && user.role !== UserRole.ADMIN) {
+      throw new ForbiddenException('Not allowed');
+    }
+
+    const appt = await this.prisma.appointment.findUnique({
+      where: { id: appointmentId },
+      include: {
+        salon: { select: { ownerId: true } },
+      },
+    });
+
+    if (!appt) {
+      throw new NotFoundException('Appointment not found');
+    }
+
+    const isOwner =
+      user.role === UserRole.PROFESSIONAL && appt.salon.ownerId === user.userId;
+
+    if (!isOwner && user.role !== UserRole.ADMIN) {
+      throw new ForbiddenException('Not allowed');
+    }
+
+    if (appt.status !== AppointmentStatus.PENDING) {
+      throw new BadRequestException('Only pending appointments can be rejected');
+    }
+
+    return this.prisma.appointment.update({
+      where: { id: appointmentId },
+      data: { status: AppointmentStatus.CANCELLED },
+    });
+  }
+
   private async getManagedAppointments(
     user: { userId: string; role: UserRole },
     groupId: string,
-    prisma: Prisma.TransactionClient | PrismaService = this.prisma,
+    prisma: DbClient = this.prisma,
   ) {
     const direct = await prisma.appointment.findMany({
       where: this.buildManagedAppointmentWhere(user, {
@@ -1029,12 +1462,30 @@ export class AppointmentsService {
     user: { userId: string; role: UserRole },
     extra: Prisma.AppointmentWhereInput,
   ): Prisma.AppointmentWhereInput {
-    if (user.role === 'CLIENT') {
+    if (user.role === UserRole.CLIENT) {
       return { ...extra, clientId: user.userId };
     }
 
-    if (user.role === 'ADMIN') {
+    if (user.role === UserRole.ADMIN) {
       return extra;
+    }
+
+    if (user.role === UserRole.PROFESSIONAL) {
+      return {
+        ...extra,
+        salon: {
+          ownerId: user.userId,
+        },
+      };
+    }
+
+    if (user.role === UserRole.EMPLOYEE) {
+      return {
+        ...extra,
+        employee: {
+          userId: user.userId,
+        },
+      };
     }
 
     throw new ForbiddenException('Not allowed');
@@ -1062,6 +1513,7 @@ export class AppointmentsService {
       0,
       Math.floor((startAt.getTime() - Date.now()) / 3_600_000),
     );
+
     const isRefundEligible = noticeHours >= CLIENT_CANCELLATION_NOTICE_HOURS;
 
     return {
@@ -1096,18 +1548,22 @@ export class AppointmentsService {
   }
 
   private async resolveEmployeeForSlot(
-    prisma: Prisma.TransactionClient | PrismaService,
+    prisma: DbClient,
     salonId: string,
     startAt: Date,
     endAt: Date,
     excludedAppointmentIds: string[],
-    serviceCategory: ServiceCategory,
+    serviceCategory: ServiceCategoryInput,
     requestedEmployeeId?: string | null,
     allowFallbackToAnyAvailable = false,
   ) {
     if (requestedEmployeeId) {
       const employee = await prisma.employee.findFirst({
-        where: { id: requestedEmployeeId, salonId, isActive: true },
+        where: {
+          id: requestedEmployeeId,
+          salonId,
+          isActive: true,
+        },
         select: {
           id: true,
           specialties: {
@@ -1121,37 +1577,39 @@ export class AppointmentsService {
         throw new BadRequestException('Employee not found for this salon');
       }
 
-      if (!employeeCanPerformCategory(employee.specialties, serviceCategory)) {
+      if (!this.canEmployeePerformServiceCategory(employee.specialties, serviceCategory)) {
         if (!allowFallbackToAnyAvailable) {
           throw new BadRequestException(
             'Selected employee cannot perform this service',
           );
         }
-      } else if (
-        await this.hasEmployeeSchedulingConflict(
+      } else {
+        const hasConflict = await this.hasEmployeeSchedulingConflict(
           prisma,
           salonId,
           requestedEmployeeId,
           startAt,
           endAt,
           { excludeAppointmentIds: excludedAppointmentIds },
-        )
-      ) {
-        if (allowFallbackToAnyAvailable) {
-          // Keep the booking modifiable when the chosen time is valid for the salon
-          // but the original employee is no longer free.
-        } else {
+        );
+
+        if (!hasConflict) {
+          return requestedEmployeeId;
+        }
+
+        if (!allowFallbackToAnyAvailable) {
           throw new BadRequestException(
             'Selected employee is not available at this time',
           );
         }
-      } else {
-        return requestedEmployeeId;
       }
     }
 
     const employees = await prisma.employee.findMany({
-      where: { salonId, isActive: true },
+      where: {
+        salonId,
+        isActive: true,
+      },
       select: {
         id: true,
         specialties: {
@@ -1163,7 +1621,7 @@ export class AppointmentsService {
     });
 
     for (const employee of employees) {
-      if (!employeeCanPerformCategory(employee.specialties, serviceCategory)) {
+      if (!this.canEmployeePerformServiceCategory(employee.specialties, serviceCategory)) {
         continue;
       }
 
@@ -1191,32 +1649,36 @@ export class AppointmentsService {
   }
 
   private async hasEmployeeSchedulingConflict(
-    prisma: Prisma.TransactionClient | PrismaService,
+    prisma: DbClient,
     salonId: string,
     employeeId: string,
     startAt: Date,
     endAt: Date,
-    options?: { excludeAppointmentIds?: string[]; excludeBlockedSlotId?: string },
+    options?: {
+      excludeAppointmentIds?: string[];
+      excludeBlockedSlotId?: string;
+    },
   ) {
-    const [appointmentConflict, blockedSlotConflict, leaveConflict] =
-      await Promise.all([
-        prisma.appointment.findFirst({
-          where: {
-            salonId,
-            employeeId,
-            id:
-              options?.excludeAppointmentIds?.length
-                ? { notIn: options.excludeAppointmentIds }
-                : undefined,
-            status: {
-              in: [AppointmentStatus.PENDING, AppointmentStatus.CONFIRMED],
-            },
-            startAt: { lt: endAt },
-            endAt: { gt: startAt },
-          },
-          select: { id: true },
-        }),
-        prisma.employeeBlockedSlot.findFirst({
+    const anyPrisma = prisma as any;
+
+    const appointmentConflict = await prisma.appointment.findFirst({
+      where: {
+        salonId,
+        employeeId,
+        id: options?.excludeAppointmentIds?.length
+          ? { notIn: options.excludeAppointmentIds }
+          : undefined,
+        status: {
+          in: [AppointmentStatus.PENDING, AppointmentStatus.CONFIRMED],
+        },
+        startAt: { lt: endAt },
+        endAt: { gt: startAt },
+      },
+      select: { id: true },
+    });
+
+    const blockedSlotConflict = anyPrisma.employeeBlockedSlot
+      ? await anyPrisma.employeeBlockedSlot.findFirst({
           where: {
             salonId,
             employeeId,
@@ -1230,8 +1692,14 @@ export class AppointmentsService {
             endAt: { gt: startAt },
           },
           select: { id: true },
-        }),
-        prisma.leaveRequest.findFirst({
+        })
+      : null;
+
+    const leaveDelegate =
+      anyPrisma.employeeLeaveRequest ?? anyPrisma.leaveRequest ?? null;
+
+    const leaveConflict = leaveDelegate
+      ? await leaveDelegate.findFirst({
           where: {
             employeeId,
             status: 'APPROVED',
@@ -1239,11 +1707,25 @@ export class AppointmentsService {
             endAt: { gt: startAt },
           },
           select: { id: true },
-        }),
-      ]);
+        })
+      : null;
 
     return Boolean(appointmentConflict || blockedSlotConflict || leaveConflict);
   }
+
+private canEmployeePerformServiceCategory(
+  specialties: Array<{ specialty: any }>,
+  serviceCategory: ServiceCategoryInput,
+) {
+  if (!serviceCategory) {
+    return true;
+  }
+
+  return employeeCanPerformCategory(
+    specialties,
+    serviceCategory as ServiceCategory,
+  );
+}
 
   private mapEmployeeSummary(employee: {
     id: string;
@@ -1261,7 +1743,7 @@ export class AppointmentsService {
   }
 
   private async rollbackLoyaltyAfterRefund(
-    prisma: Prisma.TransactionClient,
+    prisma: DbClient,
     clientId: string,
     appointmentId: string,
     paymentIntent: {
@@ -1282,7 +1764,11 @@ export class AppointmentsService {
 
     const loyalty = await prisma.loyaltyAccount.findUnique({
       where: { userId: clientId },
-      select: { id: true, currentPoints: true, lifetimePoints: true },
+      select: {
+        id: true,
+        currentPoints: true,
+        lifetimePoints: true,
+      },
     });
 
     if (loyalty && earnedPoints > 0) {
@@ -1303,10 +1789,10 @@ export class AppointmentsService {
       const newLifetime = Math.max(0, loyalty.lifetimePoints - earnedPoints);
 
       const tierFromPoints = (pts: number): LoyaltyTier => {
-        if (pts >= 5000) return 'PLATINUM';
-        if (pts >= 2000) return 'GOLD';
-        if (pts >= 500) return 'SILVER';
-        return 'BRONZE';
+        if (pts >= 5000) return LoyaltyTier.PLATINUM;
+        if (pts >= 2000) return LoyaltyTier.GOLD;
+        if (pts >= 500) return LoyaltyTier.SILVER;
+        return LoyaltyTier.BRONZE;
       };
 
       await prisma.loyaltyAccount.update({
@@ -1338,5 +1824,26 @@ export class AppointmentsService {
         });
       }
     }
+  }
+
+  private async getManagedSalonIds(user: { userId: string; role: UserRole }) {
+    if (user.role === UserRole.ADMIN) {
+      const salons = await this.prisma.salon.findMany({
+        select: { id: true },
+      });
+
+      return salons.map((salon) => salon.id);
+    }
+
+    if (user.role === UserRole.PROFESSIONAL) {
+      const salons = await this.prisma.salon.findMany({
+        where: { ownerId: user.userId },
+        select: { id: true },
+      });
+
+      return salons.map((salon) => salon.id);
+    }
+
+    throw new ForbiddenException('Not allowed');
   }
 }

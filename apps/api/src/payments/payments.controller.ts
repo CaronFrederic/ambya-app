@@ -1,10 +1,11 @@
-import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common'
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
-import { CurrentUser } from '../auth/decorators/current-user.decorator'
-import type { JwtUser } from '../auth/decorators/current-user.decorator'
-import { CreatePaymentIntentDto } from './dto/create-payment-intent.dto'
-import { UpdateIntentStatusDto } from './dto/update-intent-status.dto'
-import { PaymentsService } from './payments.service'
+import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import type { JwtUser } from '../auth/decorators/current-user.decorator';
+import { CreatePaymentIntentDto } from './dto/create-payment-intent.dto';
+import { UpdateIntentStatusDto } from './dto/update-intent-status.dto';
+import { GetCashRegisterQueryDto } from './dto/get-cash-register-query.dto';
+import { PaymentsService } from './payments.service';
 
 @Controller('payments')
 @UseGuards(JwtAuthGuard)
@@ -13,16 +14,37 @@ export class PaymentsController {
 
   @Get('intents')
   listMy(@CurrentUser() user: JwtUser) {
-    return this.payments.listMyIntents(user.userId)
+    return this.payments.listMyIntents(user.userId);
   }
 
   @Post('intents')
   create(@CurrentUser() user: JwtUser, @Body() dto: CreatePaymentIntentDto) {
-    return this.payments.createIntent(user.userId, dto)
+    return this.payments.createIntent(user.userId, dto);
   }
 
   @Patch('intents/:id/status')
-  updateStatus(@CurrentUser() user: JwtUser, @Param('id') id: string, @Body() dto: UpdateIntentStatusDto) {
-    return this.payments.updateStatus({ userId: user.userId, role: user.role }, id, dto)
+  updateStatus(
+    @CurrentUser() user: JwtUser,
+    @Param('id') id: string,
+    @Body() dto: UpdateIntentStatusDto,
+  ) {
+    return this.payments.updateStatus(
+      { userId: user.userId, role: user.role },
+      id,
+      dto,
+    );
+  }
+
+    @Get('cash-register')
+  cashRegister(
+    @CurrentUser() user: JwtUser,
+    @Query('date') date?: string,
+    @Query('method') method?: string,
+  ) {
+    return this.payments.getCashRegister(
+      { userId: user.userId, role: user.role },
+      date,
+      method,
+    )
   }
 }

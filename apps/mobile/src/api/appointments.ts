@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { api } from "./client";
+import * as SecureStore from "expo-secure-store";
+import { api, apiFetch } from "./client";
 import { useOfflineCachedQuery } from "./useOfflineCachedQuery";
 
 export type AppointmentListResponse = {
@@ -10,7 +11,12 @@ export type AppointmentListResponse = {
     endAt: string;
     note?: string | null;
     salon: { id: string; name: string };
-    service: { id: string; name: string; durationMin: number; price: number };
+    service: {
+      id: string;
+      name: string;
+      durationMin: number;
+      price: number;
+    };
     employee?: {
       id: string;
       displayName: string;
@@ -22,6 +28,7 @@ export type AppointmentListResponse = {
       status: string;
       amount: number;
       payableAmount?: number | null;
+      discountAmount?: number | null;
       currency: string;
       createdAt: string;
     }>;
@@ -52,7 +59,12 @@ export type AppointmentGroupDetails = {
     startAt: string;
     endAt: string;
     note?: string | null;
-    service: { id: string; name: string; durationMin: number; price: number };
+    service: {
+      id: string;
+      name: string;
+      durationMin: number;
+      price: number;
+    };
     employee?: {
       id: string;
       displayName: string;
@@ -79,6 +91,39 @@ export type CreateAppointmentPayload = {
   note?: string;
 };
 
+export type CreateAppointmentsFromCartPayload = {
+  salonId: string;
+  startAt: string;
+  employeeId?: string;
+  note?: string;
+  paymentMethod?: "CARD" | "MOMO" | "CASH";
+  items: Array<{ serviceId: string; quantity: number }>;
+};
+
+export type AppointmentHistoryStatus =
+  | "COMPLETED"
+  | "CANCELLED"
+  | "NO_SHOW"
+  | "CONFIRMED"
+  | "PENDING";
+
+export type AppointmentHistoryItem = {
+  id: string;
+  startAt: string;
+  endAt: string;
+  clientId: string;
+  clientName: string;
+  clientPhone: string | null;
+  servicesLabel: string;
+  employeeName: string | null;
+  amount: number;
+  status: AppointmentHistoryStatus;
+};
+
+export type GetAppointmentHistoryParams = {
+  status?: "all" | "completed" | "cancelled" | "no-show";
+};
+
 export async function fetchAppointments() {
   const res = await api.get<AppointmentListResponse>("/appointments");
   return res.data;
@@ -89,7 +134,6 @@ export function useAppointments() {
     queryKey: ["appointments"],
     queryFn: fetchAppointments,
     cacheKey: "client:appointments",
-
     staleTime: 60_000,
     gcTime: 10 * 60_000,
     refetchOnMount: true,
@@ -107,31 +151,23 @@ export async function assignEmployee(
   appointmentId: string,
   employeeId?: string,
 ) {
-  const res = await api.patch(
-    `/appointments/${appointmentId}/assign-employee`,
-    { employeeId },
-  );
+  const res = await api.patch(`/api/appointments/${appointmentId}/assign-employee`, {
+    employeeId,
+  });
   return res.data;
-}
-
-export type CreateAppointmentsFromCartPayload = {
-  salonId: string
-  startAt: string
-  employeeId?: string
-  note?: string
-  paymentMethod?: 'CARD' | 'MOMO' | 'CASH'
-  items: Array<{ serviceId: string; quantity: number }>
 }
 
 export async function createAppointmentsFromCart(
   payload: CreateAppointmentsFromCartPayload,
 ) {
-  const res = await api.post('/appointments/from-cart', payload)
-  return res.data
+  const res = await api.post("/api/appointments/from-cart", payload);
+  return res.data;
 }
 
 export async function fetchAppointmentGroupDetails(groupId: string) {
-  const res = await api.get<AppointmentGroupDetails>(`/appointments/group/${groupId}`);
+  const res = await api.get<AppointmentGroupDetails>(
+    `/api/appointments/group/${groupId}`,
+  );
   return res.data;
 }
 
@@ -156,7 +192,7 @@ export function useUpdateAppointmentGroup() {
 
   return useMutation({
     mutationFn: async ({ groupId, ...payload }: UpdateAppointmentGroupPayload) => {
-      const res = await api.patch(`/appointments/group/${groupId}`, payload);
+      const res = await api.patch(`/api/appointments/group/${groupId}`, payload);
       return res.data;
     },
     onSuccess: async (_data, variables) => {
@@ -179,7 +215,7 @@ export function useCancelAppointmentGroup() {
       groupId: string;
       reason?: string;
     }) => {
-      const res = await api.patch(`/appointments/group/${groupId}/cancel`, {
+      const res = await api.patch(`/api/appointments/group/${groupId}/cancel`, {
         reason,
       });
       return res.data;
@@ -206,7 +242,7 @@ export function useCreateAppointmentReview() {
       rating: number;
       comment: string;
     }) => {
-      const res = await api.post(`/appointments/group/${groupId}/review`, {
+      const res = await api.post(`/api/appointments/group/${groupId}/review`, {
         rating,
         comment,
       });
@@ -220,4 +256,53 @@ export function useCreateAppointmentReview() {
       await qc.invalidateQueries({ queryKey: ["salons"] });
     },
   });
+}
+
+function buildHistoryQuery(params?: GetAppointmentHistoryParams) {
+  if (!params || !params.status || params.status === "all") return "";
+
+  const search = new URLSearchParams();
+
+  if (params.status === "completed") search.set("status", "COMPLETED");
+  if (params.status === "cancelled") search.set("status", "CANCELLED");
+  if (params.status === "no-show") search.set("status", "NO_SHOW");
+
+  const qs = search.toString();
+  return qs ? `?${qs}` : "";
+}
+
+export function getAppointmentHistory(
+  token: string,
+  params?: GetAppointmentHistoryParams,
+) {
+  return apiFetch<AppointmentHistoryItem[]>(
+    `/api/appointments/pro/history${buildHistoryQuery(params)}`,
+    {
+      method: "GET",
+      token,
+    },
+  );
+}
+
+const API_BASE_URL =
+  process.env.EXPO_PUBLIC_API_URL?.trim().replace(/\/+$/, "") || "";
+
+export async function getAppointmentHistoryExportUrl(
+  status?: "all" | "completed" | "cancelled" | "no-show",
+) {
+  const token = await SecureStore.getItemAsync("accessToken");
+
+  if (!token) {
+    throw new Error("Utilisateur non authentifié.");
+  }
+
+  const search = new URLSearchParams();
+
+  if (status && status !== "all") {
+    search.set("status", status);
+  }
+
+  search.set("token", token);
+
+  return `${API_BASE_URL}/api/appointments/pro/history/export?${search.toString()}`;
 }

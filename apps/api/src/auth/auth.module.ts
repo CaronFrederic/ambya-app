@@ -1,14 +1,14 @@
-import { Module } from '@nestjs/common'
-import { JwtModule } from '@nestjs/jwt'
-import { PassportModule } from '@nestjs/passport'
-import { ConfigService } from '@nestjs/config'
-import type { StringValue } from 'ms'
+import { Module } from '@nestjs/common';
+import { JwtModule } from '@nestjs/jwt';
+import { PassportModule } from '@nestjs/passport';
+import { ConfigService } from '@nestjs/config';
+import type { StringValue } from 'ms';
 
-import { PrismaService } from '../prisma/prisma.service'
-import { AuthController } from './auth.controller'
-import { AuthService } from './auth.service'
-import { JwtStrategy } from './strategies/jwt.strategy'
-import { RolesGuard } from './guards/roles.guard'
+import { PrismaService } from '../prisma/prisma.service';
+import { AuthController } from './auth.controller';
+import { AuthService } from './auth.service';
+import { JwtStrategy } from './strategies/jwt.strategy';
+import { RolesGuard } from './guards/roles.guard';
 
 @Module({
   imports: [
