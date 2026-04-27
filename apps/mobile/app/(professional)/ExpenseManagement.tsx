@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -9,16 +9,25 @@ import {
   TextInput,
   Platform,
   Image,
+  ActivityIndicator,
+  RefreshControl,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import type { Href } from "expo-router";
 
 import { ProHeader } from "./components/ProHeader";
+import {
+  createExpense,
+  deleteExpense,
+  getExpenses,
+  type ApiExpense,
+} from "../../src/api/expenses";
+import * as SecureStore from "expo-secure-store";
 
 type Expense = {
-  id: number;
-  date: string; // yyyy-mm-dd
+  id: string;
+  date: string;
   category: string;
   description: string;
   amount: number;
@@ -37,47 +46,40 @@ const COLORS = {
 
 const DASHBOARD_HREF: Href = "/(professional)/dashboard";
 
+async function getAccessToken(): Promise<string> {
+  const token = await SecureStore.getItemAsync("accessToken");
+  if (!token) {
+    throw new Error("Utilisateur non authentifié.");
+  }
+  return token;
+}
+
+function formatDateToYmd(value: string) {
+  return value.slice(0, 10);
+}
+
+function mapApiExpenseToUi(expense: ApiExpense): Expense {
+  return {
+    id: expense.id,
+    date: formatDateToYmd(expense.expenseDate),
+    category: expense.category,
+    description: expense.description ?? "",
+    amount: expense.amount,
+    payment: "Espèces",
+    receiptUri: expense.receiptUrl ?? null,
+  };
+}
+
 export default function ExpenseManagementScreen() {
   const [showModal, setShowModal] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
-  const [expenses, setExpenses] = useState<Expense[]>([
-    {
-      id: 1,
-      date: "2026-01-05",
-      category: "Produits",
-      description: "Achat shampooing professionnel",
-      amount: 15000,
-      payment: "Mobile Money",
-      receiptUri: null,
-    },
-    {
-      id: 2,
-      date: "2026-01-03",
-      category: "Salaires",
-      description: "Salaire Marie - Janvier",
-      amount: 120000,
-      payment: "Virement",
-      receiptUri: null,
-    },
-    {
-      id: 3,
-      date: "2026-01-02",
-      category: "Électricité",
-      description: "Facture SEEG Décembre",
-      amount: 25000,
-      payment: "Espèces",
-      receiptUri: null,
-    },
-    {
-      id: 4,
-      date: "2025-12-28",
-      category: "Marketing",
-      description: "Publicité Facebook",
-      amount: 8000,
-      payment: "Mobile Money",
-      receiptUri: null,
-    },
-  ]);
+  const [toastVisible, setToastVisible] = useState(false);
+  const [toastMsg, setToastMsg] = useState("");
+
+  const [expenses, setExpenses] = useState<Expense[]>([]);
 
   const totalExpenses = useMemo(
     () => expenses.reduce((sum, e) => sum + e.amount, 0),
@@ -100,6 +102,12 @@ export default function ExpenseManagementScreen() {
     receiptUri: null,
   });
 
+  const toast = (msg: string) => {
+    setToastMsg(msg);
+    setToastVisible(true);
+    setTimeout(() => setToastVisible(false), 2200);
+  };
+
   const resetForm = () => {
     setForm({
       date: "2026-01-07",
@@ -116,13 +124,55 @@ export default function ExpenseManagementScreen() {
     setShowModal(true);
   };
 
-  const removeExpense = (id: number) => {
-    setExpenses((prev) => prev.filter((e) => e.id !== id));
+  const loadExpenses = async () => {
+    const token = await getAccessToken();
+    const data = await getExpenses(token);
+    setExpenses(data.map(mapApiExpenseToUi));
+  };
+
+  const initialLoad = async () => {
+    try {
+      setLoading(true);
+      await loadExpenses();
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Erreur de chargement.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onRefresh = async () => {
+    try {
+      setRefreshing(true);
+      await loadExpenses();
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Erreur de rafraîchissement.");
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    initialLoad();
+  }, []);
+
+  const removeExpense = async (id: string) => {
+    try {
+      const token = await getAccessToken();
+      await deleteExpense(token, id);
+      await loadExpenses();
+      toast("Dépense supprimée");
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Erreur lors de la suppression.");
+    }
   };
 
   const pickReceipt = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== "granted") return;
+    if (status !== "granted") {
+      toast("Permission galerie refusée.");
+      return;
+    }
 
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -136,22 +186,37 @@ export default function ExpenseManagementScreen() {
     }
   };
 
-  const save = () => {
+  const save = async () => {
     const amt = Number(form.amount || 0);
-    if (!amt || !form.description.trim()) return;
 
-    const newExpense: Expense = {
-      id: Math.max(0, ...expenses.map((e) => e.id)) + 1,
-      date: form.date,
-      category: form.category.trim() || "Autre",
-      description: form.description.trim(),
-      amount: amt,
-      payment: form.payment,
-      receiptUri: form.receiptUri,
-    };
+    if (!amt || !form.description.trim()) {
+      toast("Le montant et la description sont requis.");
+      return;
+    }
 
-    setExpenses((prev) => [newExpense, ...prev]);
-    setShowModal(false);
+    try {
+      setSubmitting(true);
+      const token = await getAccessToken();
+
+      await createExpense(token, {
+        category: form.category.trim() || "Autre",
+        description: form.description.trim(),
+        amount: amt,
+        expenseDate: new Date(`${form.date}T00:00:00.000Z`).toISOString(),
+      });
+
+      await loadExpenses();
+      setShowModal(false);
+      toast("Dépense ajoutée ✅");
+
+      if (form.payment !== "Espèces" || form.receiptUri) {
+        toast("Le mode de paiement et le reçu ne sont pas encore sauvegardés côté backend.");
+      }
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Erreur lors de l'enregistrement.");
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -162,64 +227,117 @@ export default function ExpenseManagementScreen() {
         backTo={DASHBOARD_HREF}
       />
 
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Total */}
-        <View style={styles.totalCard}>
-          <Text style={styles.totalLabel}>Total dépenses</Text>
-          <Text style={styles.totalValue}>{totalExpenses.toLocaleString()} FCFA</Text>
-          <Text style={styles.totalHint}>Ce mois-ci</Text>
+      {loading ? (
+        <View style={styles.loaderWrap}>
+          <ActivityIndicator size="large" color={COLORS.brand} />
+          <Text style={styles.loaderText}>Chargement des dépenses...</Text>
         </View>
+      ) : (
+        <ScrollView
+          contentContainerStyle={styles.content}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          }
+        >
+          <View style={styles.totalCard}>
+            <Text style={styles.totalLabel}>Total dépenses</Text>
+            <Text style={styles.totalValue}>
+              {totalExpenses.toLocaleString()} FCFA
+            </Text>
+            <Text style={styles.totalHint}>Ce mois-ci</Text>
+          </View>
 
-        {/* Add */}
-        <Pressable onPress={openModal} style={styles.primaryBtn}>
-          <Ionicons name="add" size={18} color="#fff" />
-          <Text style={styles.primaryBtnText}>Ajouter une dépense</Text>
-        </Pressable>
+          <Pressable onPress={openModal} style={styles.primaryBtn}>
+            <Ionicons name="add" size={18} color="#fff" />
+            <Text style={styles.primaryBtnText}>Ajouter une dépense</Text>
+          </Pressable>
 
-        {/* List */}
-        <View style={{ gap: 10 }}>
-          {expenses.map((e) => (
-            <View key={e.id} style={styles.card}>
-              <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 10 }}>
-                <View style={{ flex: 1 }}>
-                  <View style={{ flexDirection: "row", gap: 8, alignItems: "center", marginBottom: 6 }}>
-                    <View style={styles.pill}>
-                      <Text style={styles.pillText}>{e.category}</Text>
+          <View style={{ gap: 10 }}>
+            {expenses.map((e) => (
+              <View key={e.id} style={styles.card}>
+                <View
+                  style={{
+                    flexDirection: "row",
+                    justifyContent: "space-between",
+                    gap: 10,
+                  }}
+                >
+                  <View style={{ flex: 1 }}>
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        gap: 8,
+                        alignItems: "center",
+                        marginBottom: 6,
+                      }}
+                    >
+                      <View style={styles.pill}>
+                        <Text style={styles.pillText}>{e.category}</Text>
+                      </View>
+                      <Text style={styles.meta}>{e.date}</Text>
                     </View>
-                    <Text style={styles.meta}>{e.date}</Text>
+
+                    <Text style={styles.desc}>{e.description}</Text>
+                    <Text style={styles.meta}>{e.payment}</Text>
+
+                    {!!e.receiptUri && (
+                      <View style={styles.receiptInline}>
+                        <Ionicons
+                          name="image-outline"
+                          size={14}
+                          color={COLORS.brand}
+                        />
+                        <Text style={styles.receiptInlineText}>Reçu attaché</Text>
+                      </View>
+                    )}
                   </View>
 
-                  <Text style={styles.desc}>{e.description}</Text>
-                  <Text style={styles.meta}>{e.payment}</Text>
-
-                  {!!e.receiptUri && (
-                    <View style={styles.receiptInline}>
-                      <Ionicons name="image-outline" size={14} color={COLORS.brand} />
-                      <Text style={styles.receiptInlineText}>Reçu attaché</Text>
-                    </View>
-                  )}
+                  <View style={{ alignItems: "flex-end" }}>
+                    <Text style={styles.amount}>
+                      -{e.amount.toLocaleString()} FCFA
+                    </Text>
+                  </View>
                 </View>
 
-                <View style={{ alignItems: "flex-end" }}>
-                  <Text style={styles.amount}>-{e.amount.toLocaleString()} FCFA</Text>
+                <View style={styles.cardActions}>
+                  <Pressable
+                    style={styles.actionBtn}
+                    onPress={() => removeExpense(e.id)}
+                  >
+                    <Ionicons
+                      name="trash-outline"
+                      size={14}
+                      color={COLORS.danger}
+                    />
+                    <Text style={[styles.actionText, { color: COLORS.danger }]}>
+                      Supprimer
+                    </Text>
+                  </Pressable>
                 </View>
               </View>
+            ))}
+          </View>
 
-              <View style={styles.cardActions}>
-                <Pressable style={styles.actionBtn} onPress={() => removeExpense(e.id)}>
-                  <Ionicons name="trash-outline" size={14} color={COLORS.danger} />
-                  <Text style={[styles.actionText, { color: COLORS.danger }]}>Supprimer</Text>
-                </Pressable>
-              </View>
-            </View>
-          ))}
+          <View style={{ height: 28 }} />
+        </ScrollView>
+      )}
+
+      <Modal visible={toastVisible} transparent animationType="fade">
+        <View style={styles.toastWrap}>
+          <View style={styles.toast}>
+            <Ionicons name="checkmark-circle" size={18} color="#fff" />
+            <Text style={styles.toastText}>{toastMsg}</Text>
+          </View>
         </View>
+      </Modal>
 
-        <View style={{ height: 28 }} />
-      </ScrollView>
-
-      {/* Modal Add Expense */}
-      <Modal visible={showModal} transparent animationType="slide" onRequestClose={() => setShowModal(false)}>
+      <Modal
+        visible={showModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowModal(false)}
+      >
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
@@ -275,7 +393,11 @@ export default function ExpenseManagementScreen() {
                       onPress={() => setForm((p) => ({ ...p, payment: m }))}
                       style={[styles.chip, active && styles.chipActive]}
                     >
-                      <Text style={[styles.chipText, active && styles.chipTextActive]}>{m}</Text>
+                      <Text
+                        style={[styles.chipText, active && styles.chipTextActive]}
+                      >
+                        {m}
+                      </Text>
                     </Pressable>
                   );
                 })}
@@ -288,7 +410,10 @@ export default function ExpenseManagementScreen() {
                 <View style={styles.receiptBox}>
                   <Image source={{ uri: form.receiptUri }} style={styles.receiptImg} />
                   <View style={{ flexDirection: "row", gap: 10, marginTop: 10 }}>
-                    <Pressable onPress={pickReceipt} style={[styles.secondaryBtn, { flex: 1 }]}>
+                    <Pressable
+                      onPress={pickReceipt}
+                      style={[styles.secondaryBtn, { flex: 1 }]}
+                    >
                       <Ionicons name="image-outline" size={16} color={COLORS.text} />
                       <Text style={styles.secondaryText}>Changer</Text>
                     </Pressable>
@@ -309,7 +434,10 @@ export default function ExpenseManagementScreen() {
               )}
 
               <View style={{ flexDirection: "row", gap: 10, marginTop: 14 }}>
-                <Pressable onPress={() => setShowModal(false)} style={[styles.secondaryBtn, { flex: 1 }]}>
+                <Pressable
+                  onPress={() => setShowModal(false)}
+                  style={[styles.secondaryBtn, { flex: 1 }]}
+                >
                   <Text style={styles.secondaryText}>Annuler</Text>
                 </Pressable>
                 <Pressable
@@ -317,11 +445,22 @@ export default function ExpenseManagementScreen() {
                   style={[
                     styles.primaryBtn,
                     { flex: 1, paddingVertical: 12 },
-                    (!form.description.trim() || !Number(form.amount || 0)) && { opacity: 0.55 },
+                    submitting && { opacity: 0.6 },
+                    (!form.description.trim() || !Number(form.amount || 0)) && {
+                      opacity: 0.55,
+                    },
                   ]}
-                  disabled={!form.description.trim() || !Number(form.amount || 0)}
+                  disabled={
+                    submitting ||
+                    !form.description.trim() ||
+                    !Number(form.amount || 0)
+                  }
                 >
-                  <Text style={styles.primaryBtnText}>Enregistrer</Text>
+                  {submitting ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text style={styles.primaryBtnText}>Enregistrer</Text>
+                  )}
                 </Pressable>
               </View>
 
@@ -336,6 +475,17 @@ export default function ExpenseManagementScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.bg },
+
+  loaderWrap: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 12,
+  },
+  loaderText: {
+    color: COLORS.brand,
+    fontWeight: "700",
+  },
 
   content: { padding: 18, paddingBottom: 28, gap: 12 },
 
@@ -370,14 +520,28 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.06,
     shadowRadius: 10,
   },
-  pill: { backgroundColor: "rgba(212,175,106,0.2)", paddingVertical: 6, paddingHorizontal: 10, borderRadius: 999 },
+  pill: {
+    backgroundColor: "rgba(212,175,106,0.2)",
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+  },
   pillText: { color: COLORS.brand, fontWeight: "800", fontSize: 12 },
   meta: { color: "rgba(58,58,58,0.6)", fontSize: 12 },
   desc: { color: COLORS.text, fontSize: 14, marginBottom: 4 },
   amount: { color: COLORS.danger, fontWeight: "900" },
 
-  receiptInline: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 6 },
-  receiptInlineText: { color: COLORS.brand, fontWeight: "700", fontSize: 12 },
+  receiptInline: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginTop: 6,
+  },
+  receiptInlineText: {
+    color: COLORS.brand,
+    fontWeight: "700",
+    fontSize: 12,
+  },
 
   cardActions: {
     marginTop: 12,
@@ -390,9 +554,41 @@ const styles = StyleSheet.create({
   actionBtn: { flexDirection: "row", gap: 6, alignItems: "center" },
   actionText: { color: COLORS.brand, fontWeight: "700", fontSize: 12 },
 
-  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", padding: 18 },
-  modalCard: { backgroundColor: "#fff", borderRadius: 22, padding: 16, maxHeight: "92%" },
-  modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 6 },
+  toastWrap: {
+    flex: 1,
+    justifyContent: "flex-start",
+    alignItems: "center",
+    paddingTop: 90,
+  },
+  toast: {
+    backgroundColor: COLORS.brand,
+    borderRadius: 999,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    flexDirection: "row",
+    gap: 8,
+    alignItems: "center",
+  },
+  toastText: { color: "#fff", fontWeight: "600" },
+
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    padding: 18,
+  },
+  modalCard: {
+    backgroundColor: "#fff",
+    borderRadius: 22,
+    padding: 16,
+    maxHeight: "92%",
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 6,
+  },
   modalTitle: { fontSize: 18, fontWeight: "900", color: COLORS.brand },
 
   label: { color: COLORS.text, fontWeight: "800", marginTop: 10, marginBottom: 6 },
@@ -414,11 +610,19 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(107,39,55,0.2)",
   },
-  chipActive: { backgroundColor: "rgba(107,39,55,0.10)", borderColor: COLORS.brand },
+  chipActive: {
+    backgroundColor: "rgba(107,39,55,0.10)",
+    borderColor: COLORS.brand,
+  },
   chipText: { fontSize: 12, color: COLORS.text },
   chipTextActive: { fontWeight: "900", color: COLORS.brand },
 
-  sectionSep: { height: 1, backgroundColor: "rgba(107,39,55,0.12)", marginTop: 14, marginBottom: 8 },
+  sectionSep: {
+    height: 1,
+    backgroundColor: "rgba(107,39,55,0.12)",
+    marginTop: 14,
+    marginBottom: 8,
+  },
 
   uploadBtn: {
     marginTop: 2,
@@ -440,7 +644,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "rgba(107,39,55,0.15)",
   },
-  receiptImg: { width: "100%", height: 180, borderRadius: 14, backgroundColor: "#eee" },
+  receiptImg: {
+    width: "100%",
+    height: 180,
+    borderRadius: 14,
+    backgroundColor: "#eee",
+  },
 
   secondaryBtn: {
     backgroundColor: COLORS.bg,

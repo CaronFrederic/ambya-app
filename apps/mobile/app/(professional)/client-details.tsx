@@ -1,9 +1,29 @@
-import React, { useState } from "react";
-import { View, Text, ScrollView, Pressable, StyleSheet, Switch, TextInput } from "react-native";
+import React, { useEffect, useMemo, useState } from "react";
+import {
+  View,
+  Text,
+  ScrollView,
+  Pressable,
+  StyleSheet,
+  Switch,
+  TextInput,
+  ActivityIndicator,
+  RefreshControl,
+} from "react-native";
 import { useLocalSearchParams, router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { ProHeader } from "./components/ProHeader";
-
+import {
+  blockClient,
+  getClientDetails,
+  updateClientDepositExempt,
+  updateClientNotes,
+  type ClientBookingHistoryItem,
+  type ClientDetails,
+  type ClientPreferredEmployee,
+  type ClientPreferredService,
+} from "../../src/api/clients";
+import * as SecureStore from "expo-secure-store";
 const COLORS = {
   bg: "#FAF7F2",
   white: "#FFFFFF",
@@ -22,7 +42,7 @@ const COLORS = {
 type BookingStatus = "Terminé" | "Annulé";
 
 type Booking = {
-  id: number;
+  id: string;
   date: string;
   service: string;
   employee: string;
@@ -31,297 +51,536 @@ type Booking = {
 };
 
 type PreferredEmployee = {
-  id: number;
+  id: string;
   name: string;
   count: number;
 };
 
-export default function ClientDetailsScreen() {
-  const params = useLocalSearchParams<{ client?: string }>();
-  const clientName = params.client ?? "Marie Kouassi";
+async function getAccessToken(): Promise<string> {
+  const token = await SecureStore.getItemAsync("accessToken");
+  if (!token) {
+    throw new Error("Utilisateur non authentifié.");
+  }
+  return token;
+}
 
+function formatFcfa(value: number) {
+  return `${value.toLocaleString("fr-FR")} FCFA`;
+}
+
+function formatClientSince(date?: string | null) {
+  if (!date) return "Date inconnue";
+
+  const d = new Date(date);
+  if (Number.isNaN(d.getTime())) return "Date inconnue";
+
+  return `Cliente depuis le ${d.toLocaleDateString("fr-FR", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  })}`;
+}
+
+function mapHistory(items?: ClientBookingHistoryItem[]): Booking[] {
+  if (!items?.length) {
+    return [
+      {
+        id: "mock-1",
+        date: "25 Jan 2026",
+        service: "Tresses Nattes",
+        employee: "Marie",
+        amount: "25 000 FCFA",
+        status: "Terminé",
+      },
+      {
+        id: "mock-2",
+        date: "10 Jan 2026",
+        service: "Manucure Classique",
+        employee: "Jean",
+        amount: "15 000 FCFA",
+        status: "Terminé",
+      },
+    ];
+  }
+
+  return items.map((item) => ({
+    id: item.id,
+    date: new Date(item.date).toLocaleDateString("fr-FR", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    }),
+    service: item.service,
+    employee: item.employee,
+    amount: formatFcfa(item.amount),
+    status: item.status === "COMPLETED" ? "Terminé" : "Annulé",
+  }));
+}
+
+function mapPreferredEmployees(
+  items?: ClientPreferredEmployee[]
+): PreferredEmployee[] {
+  if (!items?.length) {
+    return [
+      { id: "mock-emp-1", name: "Marie", count: 5 },
+      { id: "mock-emp-2", name: "Jean", count: 2 },
+    ];
+  }
+
+  return items.map((item) => ({
+    id: item.id,
+    name: item.name,
+    count: item.count,
+  }));
+}
+
+function mapPreferredServices(items?: ClientPreferredService[]) {
+  if (!items?.length) {
+    return [
+      { name: "Tresses Nattes", count: 4 },
+      { name: "Manucure Classique", count: 2 },
+      { name: "Brushing", count: 2 },
+    ];
+  }
+
+  return items;
+}
+
+export default function ClientDetailsScreen() {
+  const params = useLocalSearchParams<{ id?: string; client?: string }>();
+  const clientId = params.id;
+  const fallbackClientName = params.client ?? "Marie Kouassi";
+
+  const [client, setClient] = useState<ClientDetails | null>(null);
   const [depositExempt, setDepositExempt] = useState(false);
-  const [privateNotes, setPrivateNotes] = useState(
-    "Préfère les RDV le matin. Très ponctuel. Aime discuter."
+  const [privateNotes, setPrivateNotes] = useState("");
+  const [savingNotes, setSavingNotes] = useState(false);
+  const [updatingDeposit, setUpdatingDeposit] = useState(false);
+  const [blockingClient, setBlockingClient] = useState(false);
+
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const loadClient = async () => {
+    if (!clientId) return;
+    const token = await getAccessToken();
+    const data = await getClientDetails(token, clientId);
+    setClient(data);
+    setDepositExempt(data.depositExempt);
+    setPrivateNotes(data.notes ?? "");
+  };
+
+  const initialLoad = async () => {
+    try {
+      setLoading(true);
+      await loadClient();
+    } catch (error) {
+      console.error("Client details load error:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onRefresh = async () => {
+    try {
+      setRefreshing(true);
+      await loadClient();
+    } catch (error) {
+      console.error("Client details refresh error:", error);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    initialLoad();
+  }, [clientId]);
+
+  const bookings = useMemo(() => mapHistory(client?.bookingHistory), [client]);
+  const preferredEmployees = useMemo(
+    () => mapPreferredEmployees(client?.preferredEmployees),
+    [client]
+  );
+  const preferredServices = useMemo(
+    () => mapPreferredServices(client?.preferredServices),
+    [client]
   );
 
-  const bookings: Booking[] = [
-    { id: 1, date: "25 Jan 2026", service: "Tresses Nattes", employee: "Marie", amount: "25 000 FCFA", status: "Terminé" },
-    { id: 2, date: "10 Jan 2026", service: "Manucure Classique", employee: "Jean", amount: "15 000 FCFA", status: "Terminé" },
-    { id: 3, date: "28 Déc 2025", service: "Brushing", employee: "Sophie", amount: "18 000 FCFA", status: "Terminé" },
-    { id: 4, date: "15 Déc 2025", service: "Tresses Nattes", employee: "Marie", amount: "25 000 FCFA", status: "Terminé" },
-    { id: 5, date: "5 Déc 2025", service: "Manucure Classique", employee: "Jean", amount: "15 000 FCFA", status: "Annulé" },
-  ];
+  const clientName = client?.fullName || fallbackClientName;
 
-  const preferredEmployees: PreferredEmployee[] = [
-    { id: 1, name: "Marie", count: 5 },
-    { id: 2, name: "Jean", count: 2 },
-  ];
+  const handleToggleDeposit = async (nextValue: boolean) => {
+    if (!clientId) return;
 
-  const preferredServices = [
-    { name: "Tresses Nattes", count: 4 },
-    { name: "Manucure Classique", count: 2 },
-    { name: "Brushing", count: 2 },
-  ];
+    try {
+      setUpdatingDeposit(true);
+      setDepositExempt(nextValue);
+
+      const token = await getAccessToken();
+      const updated = await updateClientDepositExempt(token, clientId, nextValue);
+
+      setClient(updated);
+      setDepositExempt(updated.depositExempt);
+    } catch (error) {
+      console.error("Deposit update error:", error);
+      setDepositExempt((prev) => !prev);
+    } finally {
+      setUpdatingDeposit(false);
+    }
+  };
+
+  const handleSaveNotes = async () => {
+    if (!clientId) return;
+
+    try {
+      setSavingNotes(true);
+      const token = await getAccessToken();
+      const updated = await updateClientNotes(token, clientId, privateNotes);
+      setClient(updated);
+      setPrivateNotes(updated.notes ?? "");
+    } catch (error) {
+      console.error("Notes save error:", error);
+    } finally {
+      setSavingNotes(false);
+    }
+  };
+
+  const handleBlockClient = async () => {
+    if (!clientId) return;
+
+    try {
+      setBlockingClient(true);
+      const token = await getAccessToken();
+      const updated = await blockClient(token, clientId);
+      setClient(updated);
+    } catch (error) {
+      console.error("Block client error:", error);
+    } finally {
+      setBlockingClient(false);
+    }
+  };
 
   return (
     <View style={styles.screen}>
       <ProHeader title="Fiche Client" backTo="/(professional)/dashboard" />
 
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Header client */}
-        <View style={styles.card}>
-          <View style={styles.headerRow}>
-            <View style={styles.avatar}>
-              <Ionicons name="person-outline" size={34} color={COLORS.primary} />
-            </View>
-
-            <View style={{ flex: 1 }}>
-              <Text style={styles.h1}>{clientName}</Text>
-
-              <View style={styles.pillGold}>
-                <Text style={styles.pillGoldText}>⭐ Client régulier</Text>
-              </View>
-
-              <View style={styles.inlineInfoRow}>
-                <Ionicons name="call-outline" size={14} color={COLORS.text} />
-                <Text style={styles.sub}>+241 77 11 22 33</Text>
-              </View>
-
-              <Text style={styles.mini}>Cliente depuis le 12 Oct 2025</Text>
-            </View>
-          </View>
+      {loading ? (
+        <View style={styles.loaderWrap}>
+          <ActivityIndicator size="large" color={COLORS.primary} />
+          <Text style={styles.loaderText}>Chargement de la fiche client...</Text>
         </View>
-
-        {/* Gestion acompte */}
-        <View style={[styles.card, styles.depositCard]}>
-          <View style={styles.sectionHeaderRow}>
-            <Ionicons name="lock-closed-outline" size={18} color={COLORS.primary} />
-            <Text style={styles.sectionTitle}>Gestion Acompte</Text>
-          </View>
-
-          <View style={styles.rowBetween}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.title}>Dispenser ce client de l'acompte</Text>
-              <Text style={styles.mini}>Le client pourra payer entièrement sur place</Text>
-            </View>
-            <Switch value={depositExempt} onValueChange={setDepositExempt} />
-          </View>
-
-          <View style={[styles.notice, depositExempt ? styles.noticeGold : styles.noticeGray]}>
-            <Ionicons
-              name={depositExempt ? "lock-open-outline" : "lock-closed-outline"}
-              size={16}
-              color={depositExempt ? COLORS.primary : "rgba(0,0,0,0.6)"}
-            />
-            <Text
-              style={[
-                styles.noticeText,
-                depositExempt ? styles.noticeGoldText : styles.noticeGrayText,
-              ]}
-            >
-              {depositExempt
-                ? "Ce client est dispensé d'acompte"
-                : "Ce client doit régler un acompte de 30%"}
-            </Text>
-          </View>
-
-          <View style={styles.depositStatsRow}>
-            <View style={styles.depositStatCol}>
-              <Text style={styles.depositStatLabel}>Acomptes réglés</Text>
-              <Text style={styles.depositStatValue}>3</Text>
-            </View>
-            <View style={styles.depositStatCol}>
-              <Text style={styles.depositStatLabel}>Total acomptes</Text>
-              <Text style={styles.depositStatValue}>21 000 FCFA</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Alerte allergie */}
-        <View style={styles.alert}>
-          <Ionicons name="alert-circle-outline" size={22} color="#B91C1C" style={{ marginTop: 1 }} />
-          <View style={{ flex: 1 }}>
-            <Text style={styles.alertTitle}>⚠️ Allergie aux produits chimiques forts</Text>
-            <Text style={styles.alertSub}>Privilégier les produits naturels et bio</Text>
-          </View>
-        </View>
-
-        {/* Statistiques client */}
-        <View style={styles.card}>
-          <View style={styles.sectionHeaderRow}>
-            <Text style={styles.sectionTitleAccent}>📊 Statistiques Client</Text>
-          </View>
-
-          <View style={styles.statsGrid}>
-            <View style={styles.statsCard}>
-              <Text style={styles.statsLabel}>Réservations</Text>
-              <Text style={styles.statsValue}>8</Text>
-              <Text style={styles.statsSub}>7 terminées • 1 annulée</Text>
-            </View>
-
-            <View style={styles.statsCard}>
-              <Text style={styles.statsLabel}>CA généré</Text>
-              <Text style={styles.statsValue}>185000</Text>
-              <Text style={styles.statsSub}>FCFA</Text>
-            </View>
-
-            <View style={styles.statsCard}>
-              <Text style={styles.statsLabel}>Panier moyen</Text>
-              <Text style={styles.statsValue}>23125</Text>
-              <Text style={styles.statsSub}>FCFA</Text>
-            </View>
-
-            <View style={styles.statsCard}>
-              <Text style={styles.statsLabel}>Dernière visite</Text>
-              <Text style={styles.statsValueDark}>Il y a 12 jours</Text>
-            </View>
-          </View>
-
-          <View style={styles.loyaltyRow}>
-            <Text style={styles.loyaltyLabel}>Taux de fidélité</Text>
-            <Text style={styles.loyaltyValue}>✓ 87% - Client très fidèle</Text>
-          </View>
-
-          <View style={styles.loyaltyRow}>
-            <Text style={styles.loyaltyLabel}>Taux de no-show</Text>
-            <Text style={styles.loyaltyValue}>✓ 0% - Toujours présent</Text>
-          </View>
-        </View>
-
-        {/* Historique des réservations */}
-        <View style={styles.card}>
-          <View style={styles.rowBetween}>
-            <Text style={styles.sectionTitleAccent}>🕒 Historique des Réservations</Text>
-            <Pressable>
-              <Text style={styles.linkText}>Voir tout</Text>
-            </Pressable>
-          </View>
-
-          <View style={styles.historyHeader}>
-            <Text style={[styles.historyHeaderText, { flex: 1.15 }]}>Date</Text>
-            <Text style={[styles.historyHeaderText, { flex: 1.7 }]}>Service</Text>
-            <Text style={[styles.historyHeaderText, { flex: 1.1 }]}>Employé</Text>
-            <Text style={[styles.historyHeaderText, { flex: 1.05, textAlign: "right" }]}>Montant</Text>
-          </View>
-
-          {bookings.map((booking) => (
-            <View key={booking.id} style={styles.historyRow}>
-              <Text style={[styles.historyCell, { flex: 1.15 }]}>{booking.date}</Text>
-              <Text style={[styles.historyCell, { flex: 1.7 }]}>{booking.service}</Text>
-              <Text style={[styles.historyCell, { flex: 1.1 }]}>{booking.employee}</Text>
-
-              <View style={{ flex: 1.3, alignItems: "flex-end" }}>
-                <Text style={styles.historyCellAmount}>{booking.amount}</Text>
-                <View
-                  style={[
-                    styles.statusBadge,
-                    booking.status === "Terminé" ? styles.statusDone : styles.statusCanceled,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.statusBadgeText,
-                      booking.status === "Terminé"
-                        ? styles.statusDoneText
-                        : styles.statusCanceledText,
-                    ]}
-                  >
-                    {booking.status}
-                  </Text>
-                </View>
-              </View>
-            </View>
-          ))}
-        </View>
-
-        {/* Services préférés */}
-        <View style={styles.card}>
-          <Text style={styles.sectionTitleAccent}>⭐ Services Préférés</Text>
-
-          {preferredServices.map((service, idx) => (
-            <View key={service.name} style={styles.preferredRow}>
-              <View style={styles.preferredRank}>
-                <Text style={styles.preferredRankText}>{idx + 1}</Text>
+      ) : (
+        <ScrollView
+          contentContainerStyle={styles.content}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          }
+        >
+          <View style={styles.card}>
+            <View style={styles.headerRow}>
+              <View style={styles.avatar}>
+                <Ionicons name="person-outline" size={34} color={COLORS.primary} />
               </View>
 
               <View style={{ flex: 1 }}>
-                <Text style={styles.preferredTitle}>{service.name}</Text>
-                <Text style={styles.preferredCountSub}>{service.count} fois</Text>
-              </View>
-            </View>
-          ))}
+                <Text style={styles.h1}>{clientName}</Text>
 
-          <Pressable style={styles.outlineBtnLarge}>
-            <Text style={styles.outlineBtnText}>Créer une offre personnalisée pour ce client</Text>
-          </Pressable>
-        </View>
-
-        {/* Employés préférés */}
-        <View style={styles.card}>
-          <Text style={styles.sectionTitleAccent}>👥 Employé(s) Préféré(s)</Text>
-
-          <View style={styles.employeeWrap}>
-            {preferredEmployees.map((employee) => (
-              <View key={employee.id} style={styles.employeeItem}>
-                <View style={styles.employeeAvatar}>
-                  <Text style={styles.employeeAvatarText}>{employee.name.slice(0, 1)}</Text>
+                <View style={styles.pillGold}>
+                  <Text style={styles.pillGoldText}>⭐ Client régulier</Text>
                 </View>
 
-                <View>
-                  <Text style={styles.employeeName}>{employee.name}</Text>
-                  <Text style={styles.employeeSub}>{employee.count} RDV</Text>
+                <View style={styles.inlineInfoRow}>
+                  <Ionicons name="call-outline" size={14} color={COLORS.text} />
+                  <Text style={styles.sub}>{client?.phone ?? "Non renseigné"}</Text>
+                </View>
+
+                <Text style={styles.mini}>{formatClientSince(client?.createdAt)}</Text>
+              </View>
+            </View>
+          </View>
+
+          <View style={[styles.card, styles.depositCard]}>
+            <View style={styles.sectionHeaderRow}>
+              <Ionicons name="lock-closed-outline" size={18} color={COLORS.primary} />
+              <Text style={styles.sectionTitle}>Gestion Acompte</Text>
+            </View>
+
+            <View style={styles.rowBetween}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.title}>Dispenser ce client de l&apos;acompte</Text>
+                <Text style={styles.mini}>
+                  Le client pourra payer entièrement sur place
+                </Text>
+              </View>
+              <Switch
+                value={depositExempt}
+                onValueChange={handleToggleDeposit}
+                disabled={updatingDeposit}
+              />
+            </View>
+
+            <View
+              style={[
+                styles.notice,
+                depositExempt ? styles.noticeGold : styles.noticeGray,
+              ]}
+            >
+              <Ionicons
+                name={depositExempt ? "lock-open-outline" : "lock-closed-outline"}
+                size={16}
+                color={depositExempt ? COLORS.primary : "rgba(0,0,0,0.6)"}
+              />
+              <Text
+                style={[
+                  styles.noticeText,
+                  depositExempt ? styles.noticeGoldText : styles.noticeGrayText,
+                ]}
+              >
+                {depositExempt
+                  ? "Ce client est dispensé d'acompte"
+                  : `Ce client doit régler un acompte de ${client?.depositRate ?? 30}%`}
+              </Text>
+            </View>
+
+            <View style={styles.depositStatsRow}>
+              <View style={styles.depositStatCol}>
+                <Text style={styles.depositStatLabel}>Acomptes réglés</Text>
+                <Text style={styles.depositStatValue}>
+                  {client?.depositsPaidCount ?? 0}
+                </Text>
+              </View>
+              <View style={styles.depositStatCol}>
+                <Text style={styles.depositStatLabel}>Total acomptes</Text>
+                <Text style={styles.depositStatValue}>
+                  {formatFcfa(client?.depositsPaidAmount ?? 0)}
+                </Text>
+              </View>
+            </View>
+          </View>
+
+          {!!client?.allergyAlert && (
+            <View style={styles.alert}>
+              <Ionicons
+                name="alert-circle-outline"
+                size={22}
+                color="#B91C1C"
+                style={{ marginTop: 1 }}
+              />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.alertTitle}>{client.allergyAlert}</Text>
+                {!!client.allergyNote && (
+                  <Text style={styles.alertSub}>{client.allergyNote}</Text>
+                )}
+              </View>
+            </View>
+          )}
+
+          <View style={styles.card}>
+            <View style={styles.sectionHeaderRow}>
+              <Text style={styles.sectionTitleAccent}>📊 Statistiques Client</Text>
+            </View>
+
+            <View style={styles.statsGrid}>
+              <View style={styles.statsCard}>
+                <Text style={styles.statsLabel}>Réservations</Text>
+                <Text style={styles.statsValue}>{client?.totalBookings ?? 0}</Text>
+                <Text style={styles.statsSub}>
+                  {client?.completedBookings ?? 0} terminées • {client?.cancelledBookings ?? 0} annulée(s)
+                </Text>
+              </View>
+
+              <View style={styles.statsCard}>
+                <Text style={styles.statsLabel}>CA généré</Text>
+                <Text style={styles.statsValue}>{client?.revenueGenerated ?? 0}</Text>
+                <Text style={styles.statsSub}>FCFA</Text>
+              </View>
+
+              <View style={styles.statsCard}>
+                <Text style={styles.statsLabel}>Panier moyen</Text>
+                <Text style={styles.statsValue}>{client?.averageBasket ?? 0}</Text>
+                <Text style={styles.statsSub}>FCFA</Text>
+              </View>
+
+              <View style={styles.statsCard}>
+                <Text style={styles.statsLabel}>Dernière visite</Text>
+                <Text style={styles.statsValueDark}>
+                  {client?.lastVisitLabel ?? "Inconnue"}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.loyaltyRow}>
+              <Text style={styles.loyaltyLabel}>Taux de fidélité</Text>
+              <Text style={styles.loyaltyValue}>
+                {client?.loyaltyRateLabel ?? "Non disponible"}
+              </Text>
+            </View>
+
+            <View style={styles.loyaltyRow}>
+              <Text style={styles.loyaltyLabel}>Taux de no-show</Text>
+              <Text style={styles.loyaltyValue}>
+                {client?.noShowRateLabel ?? "Non disponible"}
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.card}>
+            <View style={styles.rowBetween}>
+              <Text style={styles.sectionTitleAccent}>🕒 Historique des Réservations</Text>
+              <Pressable>
+                <Text style={styles.linkText}>Voir tout</Text>
+              </Pressable>
+            </View>
+
+            <View style={styles.historyHeader}>
+              <Text style={[styles.historyHeaderText, { flex: 1.15 }]}>Date</Text>
+              <Text style={[styles.historyHeaderText, { flex: 1.7 }]}>Service</Text>
+              <Text style={[styles.historyHeaderText, { flex: 1.1 }]}>Employé</Text>
+              <Text
+                style={[
+                  styles.historyHeaderText,
+                  { flex: 1.05, textAlign: "right" },
+                ]}
+              >
+                Montant
+              </Text>
+            </View>
+
+            {bookings.map((booking) => (
+              <View key={booking.id} style={styles.historyRow}>
+                <Text style={[styles.historyCell, { flex: 1.15 }]}>{booking.date}</Text>
+                <Text style={[styles.historyCell, { flex: 1.7 }]}>{booking.service}</Text>
+                <Text style={[styles.historyCell, { flex: 1.1 }]}>{booking.employee}</Text>
+
+                <View style={{ flex: 1.3, alignItems: "flex-end" }}>
+                  <Text style={styles.historyCellAmount}>{booking.amount}</Text>
+                  <View
+                    style={[
+                      styles.statusBadge,
+                      booking.status === "Terminé"
+                        ? styles.statusDone
+                        : styles.statusCanceled,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.statusBadgeText,
+                        booking.status === "Terminé"
+                          ? styles.statusDoneText
+                          : styles.statusCanceledText,
+                      ]}
+                    >
+                      {booking.status}
+                    </Text>
+                  </View>
                 </View>
               </View>
             ))}
           </View>
-        </View>
 
-        {/* Notes privées */}
-        <View style={styles.card}>
-          <Text style={styles.sectionTitleAccent}>💬 Notes Privées du Salon</Text>
+          <View style={styles.card}>
+            <Text style={styles.sectionTitleAccent}>⭐ Services Préférés</Text>
 
-          <TextInput
-            value={privateNotes}
-            onChangeText={setPrivateNotes}
-            multiline
-            textAlignVertical="top"
-            style={styles.notesInput}
-          />
+            {preferredServices.map((service, idx) => (
+              <View key={`${service.name}-${idx}`} style={styles.preferredRow}>
+                <View style={styles.preferredRank}>
+                  <Text style={styles.preferredRankText}>{idx + 1}</Text>
+                </View>
 
-          <Pressable style={styles.primaryBtnWithIcon}>
-            <Ionicons name="save-outline" size={18} color="#FFF" />
-            <Text style={styles.primaryBtnText}>Enregistrer les notes</Text>
-          </Pressable>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.preferredTitle}>{service.name}</Text>
+                  <Text style={styles.preferredCountSub}>{service.count} fois</Text>
+                </View>
+              </View>
+            ))}
 
-          <View style={styles.privateNoticeRow}>
-            <Ionicons name="lock-closed-outline" size={14} color={COLORS.muted} />
-            <Text style={styles.privateNoticeText}>
-              Ces notes sont privées et ne sont visibles que par votre salon
-            </Text>
+            <Pressable style={styles.outlineBtnLarge}>
+              <Text style={styles.outlineBtnText}>
+                Créer une offre personnalisée pour ce client
+              </Text>
+            </Pressable>
           </View>
-        </View>
 
-        {/* Actions */}
-        <View style={{ gap: 12 }}>
-          <Pressable
-            style={styles.primaryBtn}
-            onPress={() => router.push("/(professional)/booking-history")}
-          >
-            <Text style={styles.primaryBtnText}>Créer un RDV pour ce client</Text>
-          </Pressable>
+          <View style={styles.card}>
+            <Text style={styles.sectionTitleAccent}>👥 Employé(s) Préféré(s)</Text>
 
-          <Pressable style={styles.outlineBtn}>
-            <Text style={styles.outlineBtnText}>Envoyer une notification</Text>
-          </Pressable>
+            <View style={styles.employeeWrap}>
+              {preferredEmployees.map((employee) => (
+                <View key={employee.id} style={styles.employeeItem}>
+                  <View style={styles.employeeAvatar}>
+                    <Text style={styles.employeeAvatarText}>
+                      {employee.name.slice(0, 1)}
+                    </Text>
+                  </View>
 
-          <Pressable>
-            <Text style={styles.dangerText}>Bloquer ce client</Text>
-          </Pressable>
-        </View>
+                  <View>
+                    <Text style={styles.employeeName}>{employee.name}</Text>
+                    <Text style={styles.employeeSub}>{employee.count} RDV</Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+          </View>
 
-        <View style={{ height: 28 }} />
-      </ScrollView>
+          <View style={styles.card}>
+            <Text style={styles.sectionTitleAccent}>💬 Notes Privées du Salon</Text>
+
+            <TextInput
+              value={privateNotes}
+              onChangeText={setPrivateNotes}
+              multiline
+              textAlignVertical="top"
+              style={styles.notesInput}
+            />
+
+            <Pressable
+              style={[styles.primaryBtnWithIcon, savingNotes && { opacity: 0.6 }]}
+              onPress={handleSaveNotes}
+              disabled={savingNotes}
+            >
+              {savingNotes ? (
+                <ActivityIndicator size="small" color="#FFF" />
+              ) : (
+                <>
+                  <Ionicons name="save-outline" size={18} color="#FFF" />
+                  <Text style={styles.primaryBtnText}>Enregistrer les notes</Text>
+                </>
+              )}
+            </Pressable>
+
+            <View style={styles.privateNoticeRow}>
+              <Ionicons name="lock-closed-outline" size={14} color={COLORS.muted} />
+              <Text style={styles.privateNoticeText}>
+                Ces notes sont privées et ne sont visibles que par votre salon
+              </Text>
+            </View>
+          </View>
+
+          <View style={{ gap: 12 }}>
+            <Pressable
+              style={styles.primaryBtn}
+              onPress={() => router.push("/(professional)/booking-history")}
+            >
+              <Text style={styles.primaryBtnText}>Créer un RDV pour ce client</Text>
+            </Pressable>
+
+            <Pressable style={styles.outlineBtn}>
+              <Text style={styles.outlineBtnText}>Envoyer une notification</Text>
+            </Pressable>
+
+            <Pressable
+              onPress={handleBlockClient}
+              disabled={blockingClient || !clientId}
+            >
+              <Text style={styles.dangerText}>
+                {client?.blocked ? "Client bloqué" : "Bloquer ce client"}
+              </Text>
+            </Pressable>
+          </View>
+
+          <View style={{ height: 28 }} />
+        </ScrollView>
+      )}
     </View>
   );
 }
@@ -330,6 +589,18 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: COLORS.bg,
+  },
+
+  loaderWrap: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 12,
+  },
+
+  loaderText: {
+    color: COLORS.primary,
+    fontWeight: "700",
   },
 
   content: {
