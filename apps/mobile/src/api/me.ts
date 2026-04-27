@@ -1,8 +1,7 @@
 // src/api/me.ts
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from './client'
 import * as SecureStore from 'expo-secure-store'
-import { useOfflineCachedQuery } from './useOfflineCachedQuery'
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL
 
@@ -88,31 +87,29 @@ export type MeLoyalty = {
 
 // ---- Fetchers ----
 export async function fetchMeSummary() {
-  const res = await api.get<MeSummary>('/me/summary')
+  const res = await api.get<MeSummary>('api/me/summary')
   return res.data
 }
 
 export async function fetchMeLoyalty() {
-  const res = await api.get<MeLoyalty>('/me/loyalty')
+  const res = await api.get<MeLoyalty>('api/me/loyalty')
   return res.data
 }
 
 // ---- React Query hooks ----
 export function useMeSummary(enabled: boolean) {
-  return useOfflineCachedQuery({
+  return useQuery({
     queryKey: ['me', 'summary'],
     queryFn: fetchMeSummary,
-    cacheKey: 'client:me-summary',
     enabled,
     staleTime: 30_000,
   })
 }
 
 export function useMeLoyalty(enabled: boolean) {
-  return useOfflineCachedQuery({
+  return useQuery({
     queryKey: ['me', 'loyalty'],
     queryFn: fetchMeLoyalty,
-    cacheKey: 'client:me-loyalty',
     enabled,
     staleTime: 30_000,
   })
@@ -146,7 +143,7 @@ export function useUpdateMeProfile() {
 
   return useMutation({
     mutationFn: (payload: any) =>
-      authFetch('/me/profile', {
+      authFetch('api/me/profile', {
         method: 'PATCH',
         body: JSON.stringify(payload),
       }),
