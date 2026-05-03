@@ -1,6 +1,6 @@
 export type ProRoute =
   | "/professional"
-  | "/professional/EmployeeManagement"
+  | "/professional/team-management"
   | "/professional/ExpenseManagement"
   | "/professional/AccountingReports"
   | "/professional/cash-register"
@@ -10,7 +10,7 @@ export type ProRoute =
   | "/professional/booking-history"
   | "/professional/agenda"
   | `/professional/client-details/${string}`
-  | "/professional/service";
+  | "/professional/service"
 
 export type ProScreenKey =
   | "dashboard"
@@ -25,19 +25,18 @@ export type ProScreenKey =
   | "clientDetails"
   | "service"
   | "agenda"
-  ;
 
 export const PRO_SCREENS: Record<ProScreenKey, { title: string; route: ProRoute }> = {
-  dashboard:     { title: "Dashboard", route: "/professional" },
-  employees:     { title: "Employés", route: "/professional/EmployeeManagement" },
-  expenses:      { title: "Dépenses", route: "/professional/ExpenseManagement" },
-  accounting:    { title: "Comptabilité", route: "/professional/AccountingReports" },
-  cash:          { title: "Caisse", route: "/professional/cash-register" },
-  settings:      { title: "Paramètres salon", route: "/professional/salon-settings" },
-  promotions:    { title: "Promotions", route: "/professional/promotions" },
-  loyalty:       { title: "Fidélité", route: "/professional/loyalty" },
-  bookings:      { title: "Historique", route: "/professional/booking-history" },
-  clientDetails: { title: "Fiche client", route: "/professional/client-details/1" }, // mock
-  service:       { title: "Service", route: "/professional/service" },
-  agenda:        { title: "Agenda", route: "/professional/agenda" },
-};
+  dashboard: { title: "Dashboard", route: "/professional" },
+  employees: { title: "Employés", route: "/professional/team-management" },
+  expenses: { title: "Dépenses", route: "/professional/ExpenseManagement" },
+  accounting: { title: "Comptabilité", route: "/professional/AccountingReports" },
+  cash: { title: "Caisse", route: "/professional/cash-register" },
+  settings: { title: "Paramètres salon", route: "/professional/salon-settings" },
+  promotions: { title: "Promotions", route: "/professional/promotions" },
+  loyalty: { title: "Fidélité", route: "/professional/loyalty" },
+  bookings: { title: "Historique", route: "/professional/booking-history" },
+  clientDetails: { title: "Fiche client", route: "/professional/client-details/1" },
+  service: { title: "Service", route: "/professional/service" },
+  agenda: { title: "Agenda", route: "/professional/agenda" },
+}

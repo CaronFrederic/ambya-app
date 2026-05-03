@@ -11,7 +11,7 @@ import { MarkAbsenceDto } from './dto/mark-absence.dto';
 import { Prisma } from '@prisma/client';
 
 @Injectable()
-export class EmployeesService {
+export class ProEmployeesService {
   constructor(private readonly prisma: PrismaService) {}
 
   private ensureSalon(user: any) {

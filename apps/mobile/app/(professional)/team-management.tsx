@@ -23,7 +23,7 @@ import {
   markEmployeeActive,
   updateEmployee,
   type ApiEmployee,
-} from "../../src/api/employees";
+} from "../../src/api/pro-employees";
 
 
 type EmployeeStatus = "active" | "leave" | "absent";
@@ -71,7 +71,7 @@ function mapApiEmployeeToUi(employee: ApiEmployee): Employee {
   };
 }
 
-export default function EmployeeManagement() {
+export default function TeamManagementScreen() {
   const [showModal, setShowModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
   const [editingEmployee, setEditingEmployee] = useState<string | null>(null);

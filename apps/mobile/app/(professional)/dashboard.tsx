@@ -166,7 +166,7 @@ function QuickActions() {
       icon: "add-outline",
       onPress: () => {
         setIsOpen(false);
-        router.push("/(professional)/EmployeeManagement" as Href);
+        router.push("/(professional)/team-management" as Href);
       },
       withBorder: true,
     },
@@ -478,7 +478,7 @@ const initialLoad = async () => {
             title="Gestion des Employés"
             subtitle="Ajouter, modifier ou supprimer des employés"
             icon="people-outline"
-            href={"/(professional)/EmployeeManagement" as Href}
+            href={"/(professional)/team-management" as Href}
           />
 
           <Tile

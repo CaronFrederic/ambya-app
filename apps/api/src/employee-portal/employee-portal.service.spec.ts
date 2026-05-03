@@ -1,12 +1,12 @@
 import { BadRequestException } from '@nestjs/common'
 import { ServiceCategory } from '@prisma/client'
-import { EmployeeService } from './employee.service'
+import { EmployeePortalService } from './employee-portal.service'
 
-describe('EmployeeService', () => {
-  let service: EmployeeService
+describe('EmployeePortalService', () => {
+  let service: EmployeePortalService
 
   beforeEach(() => {
-    service = new EmployeeService({} as any)
+    service = new EmployeePortalService({} as any)
   })
 
   it('maps the employee tab correctly for upcoming and completed appointments', () => {
@@ -90,7 +90,7 @@ describe('EmployeeService', () => {
       },
     }
 
-    service = new EmployeeService(prisma as any)
+    service = new EmployeePortalService(prisma as any)
     jest.spyOn(service as any, 'getEmployeeContext').mockResolvedValue({
       id: 'employee-1',
     })
@@ -116,7 +116,7 @@ describe('EmployeeService', () => {
   })
 
   it('rejects leave requests where endAt is before startAt', async () => {
-    service = new EmployeeService({ leaveRequest: {} } as any)
+    service = new EmployeePortalService({ leaveRequest: {} } as any)
     jest.spyOn(service as any, 'getEmployeeContext').mockResolvedValue({
       id: 'employee-1',
     })
@@ -144,7 +144,7 @@ describe('EmployeeService', () => {
       },
     }
 
-    service = new EmployeeService(prisma as any)
+    service = new EmployeePortalService(prisma as any)
     jest.spyOn(service as any, 'getEmployeeContext').mockResolvedValue({
       id: 'employee-1',
     })

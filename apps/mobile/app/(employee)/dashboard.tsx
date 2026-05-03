@@ -18,7 +18,7 @@ import { EmployeeTimePicker } from '../../src/components/employee/EmployeeTimePi
 import {
   useCreateEmployeeBlockedSlot,
   useEmployeeDashboard,
-} from '../../src/api/employee'
+} from '../../src/api/employee-portal'
 import { useOfflineStatus } from '../../src/providers/OfflineProvider'
 import { requireOnlineAction } from '../../src/offline/guard'
 import { colors, overlays } from '../../src/theme/colors'

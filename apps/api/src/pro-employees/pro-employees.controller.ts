@@ -1,5 +1,5 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
-import { EmployeesService } from './employees.service';
+import { ProEmployeesService } from './pro-employees.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { JwtUser } from '../auth/decorators/current-user.decorator';
@@ -9,8 +9,8 @@ import { MarkAbsenceDto } from './dto/mark-absence.dto';
 
 @UseGuards(JwtAuthGuard)
 @Controller('pro/employees')
-export class EmployeesController {
-  constructor(private readonly employeesService: EmployeesService) {}
+export class ProEmployeesController {
+  constructor(private readonly employeesService: ProEmployeesService) {}
 
   @Get()
   findAll(@CurrentUser() user: JwtUser) {

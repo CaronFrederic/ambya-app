@@ -25,7 +25,7 @@ type ScheduleKind = 'appointment' | 'blocked_slot'
 type InsightSectionKey = 'hair' | 'nails' | 'face' | 'body' | 'fitness'
 
 @Injectable()
-export class EmployeeService {
+export class EmployeePortalService {
   constructor(private readonly prisma: PrismaService) {}
 
   async getDashboard(user: JwtUser) {

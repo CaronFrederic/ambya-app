@@ -2,7 +2,7 @@ import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } f
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard'
 import { CurrentUser } from '../auth/decorators/current-user.decorator'
 import type { JwtUser } from '../auth/decorators/current-user.decorator'
-import { EmployeeService } from './employee.service'
+import { EmployeePortalService } from './employee-portal.service'
 import { ListEmployeeScheduleQueryDto } from './dto/list-employee-schedule-query.dto'
 import { CreateBlockedSlotDto } from './dto/create-blocked-slot.dto'
 import { CreateLeaveRequestDto } from './dto/create-leave-request.dto'
@@ -10,8 +10,8 @@ import { UpdateEmployeeProfileDto } from './dto/update-employee-profile.dto'
 
 @Controller('employee')
 @UseGuards(JwtAuthGuard)
-export class EmployeeController {
-  constructor(private readonly employeeService: EmployeeService) {}
+export class EmployeePortalController {
+  constructor(private readonly employeeService: EmployeePortalService) {}
 
   @Get('dashboard')
   dashboard(@CurrentUser() user: JwtUser) {

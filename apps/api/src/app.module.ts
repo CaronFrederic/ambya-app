@@ -15,8 +15,8 @@ import { PaymentMethodsModule } from './payment-methods/payment-methods.module';
 import { PaymentsModule } from './payments/payments.module';
 import { DiscoveryModule } from './discovery/discovery.module';
 import { UsersModule } from './users/users.module';
-import { EmployeesModule } from './employees/employees.module';
-import { EmployeeModule } from './employee/employee.module';
+import { ProEmployeesModule } from './pro-employees/pro-employees.module';
+import { EmployeePortalModule } from './employee-portal/employee-portal.module';
 import { ServicesModule } from './services/services.module';
 import { ExpensesModule } from './expenses/expenses.module';
 import { ExportsModule } from './exports/exports.module';
@@ -56,8 +56,8 @@ import { AdminModule } from './admin/admin.module';
     PaymentsModule,
     DiscoveryModule,
 
-    EmployeesModule,
-    EmployeeModule,
+    ProEmployeesModule,
+    EmployeePortalModule,
     ServicesModule,
 
     ExpensesModule,

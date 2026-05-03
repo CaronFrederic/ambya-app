@@ -10,7 +10,7 @@ export type EmployeeScheduleStatus =
 
 export type EmployeePaymentStatus = 'CREATED' | 'SUCCEEDED' | 'REFUNDED'
 
-export type EmployeeService = {
+export type EmployeePortalServiceItem = {
   id: string
   name: string
   category: string
@@ -26,7 +26,7 @@ export type EmployeeScheduleItem = {
   paymentStatus: EmployeePaymentStatus
   clientName: string
   clientPhone: string | null
-  service: EmployeeService
+  service: EmployeePortalServiceItem
   startAt: string
   endAt: string
   amount: number
@@ -63,7 +63,7 @@ export type EmployeeDashboardResponse = {
     todayCount: number
     weekCount: number
   }
-  services: EmployeeService[]
+  services: EmployeePortalServiceItem[]
   todayItems: EmployeeScheduleItem[]
 }
 
@@ -84,7 +84,7 @@ export type EmployeeAvailableSlotsResponse = {
     clientPhone: string | null
     startAt: string
     endAt: string
-    service: EmployeeService
+    service: EmployeePortalServiceItem
     amount: number
     isClaimable: boolean
   }>

@@ -15,7 +15,7 @@ import {
   useCreateEmployeeLeaveRequest,
   useEmployeeLeaveRequests,
   useUpdateEmployeeLeaveRequest,
-} from '../../src/api/employee'
+} from '../../src/api/employee-portal'
 import { colors } from '../../src/theme/colors'
 import { radius } from '../../src/theme/radius'
 import { spacing } from '../../src/theme/spacing'
