@@ -45,10 +45,6 @@ export class AuditInterceptor implements NestInterceptor {
                 actionType: descriptor.actionType,
                 entityType: descriptor.entityType,
                 entityId: extractEntityId(result, req),
-                metadata: {
-                  query: req.query,
-                  params: req.params,
-                },
               })
             },
           }),

@@ -1,131 +1,159 @@
-# Ambya App
+# Ambya
 
-Ambya est une application mobile de mise en relation entre particuliers et salons de beauté.
+Ambya est un monorepo `pnpm` qui regroupe :
 
-Ce repository contient un **monorepo pnpm** structuré avec :
+- `apps/mobile` : application Expo / React Native
+- `apps/api` : API NestJS / Prisma
+- `packages/shared` : code partage quand necessaire
 
-- 📱 `apps/mobile` → Application mobile (Expo + React Native)
-- 🧠 `apps/api` → Backend API (NestJS)
-- 📦 `packages/shared` → Types et schémas partagés
+Ce README decrit l'etat **reellement supporte** pour la Beta sur le scope `S1-S4 retenu`.
 
----
+## Architecture
 
-## 🏗️ Architecture
-
+```text
 ambya/
-│
-├── apps/
-│ ├── mobile/ # Expo mobile app
-│ └── api/ # NestJS backend
-│
-├── packages/
-│ └── shared/ # Shared types & schemas
-│
-├── pnpm-workspace.yaml
-└── package.json
+|- apps/
+|  |- api/
+|  `- mobile/
+|- packages/
+|  `- shared/
+|- docs/
+|- pnpm-workspace.yaml
+`- package.json
+```
 
----
+## Prerequis
 
-## 🚀 Prérequis
+- Node.js 18+
+- pnpm 10+
+- Expo Go ou un emulateur mobile
+- une base PostgreSQL accessible par Prisma
+- ngrok ou tunnel equivalent si test mobile sur appareil physique
 
-- Node.js ≥ 18
-- pnpm ≥ 8
-- Expo Go (pour tester sur mobile)
-- ngrok (pour exposer l’API à distance)
+## Installation
 
----
-
-## 📦 Installation
-
-Depuis la racine du projet :
+Depuis la racine du repo :
 
 ```bash
 pnpm install
+```
 
-## ▶️ Lancer le backend (API)
-cd apps/api
-pnpm start:dev
+## Lancer l'API
 
-## API disponible sur :
+Depuis la racine :
 
-http://localhost:3000
+```bash
+pnpm --filter api start:dev
+```
 
-## Health check :
+Par defaut, l'API ecoute sur :
 
-http://localhost:3000/health
+```text
+http://localhost:3001
+```
 
-## 🌍 Exposer l’API en tunnel (test mobile à distance)
+Le prefixe global NestJS est :
 
-Lancer ngrok :
+```text
+/api
+```
 
-ngrok http 3000
+Exemple :
 
+```text
+http://localhost:3001/api/health
+```
 
-Copier l’URL générée :
+## Exposer l'API pour le mobile
 
-https://xxxx.ngrok-free.app
+Si tu testes sur un appareil physique, expose le port de l'API :
 
-## 📱 Configurer l’application mobile
+```bash
+ngrok http 3001
+```
 
-Créer un fichier :
+Puis configure le mobile avec l'URL du tunnel **sans** suffixe `/api` :
 
-apps/mobile/.env
-
-
-Ajouter :
-
+```text
 EXPO_PUBLIC_API_URL=https://xxxx.ngrok-free.app
+```
 
+Important :
 
-(Remplacer par l’URL ngrok)
+- le client mobile ajoute lui-meme le prefixe `/api`
+- il ne faut pas mettre `https://xxxx.ngrok-free.app/api` dans `.env`
 
-## 📱 Lancer l’application mobile
-cd apps/mobile
+## Lancer le mobile
+
+Depuis la racine :
+
+```bash
+pnpm --filter mobile expo start --tunnel
+```
+
+Ou depuis `apps/mobile` :
+
+```bash
 pnpm expo start --tunnel
+```
 
+## Commandes de validation
 
-Scanner le QR code avec Expo Go.
+### Validation Beta de reference
 
-##🧪 Vérification
+```bash
+pnpm check:full
+```
 
-Sur l’écran principal mobile :
+Cette commande valide le scope Beta `S1-S4 retenu` :
 
- - L’application doit afficher :
+- typecheck backend scope Beta
+- tests backend scope Beta
+- typecheck mobile
 
- - API: ok
+### Checks detailles
 
-Cela confirme que la communication mobile ↔ API fonctionne.
+```bash
+pnpm check:backend
+pnpm check:mobile
+pnpm check:quick
+pnpm check:beta
+pnpm check:repo
+```
 
-##🔧 Scripts utiles
-pnpm install
-pnpm dev
-pnpm build
+Semantique actuelle :
 
-## Bonnes pratiques
+- `check:backend` : validation backend scope Beta
+- `check:mobile` : typecheck mobile
+- `check:quick` : typecheck backend scope Beta + typecheck mobile
+- `check:full` : validation Beta complete
+- `check:beta` : alias de `check:full`
+- `check:repo` : build TypeScript complet de `apps/api`
 
- - Toujours utiliser expo install pour les dépendances natives.
+### Commandes equivalentes utiles
 
- - Ne jamais commiter le fichier .env.
+```bash
+cmd /c pnpm --filter api check:beta-scope
+cmd /c pnpm --filter api test:beta-scope
+cmd /c pnpm --filter api build
+cmd /c pnpm exec tsc -p apps\mobile\tsconfig.json --noEmit
+```
 
- - L’URL ngrok change à chaque redémarrage en version gratuite.
+## Documentation utile
 
-## 🛠️ Stack technique
-### Mobile
+- [Guide de validation Beta S1-S4](docs/beta-s1-s4-validation-guide.md)
+- [Guide offline Beta](docs/beta-offline-and-test-guide.md)
+- [Audit complet S1-S4](docs/full-technical-functional-security-audit.md)
 
- - Expo SDK 54
+## Hors scope explicite
 
- - React Native
+Ce repo contient aussi de la dette et des zones non traitees par la validation Beta courante :
 
- - Expo Router
+- flow Pro complet
+- build Expo staging
+- reset password
+- MFA complet
+- build production
+- tests multi-device
 
- - React Query
-
-### Backend
-
- - NestJS
-
- - TypeScript
-
-### Monorepo
-
- - pnpm workspaces
+Ces sujets ne doivent pas etre inferes comme valides simplement parce que `pnpm check:full` est vert.

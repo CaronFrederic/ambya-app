@@ -8,9 +8,7 @@ import {
   Query,
   Req,
   UseGuards,
-  Res,
 } from '@nestjs/common';
-import type { Response } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AppointmentsService } from './appointments.service';
 import { ListAppointmentsDto } from './dto/list-appointments.dto';
@@ -97,48 +95,5 @@ export class AppointmentsController {
     @Body() dto: CreateReviewDto,
   ) {
     return this.service.createGroupReview(user, groupId, dto);
-  }
-
-  @Get('pro/calendar')
-  getProCalendar(
-    @CurrentUser() user: JwtUser,
-    @Query('date') date?: string,
-  ) {
-    return this.service.getProCalendar(user, date);
-  }
-
-  @Get('pro/pending')
-  getProPending(
-    @CurrentUser() user: JwtUser,
-    @Query('date') date?: string,
-  ) {
-    return this.service.getProPendingRequests(user, date);
-  }
-
-  @Get('pro/history')
-  getProHistory(
-    @CurrentUser() user: JwtUser,
-    @Query('status') status?: string,
-  ) {
-    return this.service.getProHistory(user, status);
-  }
-
-  @Get('pro/history/export')
-  exportProHistory(
-    @CurrentUser() user: JwtUser,
-    @Query('status') status: string | undefined,
-    @Res() res: Response,
-  ) {
-    return this.service.exportProHistory(user, status, res);
-  }
-
-  @Patch('pro/:id/confirm')
-  confirm(@CurrentUser() user: JwtUser, @Param('id') id: string) {
-    return this.service.confirmAppointment(user, id);
-  }
-
-  @Patch('pro/:id/reject')
-  reject(@CurrentUser() user: JwtUser, @Param('id') id: string) {
-    return this.service.rejectAppointment(user, id);
   }
 }

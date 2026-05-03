@@ -30,7 +30,7 @@ type PendingRequest = {
   phone: string;
 };
 
-const AGENDA_HREF: Href = "/(professional)/agenda";
+const AGENDA_HREF = "/(professional)/agenda" as Href;
 
 
 
@@ -105,8 +105,6 @@ export default function ProCalendarScreen() {
 
   const loadPendingRequests = async (dateToLoad: string) => {
   const data = await getPendingAppointments(dateToLoad);
-
-  console.log("PENDING RAW DATA", JSON.stringify(data, null, 2));
 
   setPendingRequests(data.map(mapPendingRequest));
 };

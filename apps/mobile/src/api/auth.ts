@@ -1,8 +1,6 @@
 import { router } from "expo-router";
 import * as SecureStore from "expo-secure-store";
-import { api, apiFetch } from "./client";
-
-const API_URL = process.env.EXPO_PUBLIC_API_URL?.trim().replace(/\/+$/, "");
+import { api, apiFetch, buildApiUrl } from "./client";
 
 export type LoginPayload = {
   email: string;
@@ -65,19 +63,19 @@ type RegisterResponse = {
 };
 
 export async function login(payload: LoginPayload) {
-  const res = await api.post<LoginResponse>("/api/auth/login", payload);
+  const res = await api.post<LoginResponse>("/auth/login", payload);
   return res.data;
 }
 
 export function verifyOtp(payload: VerifyOtpPayload) {
-  return apiFetch<VerifyOtpResponse>("/api/auth/verify-otp", {
+  return apiFetch<VerifyOtpResponse>("/auth/verify-otp", {
     method: "POST",
     body: JSON.stringify(payload),
   });
 }
 
 export function resendOtp() {
-  return apiFetch<ResendOtpResponse>("/api/auth/resend-otp", {
+  return apiFetch<ResendOtpResponse>("/auth/resend-otp", {
     method: "POST",
   });
 }
@@ -85,9 +83,7 @@ export function resendOtp() {
 export async function registerClient(
   dto: RegisterDto,
 ): Promise<RegisterResponse> {
-  if (!API_URL) throw new Error("Missing EXPO_PUBLIC_API_URL");
-
-  const res = await fetch(`${API_URL}/api/auth/register`, {
+  const res = await fetch(buildApiUrl("/auth/register"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(dto),
@@ -102,9 +98,7 @@ export async function registerClient(
 }
 
 export async function patchMeProfile(accessToken: string, payload: unknown) {
-  if (!API_URL) throw new Error("Missing EXPO_PUBLIC_API_URL");
-
-  const res = await fetch(`${API_URL}/api/me/profile`, {
+  const res = await fetch(buildApiUrl("/me/profile"), {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",

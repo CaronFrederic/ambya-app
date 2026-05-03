@@ -1,346 +1,169 @@
-# Beta Offline Consultation & Validation Guide
+# Beta Offline Consultation Guide
 
 ## Objectif
 
-Ce document explique :
+Ce document precise :
 
-- comment lancer les verifications automatiques de la Beta
-- quels ecrans sont consultables hors ligne
-- comment reproduire et valider le mode hors ligne
+- ce qui est reellement consultable hors ligne sur la Beta
+- ce qui est volontairement bloque sans connexion
+- comment rejouer une recette offline fiable
 
-Le perimetre couvre la Beta `Client + Employee + Admin`.
-
-## 1. Commandes de validation
-
-Toutes les commandes ci-dessous se lancent depuis la racine du repo :
-
-`c:\Users\Caron\Desktop\LAN Consulting\ambya`
-
-### Commande de reference Beta
-
-La commande de validation complete a utiliser en closing Beta est :
-
-```bash
-pnpm check:full
-```
-
-Elle a ete revalidee en execution normale et couvre :
-
-- build backend
-- tests backend
-- typecheck mobile
-
-### Commandes detaillees
-
-Si tu veux isoler un probleme, les commandes suivantes restent disponibles :
-
-```bash
-pnpm check:backend
-pnpm check:mobile
-pnpm check:quick
-pnpm check:beta
-pnpm test:backend
-```
-
-### Commandes directes equivalentes
-
-Les commandes detaillees ci-dessous restent utiles pour le diagnostic fin :
-
-```bash
-cmd /c pnpm --filter api build
-cmd /c pnpm --filter api exec jest --runInBand
-cmd /c pnpm exec tsc -p apps\mobile\tsconfig.json --noEmit
-```
-
-### Check rapide
-
-```bash
-pnpm check:quick
-```
-
-Verifie :
-
-- le build backend
-- le typecheck mobile
-
-Usage recommande :
-
-- avant une demo
-- avant un commit
-- pour un controle rapide
-
-### Check backend complet
-
-```bash
-pnpm check:backend
-```
-
-Verifie :
-
-- le build API Nest
-- les tests Jest backend
-
-Couverture utile actuelle :
-
-- auth
-- appointments
-- discovery
-- employee
-- admin
-
-### Check mobile
-
-```bash
-pnpm check:mobile
-```
-
-Verifie :
-
-- le typecheck TypeScript du projet mobile Expo
-
-### Validation complete Beta
-
-```bash
-pnpm check:full
-```
-
-Alias equivalent :
-
-```bash
-pnpm check:beta
-```
-
-Verifie :
-
-- backend build
-- backend tests
-- mobile typecheck
-
-## 2. Interpretation des resultats
-
-### Succes
-
-La validation est consideree comme correcte si `pnpm check:full` se termine sans erreur.
-
-En diagnostic detaille, on peut aussi verifier :
-
-- `pnpm check:backend`
-- `pnpm check:mobile`
-- `pnpm test:backend`
-
-### Echec
-
-Un echec signifie generalement :
-
-- erreur de compilation backend
-- regression TypeScript mobile
-- regression sur une regle metier backend testee
-
-Dans ce cas :
-
-1. lire la premiere erreur utile
-2. relancer la commande concernee (`check:backend` ou `check:mobile`)
-3. corriger le probleme
-4. relancer ensuite `pnpm check:full`
-
-## 3. Offline Consultation : perimetre Beta
+Le perimetre concerne les flows `Client`, `Employee` et, de facon limitee, certaines surfaces `Admin`.
 
 ## Principe
 
-Le mode hors ligne Beta est un mode de **consultation des donnees deja synchronisees**.
+Le mode offline Beta n'est **pas** un mode offline-first.
 
 Ce qui est garanti :
 
-- reaffichage local des donnees deja chargees sur les ecrans critiques
-- message clair quand l application est hors ligne
-- blocage propre des actions d ecriture sur les parcours critiques
+- consultation des donnees deja synchronisees
+- message clair quand l'application est hors ligne
+- blocage propre des mutations
 
-Ce qui n est pas cherche pour cette Beta :
+Ce qui n'est pas garanti :
 
-- mutation offline-first
-- synchronisation differée
-- Admin full offline
+- creation ou edition offline avec synchro differee
+- cache complet de toutes les surfaces
+- experience Admin offline riche
+
+## Commandes de verification
+
+Depuis la racine du repo :
+
+```bash
+pnpm check:full
+pnpm check:mobile
+```
 
 ## Ecrans consultables hors ligne
 
 ### Client
 
-Les donnees suivantes sont relues depuis le cache local si elles ont deja ete ouvertes avec reseau :
+Si l'ecran a deja ete charge en ligne, l'utilisateur peut relire :
 
-- liste des rendez-vous
-- detail d un groupe de rendez-vous deja consulte
-- profil client (`summary`)
-- fidelite client
-- fiche salon deja ouverte
-- home / recherche deja chargees
+- la liste de ses rendez-vous
+- le detail d'un groupe de rendez-vous deja consulte
+- certaines donnees de profil deja synchronisees
+- certaines donnees de fidelite deja synchronisees
+- certaines surfaces de decouverte / salon deja ouvertes
 
 ### Employee
 
-Les donnees suivantes sont relues depuis le cache local si elles ont deja ete ouvertes avec reseau :
+Si l'ecran a deja ete charge en ligne, l'utilisateur peut relire :
 
-- dashboard employee
-- agenda / liste de rendez-vous employee
-- detail d un rendez-vous deja consulte
-- profil employee
+- le dashboard employee
+- l'agenda
+- le detail d'un rendez-vous deja consulte
+- le profil employee
+- la liste des demandes de conges
 
 ### Admin
 
-Le mode offline n est pas prioritaire pour Admin sur cette Beta.
+L'offline n'est pas un objectif produit fort pour Admin sur cette Beta.
 
-Justification :
+Par prudence produit :
 
-- faible valeur d usage offline
-- risque plus fort de donner une impression trompeuse sur des donnees support qui doivent rester fraiches
-- priorite metier plus forte sur Client et Employee
+- on ne promet pas une experience offline Admin complete
+- les mutations Admin doivent rester bloquees proprement hors ligne
 
-## Actions volontairement bloquees hors ligne
-
-Les actions d ecriture critiques sont bloquees proprement hors ligne, avec un message clair :
+## Actions bloquees hors ligne
 
 ### Client
 
-- finaliser une reservation
-- payer une reservation beta
-- modifier un rendez-vous
-- annuler un rendez-vous
+- creer une reservation
+- modifier ou annuler un rendez-vous
 - publier un avis
-- modifier le profil / notifications
-- creer un rendez-vous depuis les ecrans secondaires
-- assigner / desassigner un employe depuis l ecran de support
+- modifier le profil ou certaines preferences
 - modifier les moyens de paiement
 
 ### Employee
 
-- bloquer un creneau
-- prendre en charge un creneau
-- confirmer / terminer / encaisser / annuler un rendez-vous
-- creer / modifier / annuler une demande de conges
-- mettre a jour le profil employee
+- confirmer, terminer, encaisser ou annuler un rendez-vous
+- prendre un creneau disponible
+- creer un creneau bloque
+- creer, modifier ou supprimer une demande de conges
+- modifier le profil
 
-## Signal UX
+### Admin
 
-Quand l application detecte un contexte hors ligne, un bandeau apparait :
+- creation ou modification d'un admin
+- edition d'un user, d'un salon ou d'un rendez-vous
 
-`Mode hors ligne : consultation des donnees deja synchronisees uniquement.`
+## Resultat UX attendu
 
-## 4. Comment tester l offline consultation
+Quand l'application passe hors ligne :
+
+- un bandeau d'information apparait
+- les donnees deja synchronisees restent lisibles
+- aucune mutation ne doit donner un faux succes
+- un message clair doit indiquer qu'une connexion est necessaire
+
+## Recette offline
 
 ### Preparation
 
-1. lancer l API et l application mobile
-2. se connecter avec un compte de test
-3. ouvrir une premiere fois les ecrans a mettre en cache
+1. Lancer l'API.
+2. Lancer le mobile.
+3. Se connecter avec un compte de test valide.
+4. Ouvrir une premiere fois les ecrans a mettre en cache.
 
-### Parcours Client a verifier
+### Recette Client
 
-1. ouvrir `Mes rendez-vous`
-2. ouvrir le detail d un rendez-vous
-3. ouvrir `Mon profil`
-4. ouvrir une fiche salon
-5. couper le reseau du simulateur / telephone
-6. revenir sur ces ecrans
+1. Ouvrir `Mes rendez-vous`.
+2. Ouvrir le detail d'un rendez-vous.
+3. Ouvrir le profil.
+4. Ouvrir une fiche salon.
+5. Couper le reseau du simulateur ou du telephone.
+6. Revenir sur ces ecrans.
 
 Resultat attendu :
 
-- le bandeau hors ligne s affiche
-- les donnees deja chargees reapparaissent
+- le bandeau hors ligne s'affiche
+- les donnees deja chargees reparaissent
 - aucun loader infini
 - aucun crash
 
-### Parcours Employee a verifier
+### Recette Employee
 
-1. ouvrir le dashboard employee
-2. ouvrir `Mes rendez-vous`
-3. ouvrir le detail d un rendez-vous
-4. ouvrir `Mon profil`
-5. couper le reseau
-6. revenir sur ces ecrans
+1. Ouvrir le dashboard employee.
+2. Ouvrir l'agenda.
+3. Ouvrir le detail d'un rendez-vous.
+4. Ouvrir le profil.
+5. Ouvrir les conges.
+6. Couper le reseau.
+7. Revenir sur ces ecrans.
 
 Resultat attendu :
 
-- le bandeau hors ligne s affiche
-- les donnees deja synchronisees restent consultables
-- les actions de mutation deviennent indisponibles ou bloquees proprement
+- les ecrans deja synchronises restent consultables
+- les actions d'ecriture sont bloquees proprement
 
-### Verification du blocage des ecritures
+### Verification explicite du blocage
 
 Une fois hors ligne :
 
-#### Client
-
-- tenter une reservation
-- tenter une modification / annulation
-- tenter un avis
-- tenter une edition de profil
-
-#### Employee
-
-- tenter un blocage de creneau
-- tenter une prise en charge
-- tenter une confirmation / completion / paiement
-- tenter une demande de conges
+- tenter une reservation Client
+- tenter une annulation Client
+- tenter une mutation Employee sur un rendez-vous
+- tenter une creation ou edition de conge
+- tenter une mutation Admin
 
 Resultat attendu :
 
 - aucune fausse impression de succes
-- un message clair indique que l action demande une connexion
+- message explicite indiquant qu'une connexion est requise
 
-## 5. Fichiers et architecture
+## Fichiers techniques utiles
 
-### Offline Consultation
-
-- `apps/mobile/src/offline/store.ts`
 - `apps/mobile/src/offline/cache.ts`
-- `apps/mobile/src/offline/probe.ts`
 - `apps/mobile/src/offline/guard.ts`
+- `apps/mobile/src/offline/probe.ts`
+- `apps/mobile/src/offline/store.ts`
 - `apps/mobile/src/api/useOfflineCachedQuery.ts`
 - `apps/mobile/src/providers/OfflineProvider.tsx`
-- `apps/mobile/src/components/OfflineBanner.tsx`
 
-### Hooks branches sur le cache local
+## Limites assumees
 
-- `apps/mobile/src/api/appointments.ts`
-- `apps/mobile/src/api/me.ts`
-- `apps/mobile/src/api/discovery.ts`
-- `apps/mobile/src/api/employee.ts`
-
-### Ecrans de mutation proteges hors ligne
-
-- `apps/mobile/app/(screens)/payment.tsx`
-- `apps/mobile/app/(screens)/card-payment-details.tsx`
-- `apps/mobile/app/(screens)/appointment-details.tsx`
-- `apps/mobile/app/(screens)/leave-review.tsx`
-- `apps/mobile/app/(screens)/edit-section.tsx`
-- `apps/mobile/app/(screens)/assign-employee.tsx`
-- `apps/mobile/app/(screens)/create-appointment.tsx`
-- `apps/mobile/app/(screens)/profile/notifications.tsx`
-- `apps/mobile/app/(screens)/profile/payment-methods.tsx`
-- `apps/mobile/app/(employee)/dashboard.tsx`
-- `apps/mobile/app/(employee)/availability.tsx`
-- `apps/mobile/app/(employee)/appointment-detail.tsx`
-- `apps/mobile/app/(employee)/leave.tsx`
-- `apps/mobile/app/(employee)/profile.tsx`
-- `apps/mobile/app/(admin)/admins.tsx`
-- `apps/mobile/app/(admin)/admin-detail.tsx`
-- `apps/mobile/app/(admin)/appointment-detail.tsx`
-- `apps/mobile/app/(admin)/client-detail.tsx`
-- `apps/mobile/app/(admin)/employee-detail.tsx`
-- `apps/mobile/app/(admin)/salon-detail.tsx`
-- `apps/mobile/app/(admin)/user-detail.tsx`
-
-## 6. Limites connues
-
-- le mode offline ne couvre pas un vrai offline-first
-- les donnees ne sont consultables hors ligne que si elles ont deja ete chargees au moins une fois
-- Admin n est pas un perimetre offline prioritaire pour cette Beta
-- les images distantes de fiches salon peuvent ne pas se charger hors ligne meme si les metadonnees textuelles sont en cache
-
-## 7. Recommandation de validation finale
-
-Avant une recette cliente :
-
-1. lancer `pnpm check:full`
-2. rejouer au moins un parcours offline Client
-3. rejouer au moins un parcours offline Employee
-4. verifier qu une action d ecriture hors ligne est bien bloquee avec un message propre
-5. verifier qu une mutation Admin affiche aussi un blocage clair sans connexion
+- les donnees offline sont relues seulement si elles ont deja ete chargees
+- le cache local doit rester minimal sur les donnees sensibles
+- l'offline Admin n'est pas un argument de vente principal pour cette Beta

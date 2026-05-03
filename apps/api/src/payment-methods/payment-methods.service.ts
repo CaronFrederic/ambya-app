@@ -10,6 +10,18 @@ export class PaymentMethodsService {
   list(userId: string) {
     return this.prisma.paymentMethod.findMany({
       where: { userId, isActive: true },
+      select: {
+        id: true,
+        type: true,
+        provider: true,
+        label: true,
+        phone: true,
+        last4: true,
+        isDefault: true,
+        isActive: true,
+        createdAt: true,
+        updatedAt: true,
+      },
       orderBy: [{ isDefault: 'desc' }, { createdAt: 'desc' }],
     })
   }

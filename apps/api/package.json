@@ -1,5 +1,12 @@
 {
+  "name": "api",
+  "private": true,
   "scripts": {
+    "build": "node ../../node_modules/typescript/bin/tsc -p tsconfig.build.json",
+    "test": "node scripts/run-jest.cjs",
+    "build:beta-scope": "node ../../node_modules/typescript/bin/tsc -p tsconfig.beta-scope.json --noEmit",
+    "test:beta-scope": "node ../../node_modules/jest/bin/jest.js --config jest.config.cjs --runInBand src/auth/auth.service.spec.ts src/auth/guards/roles.guard.spec.ts src/appointments/appointments.service.spec.ts src/appointments/pro-appointments.controller.spec.ts src/discovery/discovery.service.spec.ts src/employee/employee.service.spec.ts src/payment-methods/payment-methods.service.spec.ts src/payments/payments.service.spec.ts src/salon-settings/salon-settings.service.spec.ts src/admin/admin.service.spec.ts src/audit/audit.interceptor.spec.ts src/app.controller.spec.ts",
+    "check:beta-scope": "pnpm build:beta-scope && pnpm test:beta-scope",
     "start:dev": "dotenv -e .env -- pnpm exec nest start --watch",
     "start:test": "dotenv -e .env.test -- pnpm exec nest start --watch",
     "start:demo": "dotenv -e .env.demo -- pnpm exec nest start --watch",
@@ -14,7 +21,7 @@
     "reset:dev": "dotenv -e .env -- pnpm exec prisma migrate reset --force && pnpm seed:dev",
     "reset:test": "dotenv -e .env.test -- pnpm exec prisma migrate reset --force && pnpm seed:test",
     "reset:demo": "dotenv -e .env.demo -- pnpm exec prisma migrate reset --force && pnpm seed:demo",
-   
+    "check": "pnpm check:beta-scope",
     "check:pro:dev": "dotenv -e .env -- pnpm exec tsx scripts/checks/check-pro-suite.ts",
     "check:pro:test": "dotenv -e .env.test -- pnpm exec tsx scripts/checks/check-pro-suite.ts",
     "check:pro:demo": "dotenv -e .env.demo -- pnpm exec tsx scripts/checks/check-pro-suite.ts",

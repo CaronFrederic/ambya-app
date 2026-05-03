@@ -66,4 +66,33 @@ describe('DiscoveryService', () => {
 
     expect(result).toBe(true)
   })
+
+  it('uses salon opening hours as the availability source of truth', async () => {
+    const prisma = {
+      salon: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'salon-1',
+          openingHours: [
+            {
+              dayOfWeek: 1,
+              isOpen: false,
+              startTime: '09:00',
+              endTime: '18:00',
+            },
+          ],
+          employees: [],
+        }),
+      },
+    }
+
+    service = new DiscoveryService(prisma as any)
+
+    const result = await service.salonAvailability('salon-1', {
+      date: '2026-05-04',
+      serviceIds: '',
+    } as any)
+
+    expect(result.slots).toEqual([])
+    expect(result.professionals).toEqual([])
+  })
 })

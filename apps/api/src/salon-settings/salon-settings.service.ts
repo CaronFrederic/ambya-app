@@ -46,7 +46,7 @@ export class SalonSettingsService {
         ...(user.role === 'ADMIN' ? {} : { ownerId: user.userId }),
       },
       include: {
-        salonSchedules: {
+        openingHours: {
           orderBy: [{ dayOfWeek: 'asc' }, { startTime: 'asc' }],
         },
       },
@@ -67,14 +67,7 @@ export class SalonSettingsService {
         ? (salon.paymentSettings as Prisma.JsonObject)
         : {}
 
-    const categories =
-      salon.socialLinks &&
-      typeof salon.socialLinks === 'object' &&
-      Array.isArray((salon.socialLinks as Prisma.JsonObject).categories)
-        ? (((salon.socialLinks as Prisma.JsonObject).categories as Prisma.JsonArray).filter(
-            (x): x is string => typeof x === 'string',
-          ))
-        : []
+    const categories = salon.categories ?? []
 
     const scheduleByDay: Record<string, { start: string; end: string; enabled: boolean }[]> = {
       Lundi: [],
@@ -86,7 +79,7 @@ export class SalonSettingsService {
       Dimanche: [],
     }
 
-    for (const row of salon.salonSchedules) {
+    for (const row of salon.openingHours) {
       const label = INDEX_TO_DAY[row.dayOfWeek]
       if (!label) continue
 
@@ -178,7 +171,7 @@ export class SalonSettingsService {
   async upsertSettings(user: CurrentUser, dto: UpsertSalonSettingsDto) {
     const salon = await this.getManagedSalon(user)
 
-    const categoriesJson = dto.categories ?? []
+    const categories = dto.categories ?? []
 
     const paymentSettings: Prisma.InputJsonObject = {
       payMobileMoney: dto.paymentSettings.payMobileMoney,
@@ -237,20 +230,18 @@ export class SalonSettingsService {
 
           depositEnabled: dto.depositEnabled,
           depositPercentage: dto.depositPercentage,
+          categories,
 
           paymentSettings,
-          socialLinks: {
-            categories: categoriesJson,
-          },
         },
       })
 
-      await tx.salonSchedule.deleteMany({
+      await tx.salonOpeningHour.deleteMany({
         where: { salonId: salon.id },
       })
 
       if (scheduleRows.length > 0) {
-        await tx.salonSchedule.createMany({
+        await tx.salonOpeningHour.createMany({
           data: scheduleRows.map((row) => ({
             salonId: salon.id,
             ...row,

@@ -7,7 +7,7 @@ export function useCountries() {
   return useQuery({
     queryKey: ['config', 'countries'],
     queryFn: async () => {
-      const res = await apiFetch<{ items: CountryItem[] }>('config/countries')
+      const res = await apiFetch<{ items: CountryItem[] }>('/config/countries')
       return res.items
     },
     staleTime: 1000 * 60 * 60,

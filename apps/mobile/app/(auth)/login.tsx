@@ -7,7 +7,7 @@ import {
   Pressable,
   Alert,
 } from "react-native";
-import { router } from "expo-router";
+import { router, type Href } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 import { Screen } from "../../src/components/Screen";
 import { Card } from "../../src/components/Card";
@@ -89,7 +89,7 @@ export default function Login() {
       return;
     }
 
-     router.push('/(auth)/pro-signup')
+     router.push("/(auth)/pro-signup" as Href)
   };
 
   return (

@@ -35,7 +35,7 @@ type DayItem = {
   fullDate: string;
 };
 
-const CALENDAR_HREF: Href = "/(professional)/pro-calendar";
+const CALENDAR_HREF = "/(professional)/pro-calendar" as Href;
 
 
 
@@ -127,8 +127,6 @@ export default function AgendaScreen() {
 
  const loadAgenda = async (dateToLoad: string) => {
   const data = await getCalendarAppointments(dateToLoad);
-
-  console.log("AGENDA RAW DATA", JSON.stringify(data, null, 2));
 
   const mapped = data.map((item) => ({
     id: item.id,

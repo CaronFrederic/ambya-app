@@ -16,15 +16,15 @@ type JwtPayload = {
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor(config: ConfigService) {
+    const secret = config.get<string>('JWT_SECRET');
+
+    if (!secret) {
+      throw new Error('JWT_SECRET is required to validate access tokens');
+    }
+
     super({
-      jwtFromRequest: ExtractJwt.fromExtractors([
-        ExtractJwt.fromAuthHeaderAsBearerToken(),
-        (request: any) => {
-          const token = request?.query?.token;
-          return typeof token === 'string' ? token : null;
-        },
-      ]),
-      secretOrKey: config.get<string>('JWT_SECRET') ?? 'dev-secret-change-me',
+      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+      secretOrKey: secret,
     });
   }
 

@@ -732,22 +732,46 @@ export class DiscoveryService {
   private normalizeOpeningHours(raw: unknown) {
     if (!Array.isArray(raw)) return [];
 
+    const dayLabels = [
+      'Dimanche',
+      'Lundi',
+      'Mardi',
+      'Mercredi',
+      'Jeudi',
+      'Vendredi',
+      'Samedi',
+    ];
+
     return raw
       .map((item) => {
         if (!item || typeof item !== 'object') return null;
 
         const entry = item as Record<string, unknown>;
-        const day = typeof entry.day === 'string' ? entry.day : null;
+        const day =
+          typeof entry.day === 'string'
+            ? entry.day
+            : typeof entry.dayOfWeek === 'number'
+              ? dayLabels[entry.dayOfWeek]
+              : null;
         if (!day) return null;
 
-        const closed = Boolean(entry.closed);
+        const closed =
+          typeof entry.closed === 'boolean'
+            ? entry.closed
+            : typeof entry.isOpen === 'boolean'
+              ? !entry.isOpen
+              : false;
         const open =
           typeof entry.open === 'string' && entry.open.trim()
             ? entry.open.trim()
+            : typeof entry.startTime === 'string' && entry.startTime.trim()
+              ? entry.startTime.trim()
             : null;
         const close =
           typeof entry.close === 'string' && entry.close.trim()
             ? entry.close.trim()
+            : typeof entry.endTime === 'string' && entry.endTime.trim()
+              ? entry.endTime.trim()
             : null;
 
         return {

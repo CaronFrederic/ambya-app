@@ -1,11 +1,8 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common'
-import { AppointmentStatus, LoyaltyTier, LoyaltyReason, PaymentStatus} from '@prisma/client'
+import { AppointmentStatus, LoyaltyReason, LoyaltyTier, PaymentStatus, UserRole } from '@prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
 import { CreatePaymentIntentDto } from './dto/create-payment-intent.dto'
 import { UpdateIntentStatusDto } from './dto/update-intent-status.dto'
-import { Role } from '../common/enums/role.enum';
-import { Prisma } from '@prisma/client';
-import { GetCashRegisterQueryDto } from './dto/get-cash-register-query.dto';
 @Injectable()
 export class PaymentsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -78,25 +75,42 @@ export class PaymentsService {
   }
 
   async updateStatus(
-    user: { userId: string; role: 'CLIENT' | 'PROFESSIONAL' | 'SALON_MANAGER' | 'EMPLOYEE' | 'ADMIN' },
+    user: { userId: string; role: UserRole },
     id: string,
     dto: UpdateIntentStatusDto,
   ) {
     const intent = await this.prisma.paymentIntent.findUnique({
       where: { id },
-      select: { id: true, userId: true, status: true },
+      select: {
+        id: true,
+        userId: true,
+        status: true,
+        salon: {
+          select: {
+            ownerId: true,
+            employees: {
+              where: { userId: user.userId },
+              select: { id: true },
+              take: 1,
+            },
+          },
+        },
+      },
     })
 
     if (!intent) throw new NotFoundException('Payment intent not found')
-    if (intent.userId !== user.userId) throw new ForbiddenException('Not allowed')
+    this.assertCanUpdateIntent(user, intent)
 
     // ✅ Option A: role-based permissions (cash safe)
     const isClient = user.role === 'CLIENT'
-    const isStaff = user.role === 'PROFESSIONAL' || user.role === 'EMPLOYEE'
+    const isStaff =
+      user.role === 'PROFESSIONAL' ||
+      user.role === 'SALON_MANAGER' ||
+      user.role === 'EMPLOYEE'
     const isAdmin = user.role === 'ADMIN'
 
-    if (dto.status === PaymentStatus.SUCCEEDED && isClient) {
-      throw new ForbiddenException('CLIENT cannot mark payment as SUCCEEDED')
+    if (isClient && dto.status !== PaymentStatus.CANCELLED) {
+      throw new ForbiddenException('CLIENT can only cancel a payment intent')
     }
     if (dto.status === PaymentStatus.REFUNDED && !(isStaff || isAdmin)) {
       throw new ForbiddenException('Only staff/admin can refund')
@@ -133,10 +147,20 @@ export class PaymentsService {
           payableAmount: true,
           discountAmount: true,
           appliedDiscountTier: true,
+          salon: {
+            select: {
+              ownerId: true,
+              employees: {
+                where: { userId: user.userId },
+                select: { id: true },
+                take: 1,
+              },
+            },
+          },
         },
       })
       if (!full) throw new NotFoundException('Payment intent not found')
-      if (full.userId !== user.userId) throw new ForbiddenException('Not allowed')
+      this.assertCanUpdateIntent(user, full)
 
       const updatedIntent = await tx.paymentIntent.update({
         where: { id },
@@ -314,7 +338,7 @@ export class PaymentsService {
   }
 
   async getCashRegister(
-  user: { userId: string; role: 'CLIENT' | 'PROFESSIONAL' | 'SALON_MANAGER' | 'EMPLOYEE' | 'ADMIN' },
+  user: { userId: string; role: UserRole },
   date?: string,
   method?: string,
 ) {
@@ -442,6 +466,45 @@ export class PaymentsService {
     },
   };
 }
+
+  private assertCanUpdateIntent(
+    user: { userId: string; role: UserRole },
+    intent: {
+      userId: string
+      salon?: {
+        ownerId: string
+        employees?: Array<{ id: string }>
+      } | null
+    },
+  ) {
+    if (user.role === UserRole.ADMIN) {
+      return
+    }
+
+    if (user.role === UserRole.CLIENT) {
+      if (intent.userId !== user.userId) {
+        throw new ForbiddenException('Not allowed')
+      }
+      return
+    }
+
+    if (
+      (user.role === UserRole.PROFESSIONAL || user.role === UserRole.SALON_MANAGER) &&
+      intent.salon?.ownerId === user.userId
+    ) {
+      return
+    }
+
+    if (
+      user.role === UserRole.EMPLOYEE &&
+      intent.salon?.employees &&
+      intent.salon.employees.length > 0
+    ) {
+      return
+    }
+
+    throw new ForbiddenException('Not allowed')
+  }
 
   
 

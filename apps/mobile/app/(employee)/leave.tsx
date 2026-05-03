@@ -53,15 +53,15 @@ export default function EmployeeLeaveScreen() {
     const nextErrors: { startDate?: string; endDate?: string; reason?: string } = {}
 
     if (!isValidDateValue(startDate)) {
-      nextErrors.startDate = 'Sélectionnez une date de début valide.'
+      nextErrors.startDate = 'Selectionnez une date de debut valide.'
     }
 
     if (!isValidDateValue(endDate)) {
-      nextErrors.endDate = 'Sélectionnez une date de fin valide.'
+      nextErrors.endDate = 'Selectionnez une date de fin valide.'
     }
 
     if (isValidDateValue(startDate) && isValidDateValue(endDate) && compareDates(startDate, endDate) > 0) {
-      nextErrors.endDate = 'La date de fin doit être après la date de début.'
+      nextErrors.endDate = 'La date de fin doit etre apres la date de debut.'
     }
 
     if (!reason.trim()) {
@@ -93,14 +93,14 @@ export default function EmployeeLeaveScreen() {
       }
       closeModal()
       Alert.alert(
-        editingLeaveId ? 'Demande modifiée' : 'Demande envoyée',
+        editingLeaveId ? 'Demande modifiee' : 'Demande envoyee',
         editingLeaveId
-          ? 'Votre demande de congés a bien été mise à jour.'
-          : 'Votre demande de congés a bien été enregistrée.',
+          ? 'Votre demande de conges a bien ete mise a jour.'
+          : 'Votre demande de conges a bien ete enregistree.',
       )
     } catch (error: any) {
       Alert.alert(
-        editingLeaveId ? 'Impossible de modifier la demande' : 'Impossible d’envoyer la demande',
+        editingLeaveId ? 'Impossible de modifier la demande' : "Impossible d'envoyer la demande",
         error?.message ?? 'Erreur inconnue',
       )
     }
@@ -125,7 +125,7 @@ export default function EmployeeLeaveScreen() {
     if (!requireOnlineAction('annuler une demande de conges')) return
     Alert.alert(
       'Annuler cette demande',
-      'Cette demande de congés en attente sera supprimée.',
+      'Cette demande de conges en attente sera supprimee.',
       [
         { text: 'Retour', style: 'cancel' },
         {
@@ -134,7 +134,7 @@ export default function EmployeeLeaveScreen() {
           onPress: async () => {
             try {
               await cancelLeaveRequest.mutateAsync({ id: leaveId })
-              Alert.alert('Demande annulée', 'La demande de congés a bien été annulée.')
+              Alert.alert('Demande annulee', 'La demande de conges a bien ete annulee.')
             } catch (error: any) {
               Alert.alert('Action impossible', error?.message ?? 'Erreur inconnue')
             }
@@ -146,7 +146,7 @@ export default function EmployeeLeaveScreen() {
 
   return (
     <Screen noPadding style={styles.screen}>
-      <EmployeeHeader title="Demandes de congés" subtitle="Gérez vos congés" />
+      <EmployeeHeader title="Demandes de conges" subtitle="Gerez vos conges" />
 
       <ScrollView
         showsVerticalScrollIndicator={false}
@@ -166,21 +166,21 @@ export default function EmployeeLeaveScreen() {
             <FeedbackState
               icon="time-outline"
               title="Chargement des demandes"
-              description="Vos demandes de congés arrivent."
+              description="Vos demandes de conges arrivent."
             />
           ) : leaveRequests.isError ? (
             <FeedbackState
               icon="alert-circle-outline"
-              title="Impossible de charger les congés"
-              description="Réessayez dans un instant."
-              actionLabel="Réessayer"
+              title="Impossible de charger les conges"
+              description="Reessayez dans un instant."
+              actionLabel="Reessayer"
               onAction={() => void leaveRequests.refetch()}
             />
           ) : (leaveRequests.data?.items.length ?? 0) === 0 ? (
             <FeedbackState
               icon="document-text-outline"
-              title="Aucune demande de congés"
-              description="Vos futures demandes apparaîtront ici."
+              title="Aucune demande de conges"
+              description="Vos futures demandes apparaitront ici."
             />
           ) : (
             leaveRequests.data?.items.map((leave) => (
@@ -208,9 +208,9 @@ export default function EmployeeLeaveScreen() {
                       ]}
                     >
                       {leave.status === 'APPROVED'
-                        ? 'Approuvé'
+                        ? 'Approuve'
                         : leave.status === 'REJECTED'
-                          ? 'Refusé'
+                          ? 'Refuse'
                           : 'En attente'}
                     </Text>
                   </View>
@@ -246,7 +246,7 @@ export default function EmployeeLeaveScreen() {
 
       <EmployeeModal
         visible={showModal}
-        title={editingLeaveId ? 'Modifier la demande' : 'Nouvelle demande de congés'}
+        title={editingLeaveId ? 'Modifier la demande' : 'Nouvelle demande de conges'}
         onClose={closeModal}
         footer={
           <>
@@ -256,7 +256,7 @@ export default function EmployeeLeaveScreen() {
                 createLeaveRequest.isPending || updateLeaveRequest.isPending
                   ? 'Enregistrement...'
                   : editingLeaveId
-                    ? 'Mettre à jour'
+                    ? 'Mettre a jour'
                     : 'Envoyer'
               }
               onPress={handleSubmit}
@@ -267,7 +267,7 @@ export default function EmployeeLeaveScreen() {
         }
       >
         <EmployeePickerField
-          label="Date de début"
+          label="Date de debut"
           placeholder="jj/mm/aaaa"
           value={startDate}
           onPress={() => setActivePicker((current) => (current === 'start' ? null : 'start'))}
@@ -312,7 +312,7 @@ export default function EmployeeLeaveScreen() {
 
         <Input
           label="Motif"
-          placeholder="Congés annuels, événement familial..."
+          placeholder="Conges annuels, evenement familial..."
           value={reason}
           onChangeText={setReason}
           multiline
@@ -457,3 +457,4 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 })
+

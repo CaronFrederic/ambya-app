@@ -15,7 +15,6 @@ import { PaymentMethodsModule } from './payment-methods/payment-methods.module';
 import { PaymentsModule } from './payments/payments.module';
 import { DiscoveryModule } from './discovery/discovery.module';
 import { UsersModule } from './users/users.module';
-import { SalonsModule } from './salons/salons.module';
 import { EmployeesModule } from './employees/employees.module';
 import { EmployeeModule } from './employee/employee.module';
 import { ServicesModule } from './services/services.module';
@@ -57,7 +56,6 @@ import { AdminModule } from './admin/admin.module';
     PaymentsModule,
     DiscoveryModule,
 
-    SalonsModule,
     EmployeesModule,
     EmployeeModule,
     ServicesModule,

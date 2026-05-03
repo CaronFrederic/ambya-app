@@ -1,9 +1,7 @@
 // src/api/me.ts
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { api } from './client'
+import { api, buildApiUrl } from './client'
 import * as SecureStore from 'expo-secure-store'
-
-const API_URL = process.env.EXPO_PUBLIC_API_URL
 
 // ---- Types ----
 export type LoyaltyTier = 'BRONZE' | 'SILVER' | 'GOLD' | 'PLATINUM'
@@ -87,12 +85,12 @@ export type MeLoyalty = {
 
 // ---- Fetchers ----
 export async function fetchMeSummary() {
-  const res = await api.get<MeSummary>('api/me/summary')
+  const res = await api.get<MeSummary>('/me/summary')
   return res.data
 }
 
 export async function fetchMeLoyalty() {
-  const res = await api.get<MeLoyalty>('api/me/loyalty')
+  const res = await api.get<MeLoyalty>('/me/loyalty')
   return res.data
 }
 
@@ -117,7 +115,7 @@ export function useMeLoyalty(enabled: boolean) {
 
 async function authFetch(path: string, init?: RequestInit) {
   const token = await SecureStore.getItemAsync('accessToken')
-  const res = await fetch(`${API_URL}${path}`, {
+  const res = await fetch(buildApiUrl(path), {
     ...init,
     headers: {
       'Content-Type': 'application/json',
@@ -143,7 +141,7 @@ export function useUpdateMeProfile() {
 
   return useMutation({
     mutationFn: (payload: any) =>
-      authFetch('api/me/profile', {
+      authFetch('/me/profile', {
         method: 'PATCH',
         body: JSON.stringify(payload),
       }),

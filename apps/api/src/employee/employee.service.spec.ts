@@ -1,3 +1,4 @@
+import { BadRequestException } from '@nestjs/common'
 import { ServiceCategory } from '@prisma/client'
 import { EmployeeService } from './employee.service'
 
@@ -69,5 +70,95 @@ describe('EmployeeService', () => {
     )
 
     expect(result).toBe('Massage detente')
+  })
+
+  it('creates a leave request for the current employee and trims the reason', async () => {
+    const createdAt = new Date('2026-05-03T08:00:00.000Z')
+    const prisma = {
+      leaveRequest: {
+        create: jest.fn().mockResolvedValue({
+          id: 'leave-1',
+          employeeId: 'employee-1',
+          startAt: new Date('2026-05-10T00:00:00.000Z'),
+          endAt: new Date('2026-05-12T23:59:59.000Z'),
+          reason: 'Conges annuels',
+          status: 'PENDING',
+          managerNote: null,
+          reviewedAt: null,
+          createdAt,
+        }),
+      },
+    }
+
+    service = new EmployeeService(prisma as any)
+    jest.spyOn(service as any, 'getEmployeeContext').mockResolvedValue({
+      id: 'employee-1',
+    })
+
+    const result = await service.createLeaveRequest(
+      { userId: 'user-1' } as any,
+      {
+        startAt: '2026-05-10T00:00:00.000Z',
+        endAt: '2026-05-12T23:59:59.000Z',
+        reason: '  Conges annuels  ',
+      },
+    )
+
+    expect(prisma.leaveRequest.create).toHaveBeenCalledWith({
+      data: {
+        employeeId: 'employee-1',
+        startAt: new Date('2026-05-10T00:00:00.000Z'),
+        endAt: new Date('2026-05-12T23:59:59.000Z'),
+        reason: 'Conges annuels',
+      },
+    })
+    expect(result.item.reason).toBe('Conges annuels')
+  })
+
+  it('rejects leave requests where endAt is before startAt', async () => {
+    service = new EmployeeService({ leaveRequest: {} } as any)
+    jest.spyOn(service as any, 'getEmployeeContext').mockResolvedValue({
+      id: 'employee-1',
+    })
+
+    await expect(
+      service.createLeaveRequest(
+        { userId: 'user-1' } as any,
+        {
+          startAt: '2026-05-12T00:00:00.000Z',
+          endAt: '2026-05-10T23:59:59.000Z',
+          reason: 'Conges annuels',
+        },
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException)
+  })
+
+  it('rejects updates for leave requests that are no longer pending', async () => {
+    const prisma = {
+      leaveRequest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'leave-1',
+          employeeId: 'employee-1',
+          status: 'APPROVED',
+        }),
+      },
+    }
+
+    service = new EmployeeService(prisma as any)
+    jest.spyOn(service as any, 'getEmployeeContext').mockResolvedValue({
+      id: 'employee-1',
+    })
+
+    await expect(
+      service.updateLeaveRequest(
+        { userId: 'user-1' } as any,
+        'leave-1',
+        {
+          startAt: '2026-05-10T00:00:00.000Z',
+          endAt: '2026-05-12T23:59:59.000Z',
+          reason: 'Conges annuels',
+        },
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException)
   })
 })

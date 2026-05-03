@@ -10,12 +10,13 @@
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
     "format": "pnpm -r format",
-    "test:backend": "pnpm --filter api exec jest --runInBand",
-    "check:backend": "pnpm --filter api build && pnpm --filter api exec jest --runInBand",
-    "check:mobile": "pnpm exec tsc -p apps\\mobile\\tsconfig.json --noEmit",
-    "check:quick": "pnpm --filter api build && pnpm exec tsc -p apps\\mobile\\tsconfig.json --noEmit",
+    "test:backend": "pnpm --filter api test:beta-scope",
+    "check:backend": "pnpm --filter api check:beta-scope",
+    "check:mobile": "pnpm --filter mobile typecheck",
+    "check:quick": "pnpm --filter api build:beta-scope && pnpm --filter mobile typecheck",
     "check:full": "pnpm check:backend && pnpm check:mobile",
-    "check:beta": "pnpm check:full"
+    "check:beta": "pnpm check:full",
+    "check:repo": "pnpm --filter api build"
   },
   "keywords": [],
   "author": "LAN Consulting",

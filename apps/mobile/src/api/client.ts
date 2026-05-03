@@ -20,6 +20,30 @@ async function clearStoredAuth() {
   await SecureStore.deleteItemAsync("userRole");
 }
 
+export function normalizeApiPath(path: string) {
+  const trimmedPath = path.trim();
+
+  if (/^https?:\/\//i.test(trimmedPath)) {
+    return trimmedPath;
+  }
+
+  const withLeadingSlash = trimmedPath.startsWith("/")
+    ? trimmedPath
+    : `/${trimmedPath}`;
+
+  if (withLeadingSlash === "/api") {
+    return withLeadingSlash;
+  }
+
+  return withLeadingSlash.startsWith("/api/")
+    ? withLeadingSlash
+    : `/api${withLeadingSlash}`;
+}
+
+export function buildApiUrl(path: string) {
+  return `${API_BASE_URL}${normalizeApiPath(path)}`;
+}
+
 export const api = axios.create({
   baseURL: API_BASE_URL,
   timeout: 30_000,
@@ -32,6 +56,9 @@ api.interceptors.request.use(async (config) => {
   const token = await getAuthToken();
 
   config.headers = config.headers ?? {};
+  if (config.url) {
+    config.url = normalizeApiPath(config.url);
+  }
 
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
@@ -66,7 +93,7 @@ export async function apiFetch<T>(
   const resolvedToken = await getAuthToken(token);
 
   try {
-    const response = await fetch(`${API_BASE_URL}${path}`, {
+    const response = await fetch(buildApiUrl(path), {
       ...rest,
       headers: {
         "Content-Type": "application/json",

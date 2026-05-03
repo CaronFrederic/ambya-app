@@ -135,7 +135,7 @@ function TodayAppointmentsBanner({ count }: { count: number }) {
       </View>
 
       <Pressable
-        onPress={() => router.push("/(professional)/agenda")}
+        onPress={() => router.push("/(professional)/agenda" as Href)}
         style={({ pressed }) => [styles.bannerButton, pressed && { opacity: 0.9 }]}
       >
         <Text style={styles.bannerButtonText}>Voir l&apos;agenda</Text>
@@ -166,7 +166,7 @@ function QuickActions() {
       icon: "add-outline",
       onPress: () => {
         setIsOpen(false);
-        router.push("/(professional)/EmployeeManagement");
+        router.push("/(professional)/EmployeeManagement" as Href);
       },
       withBorder: true,
     },
@@ -175,7 +175,7 @@ function QuickActions() {
       icon: "add-outline",
       onPress: () => {
         setIsOpen(false);
-        router.push("/(professional)/service");
+        router.push("/(professional)/service" as Href);
       },
       withBorder: true,
     },
@@ -184,7 +184,7 @@ function QuickActions() {
       icon: "lock-closed-outline",
       onPress: () => {
         setIsOpen(false);
-        router.push("/(professional)/booking-history");
+        router.push("/(professional)/booking-history" as Href);
       },
       withBorder: true,
     },
@@ -193,7 +193,7 @@ function QuickActions() {
       icon: "pricetag-outline",
       onPress: () => {
         setIsOpen(false);
-        router.push("/(professional)/promotions");
+        router.push("/(professional)/promotions" as Href);
       },
       withBorder: true,
     },
@@ -202,7 +202,7 @@ function QuickActions() {
       icon: "person-outline",
       onPress: () => {
         setIsOpen(false);
-        router.push("/(professional)/client-details");
+        router.push("/(professional)/client-details" as Href);
       },
     },
   ];
@@ -427,28 +427,28 @@ const initialLoad = async () => {
             title="Agenda"
             subtitle="Planning et rendez-vous"
             icon="calendar-outline"
-            href="/(professional)/agenda"
+            href={"/(professional)/agenda" as Href}
           />
 
           <Tile
             title="Caisse & Transactions"
             subtitle="Suivi des paiements"
             icon="cash-outline"
-            href="/(professional)/cash-register"
+            href={"/(professional)/cash-register" as Href}
           />
 
           <Tile
             title="Paramètres du Salon"
             subtitle="Infos • Photos • Horaires • Paiements • Acompte"
             icon="settings-outline"
-            href="/(professional)/salon-settings"
+            href={"/(professional)/salon-settings" as Href}
           />
 
           <Tile
             title="Promotions & Offres"
             subtitle="Créer et piloter vos promos"
             icon="pricetags-outline"
-            href="/(professional)/promotions"
+            href={"/(professional)/promotions" as Href}
             tone="gold"
           />
 
@@ -456,7 +456,7 @@ const initialLoad = async () => {
             title="Carte de Fidélité"
             subtitle="Gestion du programme de fidélité"
             icon="gift-outline"
-            href="/(professional)/loyalty"
+            href={"/(professional)/loyalty" as Href}
             tone="gold"
           />
 
@@ -464,42 +464,42 @@ const initialLoad = async () => {
             title="Historique Réservations"
             subtitle="Terminé • Annulé • No-show"
             icon="calendar-outline"
-            href="/(professional)/booking-history"
+            href={"/(professional)/booking-history" as Href}
           />
 
           <Tile
             title="Fiche Client (exemple)"
             subtitle="Détails + gestion acompte"
             icon="person-outline"
-            href="/(professional)/client-details"
+            href={"/(professional)/client-details" as Href}
           />
 
           <Tile
             title="Gestion des Employés"
             subtitle="Ajouter, modifier ou supprimer des employés"
             icon="people-outline"
-            href="/(professional)/EmployeeManagement"
+            href={"/(professional)/EmployeeManagement" as Href}
           />
 
           <Tile
             title="Dépenses & Revenus"
             subtitle="Gestion des dépenses et revenus du salon"
             icon="cash-outline"
-            href="/(professional)/ExpenseManagement"
+            href={"/(professional)/ExpenseManagement" as Href}
           />
 
           <Tile
             title="Rapports Comptables"
             subtitle="Analyse des revenus et dépenses"
             icon="bar-chart-outline"
-            href="/(professional)/AccountingReports"
+            href={"/(professional)/AccountingReports" as Href}
           />
 
           <Tile
             title="Service"
             subtitle="service & promotions"
             icon="construct-outline"
-            href="/(professional)/service"
+            href={"/(professional)/service" as Href}
           />
         </ScrollView>
       )}

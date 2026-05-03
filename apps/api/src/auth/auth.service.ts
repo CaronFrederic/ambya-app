@@ -24,13 +24,17 @@ export class AuthService {
     private readonly jwt: JwtService,
   ) {}
 
+  private shouldExposeOtpDebugCode() {
+    return process.env.AUTH_EXPOSE_OTP_DEBUG === 'true';
+  }
+
   async register(dto: RegisterDto) {
     const email = dto.email?.trim().toLowerCase();
     const phone = dto.phone?.trim();
 
     if (!email && !phone) {
       throw new BadRequestException(
-        'Vous devez fournir au moins un email ou un téléphone',
+        'Vous devez fournir au moins un email ou un telephone',
       );
     }
 
@@ -41,7 +45,7 @@ export class AuthService {
       });
 
       if (existingEmail) {
-        throw new BadRequestException('Email déjà utilisé');
+        throw new BadRequestException('Email deja utilise');
       }
     }
 
@@ -52,7 +56,7 @@ export class AuthService {
       });
 
       if (existingPhone) {
-        throw new BadRequestException('Téléphone déjà utilisé');
+        throw new BadRequestException('Telephone deja utilise');
       }
     }
 
@@ -136,7 +140,7 @@ export class AuthService {
 
     if (!email && !phone) {
       throw new BadRequestException(
-        'Vous devez fournir au moins un email ou un téléphone',
+        'Vous devez fournir au moins un email ou un telephone',
       );
     }
 
@@ -148,7 +152,7 @@ export class AuthService {
 
     if (dto.loginMethod === 'phone' && !phone) {
       throw new BadRequestException(
-        'Le téléphone est requis pour une connexion par téléphone',
+        'Le telephone est requis pour une connexion par telephone',
       );
     }
 
@@ -177,7 +181,7 @@ export class AuthService {
       });
 
       if (existingEmail) {
-        throw new BadRequestException('Email déjà utilisé');
+        throw new BadRequestException('Email deja utilise');
       }
     }
 
@@ -188,14 +192,14 @@ export class AuthService {
       });
 
       if (existingPhone) {
-        throw new BadRequestException('Téléphone déjà utilisé');
+        throw new BadRequestException('Telephone deja utilise');
       }
     }
 
     const salonName = dto.establishmentName?.trim() || dto.salonName?.trim();
 
     if (!salonName) {
-      throw new BadRequestException("Le nom de l'établissement est requis");
+      throw new BadRequestException("Le nom de l'etablissement est requis");
     }
 
     const hashedPassword = await bcrypt.hash(dto.password, 10);
@@ -406,7 +410,9 @@ export class AuthService {
       salon: result.salon,
       verificationRequired: loginMethod === 'PHONE',
       verificationChannel: loginMethod === 'PHONE' ? 'sms' : 'email',
-      otpDebugCode: generatedOtp ?? null,
+      ...(this.shouldExposeOtpDebugCode()
+        ? { otpDebugCode: generatedOtp ?? null }
+        : {}),
     };
   }
 
@@ -416,7 +422,7 @@ export class AuthService {
 
     if (!email && !phone) {
       throw new BadRequestException(
-        'Vous devez fournir un email ou un téléphone',
+        'Vous devez fournir un email ou un telephone',
       );
     }
 
@@ -517,14 +523,14 @@ export class AuthService {
 
     if (!user.otpCode || !user.otpExpiresAt) {
       throw new BadRequestException(
-        "Aucun code OTP actif n'a été trouvé pour ce compte",
+        "Aucun code OTP actif n'a ete trouve pour ce compte",
       );
     }
 
     const otpExpiresAt = new Date(user.otpExpiresAt);
 
     if (otpExpiresAt.getTime() < Date.now()) {
-      throw new BadRequestException('Le code OTP a expiré');
+      throw new BadRequestException('Le code OTP a expire');
     }
 
     if (user.otpCode !== dto.code) {
@@ -561,7 +567,7 @@ export class AuthService {
 
     return {
       success: true,
-      message: 'OTP vérifié avec succès',
+      message: 'OTP verifie avec succes',
       user: updatedUser,
     };
   }
@@ -584,16 +590,16 @@ export class AuthService {
     }
 
     if (user.otpChannel === 'PHONE' && user.phoneVerified) {
-      throw new BadRequestException('Le téléphone est déjà vérifié');
+      throw new BadRequestException('Le telephone est deja verifie');
     }
 
     if (user.otpChannel === 'EMAIL' && user.emailVerified) {
-      throw new BadRequestException("L'email est déjà vérifié");
+      throw new BadRequestException("L'email est deja verifie");
     }
 
     if (!user.otpChannel) {
       throw new BadRequestException(
-        "Aucun canal OTP n'est configuré pour ce compte",
+        "Aucun canal OTP n'est configure pour ce compte",
       );
     }
 
@@ -612,10 +618,10 @@ export class AuthService {
       success: true,
       message:
         user.otpChannel === 'PHONE'
-          ? 'Un nouveau code SMS a été généré'
-          : 'Un nouveau code email a été généré',
+          ? 'Un nouveau code SMS a ete genere'
+          : 'Un nouveau code email a ete genere',
       verificationChannel: user.otpChannel === 'PHONE' ? 'sms' : 'email',
-      otpDebugCode: newOtp,
+      ...(this.shouldExposeOtpDebugCode() ? { otpDebugCode: newOtp } : {}),
       expiresAt: otpExpiresAt,
     };
   }
@@ -640,9 +646,9 @@ export class AuthService {
 
     const normalized = category.trim().toLowerCase();
 
-    if (normalized === 'beaute' || normalized === 'beauté') return 'BEAUTE';
+    if (normalized === 'beaute' || normalized === 'beaut�') return 'BEAUTE';
     if (normalized === 'fitness') return 'FITNESS';
-    if (normalized === 'bienetre' || normalized === 'bien-être') {
+    if (normalized === 'bienetre' || normalized === 'bien-�tre') {
       return 'BIENETRE';
     }
     if (normalized === 'formation') return 'FORMATION';
@@ -655,3 +661,4 @@ export class AuthService {
     return undefined;
   }
 }
+

@@ -534,8 +534,11 @@ export class AdminService {
         },
         clientProfile: target.clientProfile
           ? {
-              ...target.clientProfile,
-              questionnaire: target.clientProfile.questionnaire ?? null,
+              nickname: target.clientProfile.nickname,
+              gender: target.clientProfile.gender,
+              ageRange: target.clientProfile.ageRange,
+              city: target.clientProfile.city,
+              country: target.clientProfile.country,
             }
           : null,
         employeeProfile: target.employeeProfile
@@ -1092,8 +1095,11 @@ export class AdminService {
           createdAt: appointment.client.createdAt.toISOString(),
           profile: appointment.client.clientProfile
             ? {
-                ...appointment.client.clientProfile,
-                questionnaire: appointment.client.clientProfile.questionnaire ?? null,
+                nickname: appointment.client.clientProfile.nickname,
+                gender: appointment.client.clientProfile.gender,
+                ageRange: appointment.client.clientProfile.ageRange,
+                city: appointment.client.clientProfile.city,
+                country: appointment.client.clientProfile.country,
               }
             : null,
           loyalty: appointment.client.loyaltyAccount
@@ -1540,16 +1546,46 @@ export class AdminService {
   private normalizeOpeningHours(raw: unknown) {
     if (!Array.isArray(raw)) return []
 
+    const dayLabels = [
+      'Dimanche',
+      'Lundi',
+      'Mardi',
+      'Mercredi',
+      'Jeudi',
+      'Vendredi',
+      'Samedi',
+    ]
+
     return raw
       .map((item) => {
         if (!item || typeof item !== 'object') return null
         const entry = item as Record<string, unknown>
-        const day = typeof entry.day === 'string' ? entry.day : null
+        const day =
+          typeof entry.day === 'string'
+            ? entry.day
+            : typeof entry.dayOfWeek === 'number'
+              ? dayLabels[entry.dayOfWeek]
+              : null
         if (!day) return null
 
-        const closed = Boolean(entry.closed)
-        const open = typeof entry.open === 'string' && entry.open.trim() ? entry.open.trim() : null
-        const close = typeof entry.close === 'string' && entry.close.trim() ? entry.close.trim() : null
+        const closed =
+          typeof entry.closed === 'boolean'
+            ? entry.closed
+            : typeof entry.isOpen === 'boolean'
+              ? !entry.isOpen
+              : false
+        const open =
+          typeof entry.open === 'string' && entry.open.trim()
+            ? entry.open.trim()
+            : typeof entry.startTime === 'string' && entry.startTime.trim()
+              ? entry.startTime.trim()
+              : null
+        const close =
+          typeof entry.close === 'string' && entry.close.trim()
+            ? entry.close.trim()
+            : typeof entry.endTime === 'string' && entry.endTime.trim()
+              ? entry.endTime.trim()
+              : null
 
         return {
           day,

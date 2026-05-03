@@ -9,8 +9,9 @@ import {
   UseGuards,
   Put
 } from '@nestjs/common';
-import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
-import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import type { JwtUser } from '../auth/decorators/current-user.decorator';
 import { ClientsService } from './clients.service';
 import { ListClientsDto } from './dto/list-clients.dto';
 import { UpdateClientNoteDto } from './dto/update-client-note.dto';
@@ -22,18 +23,18 @@ export class ClientsController {
   constructor(private readonly clientsService: ClientsService) {}
 
   @Get()
-  findAll(@CurrentUser() user: any, @Query() query: ListClientsDto) {
+  findAll(@CurrentUser() user: JwtUser, @Query() query: ListClientsDto) {
     return this.clientsService.findAll(user, query);
   }
 
   @Get(':id')
-  findOne(@CurrentUser() user: any, @Param('id') id: string) {
+  findOne(@CurrentUser() user: JwtUser, @Param('id') id: string) {
     return this.clientsService.findOne(user, id);
   }
 
   @Patch(':id/deposit-exempt')
   updateDepositExempt(
-    @CurrentUser() user: any,
+    @CurrentUser() user: JwtUser,
     @Param('id') id: string,
     @Body() dto: UpdateDepositExemptDto,
   ) {
@@ -42,7 +43,7 @@ export class ClientsController {
 
   @Put(':id/notes')
   upsertNote(
-    @CurrentUser() user: any,
+    @CurrentUser() user: JwtUser,
     @Param('id') id: string,
     @Body() dto: UpdateClientNoteDto,
   ) {
@@ -50,7 +51,7 @@ export class ClientsController {
   }
 
   @Post(':id/block')
-  blockClient(@CurrentUser() user: any, @Param('id') id: string) {
+  blockClient(@CurrentUser() user: JwtUser, @Param('id') id: string) {
     return this.clientsService.blockClient(user, id);
   }
 }
