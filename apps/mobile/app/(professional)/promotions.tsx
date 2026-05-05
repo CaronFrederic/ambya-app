@@ -102,51 +102,63 @@ export default function PromotionsScreen() {
     initialLoad();
   }, []);
 
-  const handleCreatePromotion = async () => {
-    const value = Number(form.value);
+const handleCreatePromotion = async () => {
+  const value = Number(form.value);
+  const startDate = toApiDate(form.startDate);
+  const endDate = toApiDate(form.endDate);
 
-    if (!form.title.trim()) {
-      Alert.alert("Validation", "Le nom de la promotion est requis.");
-      return;
-    }
+  if (!form.title.trim()) {
+    Alert.alert("Validation", "Le nom de la promotion est requis.");
+    return;
+  }
 
-    if (!value || value <= 0) {
-      Alert.alert("Validation", "La valeur doit être supérieure à 0.");
-      return;
-    }
+  if (!value || value <= 0) {
+    Alert.alert("Validation", "La valeur doit être supérieure à 0.");
+    return;
+  }
 
-    if (!form.startDate.trim() || !form.endDate.trim()) {
-      Alert.alert("Validation", "Les dates de début et de fin sont requises.");
-      return;
-    }
+  if (!startDate || !endDate) {
+    Alert.alert("Validation", "Les dates de début et de fin sont requises.");
+    return;
+  }
 
-    try {
-      setSubmitting(true);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+    Alert.alert("Validation", "Les dates doivent être au format YYYY-MM-DD. Exemple : 2026-05-05");
+    return;
+  }
 
-      await createPromotion({
-        title: form.title.trim(),
-        type: form.type,
-        value,
-        startDate: form.startDate.trim(),
-        endDate: form.endDate.trim(),
-        appliesToAllServices: true,
-      });
+  if (new Date(endDate) < new Date(startDate)) {
+    Alert.alert("Validation", "La date de fin doit être après la date de début.");
+    return;
+  }
 
-      await loadData();
-      setShowModal(false);
-      resetForm();
+  try {
+    setSubmitting(true);
 
-      Alert.alert("Succès", "Promotion créée avec succès.");
-    } catch (error) {
-      console.error("Create promotion error:", error);
-      Alert.alert(
-        "Création impossible",
-        error instanceof Error ? error.message : "Une erreur est survenue."
-      );
-    } finally {
-      setSubmitting(false);
-    }
-  };
+    await createPromotion({
+      title: form.title.trim(),
+      type: form.type,
+      value,
+      startDate,
+      endDate,
+      appliesToAllServices: true,
+    });
+
+    await loadData();
+    setShowModal(false);
+    resetForm();
+
+    Alert.alert("Succès", "Promotion créée avec succès.");
+  } catch (error) {
+    console.error("Create promotion error:", error);
+    Alert.alert(
+      "Création impossible",
+      error instanceof Error ? error.message : "Une erreur est survenue."
+    );
+  } finally {
+    setSubmitting(false);
+  }
+};
 
   const handleDeletePromotion = async (id: string) => {
     try {
@@ -424,6 +436,24 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       {children}
     </View>
   );
+}
+function toApiDate(value: string) {
+  const trimmed = value.trim();
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+
+  const frMatch = trimmed.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (frMatch) {
+    const [, day, month, year] = frMatch;
+    return `${year}-${month}-${day}`;
+  }
+
+  const date = new Date(trimmed);
+  if (!Number.isNaN(date.getTime())) {
+    return date.toISOString().slice(0, 10);
+  }
+
+  return trimmed;
 }
 
 const styles = StyleSheet.create({

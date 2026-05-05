@@ -27,6 +27,7 @@ const today = new Date().toLocaleDateString("fr-FR", {
 const COLORS = {
   bg: "#FAF7F2",
   primary: "#6B2737",
+  primaryLight: "#8A3046",
   gold: "#D4AF6A",
   text: "#3A3A3A",
   white: "#FFFFFF",
@@ -38,11 +39,6 @@ const COLORS = {
   orangeBg: "#FFEDD5",
   red: "#DC2626",
   redBg: "#FEE2E2",
-};
-
-type TileProps = {
-  title: string;
-  href: Href;
 };
 
 type KPIProps = {
@@ -60,6 +56,13 @@ type QuickActionItem = {
   withBorder?: boolean;
 };
 
+type DashboardTile = {
+  title: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  href: Href;
+  color?: string;
+};
+
 const EMPTY_SUMMARY: DashboardSummary = {
   todayAppointments: 0,
   monthRevenue: 0,
@@ -68,6 +71,57 @@ const EMPTY_SUMMARY: DashboardSummary = {
   occupancyRate: 0,
 };
 
+const dashboardTiles: DashboardTile[] = [
+  {
+    title: "Services",
+    icon: "pricetag-outline",
+    href: "/(professional)/service" as Href,
+  },
+  {
+    title: "Employés",
+    icon: "people-outline",
+    href: "/(professional)/team-management" as Href,
+  },
+  {
+    title: "Dépenses",
+    icon: "trending-down-outline",
+    href: "/(professional)/ExpenseManagement" as Href,
+    color: COLORS.red,
+  },
+  {
+    title: "Comptabilité",
+    icon: "newspaper-outline",
+    href: "/(professional)/AccountingReports" as Href,
+  },
+  {
+    title: "Caisse",
+    icon: "card-outline",
+    href: "/(professional)/cash-register" as Href,
+    color: COLORS.success,
+  },
+  {
+    title: "Promotions",
+    icon: "pricetags-outline",
+    href: "/(professional)/promotions" as Href,
+    color: COLORS.gold,
+  },
+  {
+    title: "Historique",
+    icon: "time-outline",
+    href: "/(professional)/booking-history" as Href,
+  },
+  {
+    title: "Fiche Client",
+    icon: "person-outline",
+    href: "/(professional)/client-details" as Href,
+  },
+  {
+    title: "Paramètres",
+    icon: "settings-outline",
+    href: "/(professional)/salon-settings" as Href,
+  },
+];
+
 async function getAccessToken(): Promise<string | null> {
   const token = await SecureStore.getItemAsync("accessToken");
   return token ?? null;
@@ -75,49 +129,6 @@ async function getAccessToken(): Promise<string | null> {
 
 function formatFcfa(value: number) {
   return `${value.toLocaleString("fr-FR")} FCFA`;
-}
-
-function Tile({
-  title,
-  subtitle,
-  icon,
-  href,
-  tone = "primary",
-}: TileProps & {
-  subtitle: string;
-  icon: keyof typeof Ionicons.glyphMap;
-  tone?: "primary" | "gold";
-}) {
-  return (
-    <Pressable
-      onPress={() => router.push(href)}
-      style={({ pressed }) => [
-        styles.card,
-        pressed && { transform: [{ scale: 0.99 }], opacity: 0.95 },
-        tone === "gold" && { borderColor: COLORS.gold },
-      ]}
-    >
-      <View
-        style={[
-          styles.cardIconWrap,
-          tone === "gold" && { backgroundColor: `${COLORS.gold}22` },
-        ]}
-      >
-        <Ionicons
-          name={icon}
-          size={20}
-          color={tone === "gold" ? COLORS.gold : COLORS.primary}
-        />
-      </View>
-
-      <View style={{ flex: 1 }}>
-        <Text style={styles.cardTitle}>{title}</Text>
-        <Text style={styles.cardSubtitle}>{subtitle}</Text>
-      </View>
-
-      <Ionicons name="chevron-forward" size={18} color={`${COLORS.text}66`} />
-    </Pressable>
-  );
 }
 
 function TodayAppointmentsBanner({ count }: { count: number }) {
@@ -136,7 +147,10 @@ function TodayAppointmentsBanner({ count }: { count: number }) {
 
       <Pressable
         onPress={() => router.push("/(professional)/agenda" as Href)}
-        style={({ pressed }) => [styles.bannerButton, pressed && { opacity: 0.9 }]}
+        style={({ pressed }) => [
+          styles.bannerButton,
+          pressed && { opacity: 0.9 },
+        ]}
       >
         <Text style={styles.bannerButtonText}>Voir l&apos;agenda</Text>
       </Pressable>
@@ -211,7 +225,10 @@ function QuickActions() {
     <View style={styles.quickActionsWrap}>
       <Pressable
         onPress={() => setIsOpen((prev) => !prev)}
-        style={({ pressed }) => [styles.quickActionsButton, pressed && { opacity: 0.95 }]}
+        style={({ pressed }) => [
+          styles.quickActionsButton,
+          pressed && { opacity: 0.95 },
+        ]}
       >
         <Text style={styles.quickActionsTitle}>Actions rapides</Text>
 
@@ -250,6 +267,25 @@ function QuickActions() {
   );
 }
 
+function DashboardTileCard({ item }: { item: DashboardTile }) {
+  return (
+    <Pressable
+      onPress={() => router.push(item.href)}
+      style={({ pressed }) => [
+        styles.dashboardTile,
+        pressed && { opacity: 0.85, transform: [{ scale: 0.99 }] },
+      ]}
+    >
+      <Ionicons
+        name={item.icon}
+        size={28}
+        color={item.color ?? COLORS.primary}
+      />
+      <Text style={styles.dashboardTileText}>{item.title}</Text>
+    </Pressable>
+  );
+}
+
 export default function ProDashboard() {
   const [summary, setSummary] = useState<DashboardSummary>(EMPTY_SUMMARY);
   const [loading, setLoading] = useState(true);
@@ -257,92 +293,55 @@ export default function ProDashboard() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const loadDashboard = async () => {
-  const token = await getAccessToken();
-
- if (!token) {
-  setSummary(EMPTY_SUMMARY);
-  setErrorMessage("Session expirée.");
-  return;
-}
-
-  const data = await getDashboardSummary(token);
-
-  setSummary({
-    todayAppointments: data?.todayAppointments ?? 0,
-    monthRevenue: data?.monthRevenue ?? 0,
-    monthExpenses: data?.monthExpenses ?? 0,
-    newClients: data?.newClients ?? 0,
-    occupancyRate: data?.occupancyRate ?? 0,
-  });
-};
-
-const initialLoad = async () => {
-  try {
-    setLoading(true);
-    setErrorMessage(null);
-    await loadDashboard();
-  } catch (error: any) {
-    console.error("Dashboard load error:", error);
-
-    const message = String(error?.message ?? "");
-
-    if (message.toLowerCase().includes("unauthorized")) {
-      setSummary(EMPTY_SUMMARY);
-      setErrorMessage("Session expirée.");
-      return;
-    }
-
-    setErrorMessage("Impossible de charger le dashboard.");
-    setSummary(EMPTY_SUMMARY);
-  } finally {
-    setLoading(false);
-  }
-};
-
-  const onRefresh = async () => {
-  try {
-    setRefreshing(true);
-    setErrorMessage(null);
-    await loadDashboard();
-  } catch (error: any) {
-    console.error("Dashboard refresh error:", error);
-
-    const message = String(error?.message ?? "");
-
-    if (message.toLowerCase().includes("unauthorized")) {
-      setSummary(EMPTY_SUMMARY);
-      setErrorMessage("Session expirée.");
-      return;
-    }
-
-    setErrorMessage("Impossible d’actualiser les données.");
-  } finally {
-    setRefreshing(false);
-  }
-};
-
-  useEffect(() => {
-  let cancelled = false;
-
-  const run = async () => {
     const token = await getAccessToken();
 
-    if (!token || cancelled) {
-      setLoading(false);
+    if (!token) {
       setSummary(EMPTY_SUMMARY);
       setErrorMessage("Session expirée.");
       return;
     }
 
-    await initialLoad();
+    const data = await getDashboardSummary(token);
+
+    setSummary({
+      todayAppointments: data?.todayAppointments ?? 0,
+      monthRevenue: data?.monthRevenue ?? 0,
+      monthExpenses: data?.monthExpenses ?? 0,
+      newClients: data?.newClients ?? 0,
+      occupancyRate: data?.occupancyRate ?? 0,
+    });
   };
 
-  run();
-
-  return () => {
-    cancelled = true;
+  const initialLoad = async () => {
+    try {
+      setLoading(true);
+      setErrorMessage(null);
+      await loadDashboard();
+    } catch (error: any) {
+      console.error("Dashboard load error:", error);
+      setErrorMessage("Impossible de charger le dashboard.");
+      setSummary(EMPTY_SUMMARY);
+    } finally {
+      setLoading(false);
+    }
   };
-}, []);
+
+  const onRefresh = async () => {
+    try {
+      setRefreshing(true);
+      setErrorMessage(null);
+      await loadDashboard();
+    } catch (error: any) {
+      console.error("Dashboard refresh error:", error);
+      setErrorMessage("Impossible d’actualiser les données.");
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    initialLoad();
+  }, []);
 
   const kpis = useMemo(
     () => [
@@ -375,16 +374,23 @@ const initialLoad = async () => {
         value: formatFcfa(summary.monthExpenses),
       },
     ],
-    [summary]
+    [summary],
   );
 
   return (
     <SafeAreaView style={styles.screen}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Espace Professionnel</Text>
-        <Text style={styles.headerSub}>Accès rapide à la gestion du salon</Text>
+        <View style={styles.headerTitleRow}>
+          <Text style={styles.headerTitle}>Tableau de bord</Text>
+          <Ionicons
+            name="information-circle-outline"
+            size={18}
+            color="rgba(255,255,255,0.75)"
+          />
+        </View>
+
         <Text style={styles.headerDate}>
-          📅 {today.charAt(0).toUpperCase() + today.slice(1)}
+          {today.charAt(0).toUpperCase() + today.slice(1)}
         </Text>
       </View>
 
@@ -396,12 +402,18 @@ const initialLoad = async () => {
       ) : (
         <ScrollView
           contentContainerStyle={styles.scrollContent}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+          refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          }
           showsVerticalScrollIndicator={false}
         >
           {errorMessage ? (
             <View style={styles.errorBox}>
-              <Ionicons name="alert-circle-outline" size={18} color={COLORS.primary} />
+              <Ionicons
+                name="alert-circle-outline"
+                size={18}
+                color={COLORS.primary}
+              />
               <Text style={styles.errorText}>{errorMessage}</Text>
             </View>
           ) : null}
@@ -423,84 +435,11 @@ const initialLoad = async () => {
 
           <QuickActions />
 
-          <Tile
-            title="Agenda"
-            subtitle="Planning et rendez-vous"
-            icon="calendar-outline"
-            href={"/(professional)/agenda" as Href}
-          />
-
-          <Tile
-            title="Caisse & Transactions"
-            subtitle="Suivi des paiements"
-            icon="cash-outline"
-            href={"/(professional)/cash-register" as Href}
-          />
-
-          <Tile
-            title="Paramètres du Salon"
-            subtitle="Infos • Photos • Horaires • Paiements • Acompte"
-            icon="settings-outline"
-            href={"/(professional)/salon-settings" as Href}
-          />
-
-          <Tile
-            title="Promotions & Offres"
-            subtitle="Créer et piloter vos promos"
-            icon="pricetags-outline"
-            href={"/(professional)/promotions" as Href}
-            tone="gold"
-          />
-
-          <Tile
-            title="Carte de Fidélité"
-            subtitle="Gestion du programme de fidélité"
-            icon="gift-outline"
-            href={"/(professional)/loyalty" as Href}
-            tone="gold"
-          />
-
-          <Tile
-            title="Historique Réservations"
-            subtitle="Terminé • Annulé • No-show"
-            icon="calendar-outline"
-            href={"/(professional)/booking-history" as Href}
-          />
-
-          <Tile
-            title="Fiche Client (exemple)"
-            subtitle="Détails + gestion acompte"
-            icon="person-outline"
-            href={"/(professional)/client-details" as Href}
-          />
-
-          <Tile
-            title="Gestion des Employés"
-            subtitle="Ajouter, modifier ou supprimer des employés"
-            icon="people-outline"
-            href={"/(professional)/team-management" as Href}
-          />
-
-          <Tile
-            title="Dépenses & Revenus"
-            subtitle="Gestion des dépenses et revenus du salon"
-            icon="cash-outline"
-            href={"/(professional)/ExpenseManagement" as Href}
-          />
-
-          <Tile
-            title="Rapports Comptables"
-            subtitle="Analyse des revenus et dépenses"
-            icon="bar-chart-outline"
-            href={"/(professional)/AccountingReports" as Href}
-          />
-
-          <Tile
-            title="Service"
-            subtitle="service & promotions"
-            icon="construct-outline"
-            href={"/(professional)/service" as Href}
-          />
+          <View style={styles.tileGrid}>
+            {dashboardTiles.map((item) => (
+              <DashboardTileCard key={item.title} item={item} />
+            ))}
+          </View>
         </ScrollView>
       )}
     </SafeAreaView>
@@ -515,30 +454,31 @@ const styles = StyleSheet.create({
 
   header: {
     backgroundColor: COLORS.primary,
-    paddingHorizontal: 16,
-    paddingTop: 18,
-    paddingBottom: 16,
+    paddingHorizontal: 18,
+    paddingTop: 34,
+    paddingBottom: 36,
+  },
+  headerTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
   },
   headerTitle: {
     color: COLORS.white,
-    fontSize: 20,
+    fontSize: 24,
     fontWeight: "800",
   },
-  headerSub: {
-    color: `${COLORS.white}CC`,
-    marginTop: 6,
-    fontSize: 13,
-  },
   headerDate: {
-    color: "rgba(255,255,255,0.85)",
+    color: COLORS.gold,
     marginTop: 10,
-    fontSize: 13,
-    fontWeight: "600",
+    fontSize: 16,
+    fontWeight: "700",
   },
 
   scrollContent: {
-    padding: 16,
-    paddingBottom: 28,
+    paddingHorizontal: 14,
+    paddingTop: 14,
+    paddingBottom: 30,
   },
 
   loaderWrap: {
@@ -571,73 +511,98 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 
-  card: {
-    backgroundColor: COLORS.white,
+  bannerWrap: {
+    backgroundColor: COLORS.primaryLight,
     borderRadius: 18,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: `${COLORS.primary}14`,
+    paddingHorizontal: 16,
+    paddingVertical: 18,
+    marginBottom: 14,
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
-    marginBottom: 12,
+    justifyContent: "space-between",
+    shadowColor: "#000",
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  cardIconWrap: {
-    width: 40,
-    height: 40,
+  bannerLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+  },
+  bannerIconCircle: {
+    width: 54,
+    height: 54,
     borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.18)",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: `${COLORS.primary}12`,
+    marginRight: 14,
   },
-  cardTitle: {
-    color: COLORS.text,
+  bannerLabel: {
+    color: "rgba(255,255,255,0.86)",
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  bannerValue: {
+    color: COLORS.white,
+    fontSize: 22,
+    fontWeight: "900",
+    marginTop: 4,
+  },
+  bannerButton: {
+    backgroundColor: COLORS.white,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 999,
+    marginLeft: 12,
+  },
+  bannerButtonText: {
+    color: COLORS.primary,
+    fontSize: 15,
     fontWeight: "800",
-    fontSize: 14,
-  },
-  cardSubtitle: {
-    color: `${COLORS.text}88`,
-    marginTop: 2,
-    fontSize: 12,
   },
 
   kpiGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "space-between",
-    marginBottom: 18,
+    marginBottom: 10,
   },
   kpiCard: {
-    width: "48%",
+    width: "49%",
     backgroundColor: COLORS.white,
     borderRadius: 18,
     padding: 14,
     marginBottom: 12,
+    minHeight: 104,
     shadowColor: "#000",
     shadowOpacity: 0.05,
     shadowRadius: 6,
     elevation: 2,
   },
   kpiIcon: {
-    width: 32,
-    height: 32,
+    width: 34,
+    height: 34,
     borderRadius: 999,
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 6,
+    marginBottom: 8,
   },
   kpiLabel: {
-    fontSize: 12,
+    fontSize: 13,
     color: "rgba(58,58,58,0.6)",
+    lineHeight: 18,
   },
   kpiValue: {
-    fontSize: 16,
-    fontWeight: "700",
+    fontSize: 17,
+    fontWeight: "800",
     color: COLORS.text,
+    marginTop: 4,
   },
 
   quickActionsWrap: {
-    marginBottom: 16,
+    marginBottom: 14,
     zIndex: 20,
   },
   quickActionsButton: {
@@ -654,7 +619,7 @@ const styles = StyleSheet.create({
   quickActionsTitle: {
     color: COLORS.text,
     fontSize: 16,
-    fontWeight: "600",
+    fontWeight: "700",
   },
   quickActionsDropdown: {
     marginTop: 8,
@@ -690,58 +655,36 @@ const styles = StyleSheet.create({
   quickActionLabel: {
     color: COLORS.text,
     fontSize: 14,
-    fontWeight: "500",
+    fontWeight: "600",
   },
 
-  bannerWrap: {
-    backgroundColor: COLORS.primary,
-    borderRadius: 22,
-    paddingHorizontal: 16,
-    paddingVertical: 18,
-    marginBottom: 18,
+  tileGrid: {
     flexDirection: "row",
-    alignItems: "center",
+    flexWrap: "wrap",
     justifyContent: "space-between",
-    shadowColor: "#000",
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
-    elevation: 4,
   },
-  bannerLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    flex: 1,
-  },
-  bannerIconCircle: {
-    width: 48,
-    height: 48,
-    borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.18)",
+  dashboardTile: {
+    width: "49%",
+    minHeight: 92,
+    backgroundColor: COLORS.white,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: `${COLORS.primary}14`,
+    marginBottom: 12,
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 14,
+    paddingHorizontal: 10,
+    paddingVertical: 16,
+    shadowColor: "#000",
+    shadowOpacity: 0.06,
+    shadowRadius: 5,
+    elevation: 2,
   },
-  bannerLabel: {
-    color: "rgba(255,255,255,0.82)",
+  dashboardTileText: {
+    color: COLORS.text,
     fontSize: 14,
-    fontWeight: "500",
-  },
-  bannerValue: {
-    color: COLORS.white,
-    fontSize: 28,
     fontWeight: "800",
-    marginTop: 2,
-  },
-  bannerButton: {
-    backgroundColor: COLORS.white,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 999,
-    marginLeft: 12,
-  },
-  bannerButtonText: {
-    color: COLORS.primary,
-    fontSize: 14,
-    fontWeight: "700",
+    textAlign: "center",
+    marginTop: 10,
   },
 });
