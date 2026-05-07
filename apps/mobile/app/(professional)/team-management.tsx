@@ -25,7 +25,6 @@ import {
   type ApiEmployee,
 } from "../../src/api/pro-employees";
 
-
 type EmployeeStatus = "active" | "leave" | "absent";
 
 type Employee = {
@@ -49,7 +48,24 @@ type AppointmentRequest = {
   status: RequestStatus;
 };
 
+const ROLE_OPTIONS = [
+  "Coiffeur/Coiffeuse",
+  "Esthéticienne",
+  "Barbier",
+  "Masseur/Masseuse",
+  "Manucure",
+  "Coach sportif",
+  "Autre",
+];
 
+function splitRoles(roleLabel?: string | null) {
+  if (!roleLabel) return [];
+
+  return roleLabel
+    .split(",")
+    .map((role) => role.trim())
+    .filter(Boolean);
+}
 
 function mapApiEmployeeToUi(employee: ApiEmployee): Employee {
   let status: EmployeeStatus = "active";
@@ -76,7 +92,7 @@ export default function TeamManagementScreen() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
   const [editingEmployee, setEditingEmployee] = useState<string | null>(null);
 
-  const [selectedRole, setSelectedRole] = useState("");
+  const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
   const [customRole, setCustomRole] = useState("");
 
   const [editFormData, setEditFormData] = useState({
@@ -103,7 +119,6 @@ export default function TeamManagementScreen() {
   const [submitting, setSubmitting] = useState(false);
 
   const [employees, setEmployees] = useState<Employee[]>([]);
-
   const [showAppointmentRequests, setShowAppointmentRequests] = useState(false);
 
   const [appointmentRequests, setAppointmentRequests] = useState<AppointmentRequest[]>([
@@ -141,20 +156,6 @@ export default function TeamManagementScreen() {
     },
   ]);
 
-  const handleAcceptRequest = (id: number) => {
-    setAppointmentRequests((prev) =>
-      prev.map((req) => (req.id === id ? { ...req, status: "accepted" } : req))
-    );
-    toast("Demande acceptée");
-  };
-
-  const handleRefuseRequest = (id: number) => {
-    setAppointmentRequests((prev) =>
-      prev.map((req) => (req.id === id ? { ...req, status: "refused" } : req))
-    );
-    toast("Demande refusée");
-  };
-
   const headerSubtitle = useMemo(
     () => `${employees.length} membres dans votre équipe`,
     [employees.length]
@@ -167,7 +168,6 @@ export default function TeamManagementScreen() {
   };
 
   const loadEmployees = async () => {
-    
     const data = await getEmployees();
     setEmployees(data.map(mapApiEmployeeToUi));
   };
@@ -199,7 +199,7 @@ export default function TeamManagementScreen() {
   }, []);
 
   const resetForm = () => {
-    setSelectedRole("");
+    setSelectedRoles([]);
     setCustomRole("");
     setEditFormData({
       name: "",
@@ -218,27 +218,23 @@ export default function TeamManagementScreen() {
 
     setEditingEmployee(id);
 
-    const roleIsOther =
-      emp.role &&
-      ![
-        "Coiffeur/Coiffeuse",
-        "Esthéticienne",
-        "Barbier",
-        "Masseur/Masseuse",
-        "Manucure",
-        "Coach sportif",
-      ].includes(emp.role);
+    const employeeRoles = splitRoles(emp.role);
+    const knownRoles = employeeRoles.filter((role) => ROLE_OPTIONS.includes(role));
+    const unknownRoles = employeeRoles.filter((role) => !ROLE_OPTIONS.includes(role));
 
-    setSelectedRole(roleIsOther ? "Autre" : emp.role);
-    setCustomRole(roleIsOther ? emp.role : "");
+    const hasCustomRole = unknownRoles.length > 0;
+    const rolesToSelect = hasCustomRole ? [...knownRoles, "Autre"] : knownRoles;
+
+    setSelectedRoles(rolesToSelect);
+    setCustomRole(unknownRoles.join(", "));
 
     setEditFormData({
       name: emp.name,
       firstName: "",
       phone: emp.phone ?? "",
       email: emp.email ?? "",
-      role: roleIsOther ? "Autre" : emp.role,
-      customRole: roleIsOther ? emp.role : "",
+      role: rolesToSelect.join(", "),
+      customRole: unknownRoles.join(", "),
       photo: emp.photo ?? null,
     });
 
@@ -275,10 +271,15 @@ export default function TeamManagementScreen() {
       return;
     }
 
-    const resolvedRole =
-      editFormData.role === "Autre"
-        ? editFormData.customRole.trim()
-        : editFormData.role;
+    const resolvedRoles = selectedRoles
+      .filter((role) => role !== "Autre")
+      .concat(
+        selectedRoles.includes("Autre") && editFormData.customRole.trim()
+          ? [editFormData.customRole.trim()]
+          : []
+      );
+
+    const resolvedRole = resolvedRoles.join(", ");
 
     if (!resolvedRole) {
       toast("Le rôle est requis.");
@@ -287,10 +288,9 @@ export default function TeamManagementScreen() {
 
     try {
       setSubmitting(true);
-      
 
       if (editingEmployee) {
-        await updateEmployee( editingEmployee, {
+        await updateEmployee(editingEmployee, {
           displayName: fullName,
           roleLabel: resolvedRole,
           photoUrl: editFormData.photo ?? undefined,
@@ -300,7 +300,7 @@ export default function TeamManagementScreen() {
 
         toast("Employé modifié");
       } else {
-        await createEmployee( {
+        await createEmployee({
           displayName: fullName,
           firstName: editFormData.firstName || undefined,
           roleLabel: resolvedRole,
@@ -325,8 +325,7 @@ export default function TeamManagementScreen() {
 
   const handleDeleteEmployee = async (id: string) => {
     try {
-      
-      await deleteEmployee( id);
+      await deleteEmployee(id);
       await loadEmployees();
       setShowDeleteConfirm(null);
       toast("Employé supprimé");
@@ -351,7 +350,6 @@ export default function TeamManagementScreen() {
 
   const handleMarkActive = async (employeeId: string, name?: string) => {
     try {
-      
       await markEmployeeActive(employeeId);
       await loadEmployees();
       toast(`${name ?? "Employé"} est marqué(e) présent(e)`);
@@ -366,7 +364,6 @@ export default function TeamManagementScreen() {
     const emp = employees.find((e) => e.id === showAbsenceModal);
 
     try {
-      
       await markEmployeeAbsent(showAbsenceModal, {
         startDate: absenceStartDate,
         endDate: absenceEndDate || undefined,
@@ -379,6 +376,20 @@ export default function TeamManagementScreen() {
     } catch (error) {
       toast(error instanceof Error ? error.message : "Erreur lors du marquage d'absence.");
     }
+  };
+
+  const handleAcceptRequest = (id: number) => {
+    setAppointmentRequests((prev) =>
+      prev.map((req) => (req.id === id ? { ...req, status: "accepted" } : req))
+    );
+    toast("Demande acceptée");
+  };
+
+  const handleRefuseRequest = (id: number) => {
+    setAppointmentRequests((prev) =>
+      prev.map((req) => (req.id === id ? { ...req, status: "refused" } : req))
+    );
+    toast("Demande refusée");
   };
 
   return (
@@ -764,43 +775,52 @@ export default function TeamManagementScreen() {
 
               <Text style={styles.label}>Rôle / Spécialité</Text>
               <View style={styles.chipsWrap}>
-                {[
-                  "Coiffeur/Coiffeuse",
-                  "Esthéticienne",
-                  "Barbier",
-                  "Masseur/Masseuse",
-                  "Manucure",
-                  "Coach sportif",
-                  "Autre",
-                ].map((r) => {
-                  const active = editFormData.role === r;
+                {ROLE_OPTIONS.map((role) => {
+                  const active = selectedRoles.includes(role);
+
                   return (
                     <Pressable
-                      key={r}
+                      key={role}
                       onPress={() => {
-                        setSelectedRole(r);
-                        setEditFormData((p) => ({ ...p, role: r }));
+                        setSelectedRoles((prev) => {
+                          const next = prev.includes(role)
+                            ? prev.filter((item) => item !== role)
+                            : [...prev, role];
+
+                          setEditFormData((p) => ({
+                            ...p,
+                            role: next.join(", "),
+                            customRole: next.includes("Autre") ? p.customRole : "",
+                          }));
+
+                          if (!next.includes("Autre")) {
+                            setCustomRole("");
+                          }
+
+                          return next;
+                        });
                       }}
                       style={[styles.chip, active && styles.chipActive]}
                     >
                       <Text style={[styles.chipText, active && styles.chipTextActive]}>
-                        {r}
+                        {active ? "✓ " : ""}
+                        {role}
                       </Text>
                     </Pressable>
                   );
                 })}
               </View>
 
-              {selectedRole === "Autre" && (
+              {selectedRoles.includes("Autre") && (
                 <>
                   <Text style={styles.label}>Précisez</Text>
                   <TextInput
                     value={customRole}
-                    onChangeText={(v) => {
-                      setCustomRole(v);
-                      setEditFormData((p) => ({ ...p, customRole: v }));
+                    onChangeText={(value) => {
+                      setCustomRole(value);
+                      setEditFormData((p) => ({ ...p, customRole: value }));
                     }}
-                    placeholder="Ex : Maquilleuse FX"
+                    placeholder="Ex : Manager adjoint"
                     style={styles.input}
                   />
                 </>

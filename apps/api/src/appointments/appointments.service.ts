@@ -11,9 +11,10 @@ import {
   LoyaltyReason,
   LoyaltyTier,
   PaymentStatus,
-  Prisma,
-  ServiceCategory,
-  UserRole,
+PaymentType,
+Prisma,
+ServiceCategory,
+UserRole,
 } from '@prisma/client';
 
 import { PrismaService } from '../prisma/prisma.service';
@@ -1200,6 +1201,186 @@ export class AppointmentsService {
       status: appointment.status,
     }));
   }
+
+  async getProHistoryDetails(
+  user: { userId: string; role: UserRole },
+  appointmentId: string,
+) {
+  if (user.role !== UserRole.PROFESSIONAL && user.role !== UserRole.ADMIN) {
+    throw new ForbiddenException('Not allowed');
+  }
+
+  const salonIds = await this.getManagedSalonIds(user);
+
+  if (!salonIds.length) {
+    throw new NotFoundException('Appointment not found');
+  }
+
+  const appointment = await this.prisma.appointment.findFirst({
+    where: {
+      id: appointmentId,
+      salonId: { in: salonIds },
+      status: {
+        in: [
+          AppointmentStatus.COMPLETED,
+          AppointmentStatus.CANCELLED,
+          AppointmentStatus.NO_SHOW,
+        ],
+      },
+    },
+    include: {
+      salon: {
+        select: {
+          id: true,
+          name: true,
+          currency: true,
+        },
+      },
+      client: {
+        select: {
+          id: true,
+          email: true,
+          phone: true,
+          clientProfile: {
+            select: {
+              nickname: true,
+              allergies: true,
+              comments: true,
+            },
+          },
+        },
+      },
+      employee: {
+        select: {
+          id: true,
+          displayName: true,
+          specialties: {
+            select: { specialty: true },
+            orderBy: { specialty: 'asc' },
+          },
+        },
+      },
+      service: {
+        select: {
+          id: true,
+          name: true,
+          description: true,
+          price: true,
+          durationMin: true,
+        },
+      },
+      paymentIntents: {
+        orderBy: { createdAt: 'desc' },
+        take: 1,
+        select: {
+          id: true,
+          status: true,
+          amount: true,
+          payableAmount: true,
+          discountAmount: true,
+          currency: true,
+          type: true,
+          provider: true,
+          providerRef: true,
+          transactionDate: true,
+          createdAt: true,
+        },
+      },
+    },
+  });
+
+  if (!appointment) {
+    throw new NotFoundException('Appointment not found');
+  }
+
+  const latestPayment = appointment.paymentIntents[0] ?? null;
+
+  const amount =
+    appointment.totalAmount > 0
+      ? appointment.totalAmount
+      : appointment.service.price;
+
+  const paidAmount =
+    latestPayment?.status === PaymentStatus.SUCCEEDED
+      ? latestPayment.payableAmount && latestPayment.payableAmount > 0
+        ? latestPayment.payableAmount
+        : latestPayment.amount
+      : 0;
+
+  const paymentMethod = latestPayment?.type
+    ? latestPayment.type === PaymentType.MOMO
+      ? 'Mobile Money'
+      : latestPayment.type === PaymentType.CARD
+        ? 'Carte bancaire'
+        : 'Espèces'
+    : 'Non renseigné';
+
+  const paymentType =
+    paidAmount >= amount
+      ? 'Paiement complet'
+      : paidAmount > 0
+        ? 'Acompte versé'
+        : 'Paiement non confirmé';
+
+  const durationMin = Math.max(
+    0,
+    Math.round(
+      (appointment.endAt.getTime() - appointment.startAt.getTime()) / 60_000,
+    ),
+  );
+
+  return {
+    id: appointment.id,
+    startAt: appointment.startAt.toISOString(),
+    endAt: appointment.endAt.toISOString(),
+    status: appointment.status,
+
+    salonId: appointment.salon.id,
+    salonName: appointment.salon.name,
+    currency: appointment.salon.currency,
+
+    clientId: appointment.client.id,
+    clientName:
+      appointment.client.clientProfile?.nickname ||
+      appointment.client.email ||
+      appointment.client.phone ||
+      'Client',
+    clientPhone: appointment.client.phone ?? null,
+    clientEmail: appointment.client.email ?? null,
+    clientAllergies: appointment.client.clientProfile?.allergies ?? null,
+    clientComments: appointment.client.clientProfile?.comments ?? null,
+
+    serviceId: appointment.service.id,
+    servicesLabel: appointment.service.name,
+    serviceDescription: appointment.service.description ?? null,
+
+    employeeName: appointment.employee?.displayName ?? null,
+    employee: appointment.employee
+      ? this.mapEmployeeSummary(appointment.employee)
+      : null,
+
+    amount,
+    paidAmount,
+    remainingAmount: Math.max(0, amount - paidAmount),
+    paymentMethod,
+    paymentType,
+    paymentStatus: latestPayment?.status ?? null,
+    paymentIntent: latestPayment,
+
+    durationMin,
+    durationLabel: `${durationMin} min`,
+    actualDurationMin:
+      appointment.status === AppointmentStatus.COMPLETED ? durationMin : null,
+    actualDurationLabel:
+      appointment.status === AppointmentStatus.COMPLETED
+        ? `${durationMin} min`
+        : null,
+
+    note: appointment.note ?? null,
+    createdAt: appointment.createdAt.toISOString(),
+    updatedAt: appointment.updatedAt.toISOString(),
+  };
+}
 
   async exportProHistory(
     user: { userId: string; role: UserRole },

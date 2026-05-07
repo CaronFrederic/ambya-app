@@ -119,6 +119,62 @@ export type AppointmentHistoryItem = {
   amount: number;
   status: AppointmentHistoryStatus;
 };
+export type AppointmentHistoryDetails = AppointmentHistoryItem & {
+  salonId: string;
+  salonName: string;
+  currency: string;
+
+  clientEmail: string | null;
+  clientAllergies: string | null;
+  clientComments: string | null;
+
+  serviceId: string;
+  serviceDescription: string | null;
+
+  employee?: {
+    id: string;
+    displayName: string;
+    specialties: string[];
+    primarySpecialtyLabel?: string | null;
+  } | null;
+
+  paidAmount: number;
+  remainingAmount: number;
+  paymentMethod: string;
+  paymentType: string;
+  paymentStatus: string | null;
+  paymentIntent?: {
+    id: string;
+    status: string;
+    amount: number;
+    payableAmount?: number | null;
+    discountAmount?: number | null;
+    currency: string;
+    type?: string | null;
+    provider?: string | null;
+    providerRef?: string | null;
+    transactionDate?: string;
+    createdAt: string;
+  } | null;
+
+  durationMin: number;
+  durationLabel: string;
+  actualDurationMin: number | null;
+  actualDurationLabel: string | null;
+
+  note: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+export function getAppointmentHistoryDetails(token: string, appointmentId: string) {
+  return apiFetch<AppointmentHistoryDetails>(
+    `/pro/appointments/history/${appointmentId}`,
+    {
+      method: "GET",
+      token,
+    },
+  );
+}
 
 export type GetAppointmentHistoryParams = {
   status?: "all" | "completed" | "cancelled" | "no-show";

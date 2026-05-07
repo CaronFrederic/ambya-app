@@ -190,16 +190,32 @@ export default function SalonSettingsScreen() {
     <View style={{ flex: 1, backgroundColor: COLORS.bg }}>
       <ProHeader title="Paramètres du Salon" subtitle="Configurez votre profil" backTo="/(professional)/dashboard" />
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabs}>
-        {tabs.map((t) => {
-          const active = activeTab === (t.id as TabId);
-          return (
-            <Pressable key={t.id} onPress={() => setActiveTab(t.id as TabId)} style={[styles.tabBtn, active && styles.tabBtnActive]}>
-              <Text style={[styles.tabText, active && styles.tabTextActive]}>{t.label}</Text>
-            </Pressable>
-          );
-        })}
-      </ScrollView>
+      <View style={styles.tabsContainer}>
+  <ScrollView
+    horizontal
+    showsHorizontalScrollIndicator={false}
+    bounces={false}
+    contentContainerStyle={styles.tabsContent}
+  >
+    {tabs.map((t) => {
+      const active = activeTab === (t.id as TabId);
+
+      return (
+        <Pressable
+          key={t.id}
+          onPress={() => setActiveTab(t.id as TabId)}
+          style={styles.tabBtn}
+        >
+          <Text style={[styles.tabText, active && styles.tabTextActive]}>
+            {t.label}
+          </Text>
+
+          <View style={[styles.tabIndicator, active && styles.tabIndicatorActive]} />
+        </Pressable>
+      );
+    })}
+  </ScrollView>
+</View>
 
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         {activeTab === "infos" && (
@@ -681,11 +697,49 @@ const styles = StyleSheet.create({
     color: COLORS.text,
   },
 
-  tabs: { paddingHorizontal: 12, paddingVertical: 12, gap: 8, backgroundColor: "#FFF" },
-  tabBtn: { paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: 2, borderBottomColor: "transparent" },
-  tabBtnActive: { borderBottomColor: COLORS.primary },
-  tabText: { color: "rgba(58,58,58,0.6)", fontWeight: "800" },
-  tabTextActive: { color: COLORS.primary },
+ tabsContainer: {
+  height: 70,
+  backgroundColor: "#FFF",
+  borderBottomWidth: 1,
+  borderBottomColor: "rgba(107,39,55,0.06)",
+},
+
+tabsContent: {
+  paddingHorizontal: 18,
+  alignItems: "center",
+  gap: 28,
+},
+
+tabBtn: {
+  height: 70,
+  minWidth: 74,
+  alignItems: "center",
+  justifyContent: "center",
+  position: "relative",
+},
+
+tabText: {
+  color: "rgba(58,58,58,0.55)",
+  fontSize: 15,
+  fontWeight: "900",
+},
+
+tabTextActive: {
+  color: COLORS.primary,
+},
+
+tabIndicator: {
+  position: "absolute",
+  bottom: 0,
+  height: 3,
+  width: "100%",
+  borderRadius: 999,
+  backgroundColor: "transparent",
+},
+
+tabIndicatorActive: {
+  backgroundColor: COLORS.primary,
+},
 
   grid2: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   checkRow: { width: "48%", flexDirection: "row", alignItems: "center", gap: 10, padding: 10, borderRadius: 14 },
