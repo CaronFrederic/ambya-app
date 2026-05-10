@@ -6,7 +6,6 @@ import {
   ScrollView,
   Pressable,
   TextInput,
-  Modal,
   ActivityIndicator,
   Alert,
   Linking,
@@ -19,37 +18,80 @@ import {
   getAccountingReportExportUrl,
   type AccountingReportResponse,
   type PeriodType,
-  type ReportType,
+  type ViewMode,
 } from "../../src/api/accounting-reports";
 
+const COLORS = {
+  bg: "#FAF7F2",
+  text: "#3A3A3A",
+  primary: "#6B2737",
+  gold: "#D4AF6A",
+  green: "#008A3D",
+  red: "#D00000",
+  blue: "#0057FF",
+};
+
 function formatFCFA(value: number) {
-  return `${value.toLocaleString("fr-FR")} FCFA`;
+  return `${Math.round(value).toLocaleString("fr-FR")} FCFA`;
+}
+
+function currentMonthTitle() {
+  return new Date().toLocaleDateString("fr-FR", {
+    month: "long",
+    year: "numeric",
+  });
+}
+
+function diffPercent(real: number, forecast: number) {
+  if (forecast <= 0) return 0;
+  return Math.round(((real - forecast) / forecast) * 1000) / 10;
 }
 
 export default function AccountingReports() {
-  const [reportType, setReportType] = useState<ReportType>("compte-resultat");
+  const [viewMode, setViewMode] = useState<ViewMode>("comparaison");
   const [periodType, setPeriodType] = useState<PeriodType>("Ce mois");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
-  const [showExport, setShowExport] = useState(false);
 
   const [report, setReport] = useState<AccountingReportResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
-  const computedTitle = useMemo(() => {
-    const base =
-      reportType === "compte-resultat"
-        ? "Compte de Résultat"
-        : "Rapport Mensuel";
-    return `${base} — ${periodType}`;
-  }, [reportType, periodType]);
+  const forecast = useMemo(() => {
+    return {
+      serviceSales: report?.comparison?.revenue.serviceSales.forecast ?? 0,
+      productSales: report?.comparison?.revenue.productSales.forecast ?? 0,
+      expenses: report?.forecast?.kpis.quarterExpenses ?? 0,
+      netResult: report?.comparison?.netResult.forecast ?? 0,
+    };
+  }, [report]);
+
+  const real = useMemo(() => {
+    const serviceSales = report?.incomeStatement.revenue.serviceSales ?? 0;
+    const productSales = report?.incomeStatement.revenue.productSales ?? 0;
+    const totalRevenue =
+      report?.incomeStatement.revenue.total ?? serviceSales + productSales;
+    const totalExpenses = report?.incomeStatement.expenses.total ?? 0;
+    const netResult =
+      report?.incomeStatement.netResult ?? totalRevenue - totalExpenses;
+
+    return {
+      serviceSales,
+      productSales,
+      totalRevenue,
+      totalExpenses,
+      netResult,
+      expenses: report?.incomeStatement.expenses.byCategory ?? [],
+    };
+  }, [report]);
 
   const loadReport = async () => {
     const data = await getAccountingReport({
-      reportType,
+      reportType: "compte-resultat",
       periodType,
-      startDate: periodType === "Personnalisé" ? startDate || undefined : undefined,
+      startDate:
+        periodType === "Personnalisé" ? startDate || undefined : undefined,
       endDate: periodType === "Personnalisé" ? endDate || undefined : undefined,
     });
 
@@ -77,10 +119,6 @@ export default function AccountingReports() {
       await loadReport();
     } catch (error) {
       console.error("Accounting report refresh error:", error);
-      Alert.alert(
-        "Rafraîchissement impossible",
-        error instanceof Error ? error.message : "Une erreur est survenue.",
-      );
     } finally {
       setRefreshing(false);
     }
@@ -90,47 +128,49 @@ export default function AccountingReports() {
     initialLoad();
   }, []);
 
-  const handleGenerate = async () => {
-    try {
-      setLoading(true);
-      await loadReport();
-    } catch (error) {
-      console.error("Accounting report generate error:", error);
-      Alert.alert(
-        "Génération impossible",
-        error instanceof Error ? error.message : "Une erreur est survenue.",
-      );
-    } finally {
-      setLoading(false);
+  useEffect(() => {
+    if (!loading) {
+      loadReport().catch((error) => {
+        console.error("Accounting report reload error:", error);
+      });
     }
-  };
+  }, [periodType]);
 
   const handleExportExcel = async () => {
     try {
+      setExporting(true);
+
       const url = await getAccountingReportExportUrl({
-        reportType,
+        reportType: "compte-resultat",
         periodType,
-        startDate: periodType === "Personnalisé" ? startDate || undefined : undefined,
-        endDate: periodType === "Personnalisé" ? endDate || undefined : undefined,
+        startDate:
+          periodType === "Personnalisé" ? startDate || undefined : undefined,
+        endDate:
+          periodType === "Personnalisé" ? endDate || undefined : undefined,
       });
 
       await Linking.openURL(url);
-      setShowExport(false);
     } catch (error) {
       Alert.alert(
         "Export impossible",
         error instanceof Error ? error.message : "Une erreur est survenue.",
       );
+    } finally {
+      setExporting(false);
     }
   };
 
   return (
     <View style={styles.container}>
-      <ProHeader title="Comptabilité & Rapports" subtitle="Normes SYSCOHADA" />
+      <ProHeader
+        title="Comptabilité & Rapports Prévisionnels"
+        subtitle="Normes SYSCOHADA - Prévisions et analyses"
+        backTo="/(professional)/dashboard"
+      />
 
       {loading ? (
         <View style={styles.loaderWrap}>
-          <ActivityIndicator size="large" color="#6B2737" />
+          <ActivityIndicator size="large" color={COLORS.primary} />
           <Text style={styles.loaderText}>Chargement du rapport...</Text>
         </View>
       ) : (
@@ -141,272 +181,716 @@ export default function AccountingReports() {
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
           }
         >
+          <InfoBox />
+
+          <View style={styles.tabs}>
+            <ModeTab
+              label="Comparaison"
+              active={viewMode === "comparaison"}
+              onPress={() => setViewMode("comparaison")}
+            />
+            <ModeTab
+              label="Prévisionnel"
+              active={viewMode === "previsionnel"}
+              onPress={() => setViewMode("previsionnel")}
+              info
+            />
+            <ModeTab
+              label="Réel"
+              active={viewMode === "reel"}
+              onPress={() => setViewMode("reel")}
+            />
+          </View>
+
           <View style={styles.card}>
-            <Text style={styles.sectionTitle}>Paramètres</Text>
-
-            <Text style={styles.label}>Type de rapport</Text>
-            <View style={styles.row}>
-              <Chip
-                label="Compte de Résultat"
-                active={reportType === "compte-resultat"}
-                onPress={() => setReportType("compte-resultat")}
-              />
-              <Chip
-                label="Rapport Mensuel"
-                active={reportType === "rapport-mensuel"}
-                onPress={() => setReportType("rapport-mensuel")}
-              />
-            </View>
-
             <Text style={styles.label}>Période</Text>
-            <View style={styles.row}>
-              {(["Ce mois", "Mois dernier", "Cette année", "Personnalisé"] as const).map((p) => (
-                <Chip
+
+            <View style={styles.periodGrid}>
+              {(
+                [
+                  "Ce mois",
+                  "Mois dernier",
+                  "Cette année",
+                  "Personnalisé",
+                ] as const
+              ).map((p) => (
+                <Pressable
                   key={p}
-                  label={p}
-                  active={periodType === p}
                   onPress={() => setPeriodType(p)}
-                />
+                  style={[
+                    styles.periodOption,
+                    periodType === p && styles.periodOptionActive,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.periodOptionText,
+                      periodType === p && styles.periodOptionTextActive,
+                    ]}
+                  >
+                    {p}
+                  </Text>
+                </Pressable>
               ))}
             </View>
 
-            {periodType === "Personnalisé" && (
-              <View style={{ flexDirection: "row", gap: 10, marginTop: 10 }}>
+            {periodType === "Personnalisé" ? (
+              <View style={styles.dateRow}>
                 <TextInput
                   value={startDate}
                   onChangeText={setStartDate}
                   placeholder="Début YYYY-MM-DD"
-                  style={[styles.input, { flex: 1 }]}
+                  style={styles.input}
                 />
                 <TextInput
                   value={endDate}
                   onChangeText={setEndDate}
                   placeholder="Fin YYYY-MM-DD"
-                  style={[styles.input, { flex: 1 }]}
+                  style={styles.input}
                 />
               </View>
-            )}
-
-            <Pressable style={styles.primaryBtn} onPress={handleGenerate}>
-              <Ionicons name="sparkles-outline" size={18} color="#fff" />
-              <Text style={styles.primaryBtnText}>Générer le rapport</Text>
-            </Pressable>
+            ) : null}
           </View>
 
-          <View style={styles.card}>
-            <View
-              style={{
-                flexDirection: "row",
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginBottom: 10,
-              }}
+          {viewMode === "comparaison" ? (
+            <ComparisonView
+              real={real}
+              forecast={forecast}
+              comparison={report?.comparison}
+              chartData={report?.charts?.realVsForecast ?? []}
+            />
+          ) : null}
+
+          {viewMode === "previsionnel" ? (
+            <ForecastView
+              months={report?.forecast?.months ?? []}
+              kpis={report?.forecast?.kpis}
+            />
+          ) : null}
+
+          {viewMode === "reel" ? (
+            <RealView
+              real={real}
+              trend={report?.summary.trendPercent ?? 0}
+              chartData={report?.charts?.realMonthly ?? []}
+            />
+          ) : null}
+
+          <View style={styles.exportRow}>
+            <Pressable style={[styles.exportBtn, { backgroundColor: "#DC2626" }]}>
+              <Ionicons name="download-outline" size={18} color="#FFF" />
+              <Text style={styles.exportText}>PDF</Text>
+            </Pressable>
+
+            <Pressable
+              onPress={handleExportExcel}
+              disabled={exporting}
+              style={[
+                styles.exportBtn,
+                { backgroundColor: "#16A34A", opacity: exporting ? 0.7 : 1 },
+              ]}
             >
-              <Text style={styles.sectionTitle}>{computedTitle}</Text>
-              <Pressable onPress={() => setShowExport(true)} style={styles.smallBtn}>
-                <Ionicons name="download-outline" size={16} color="#6B2737" />
-                <Text style={styles.smallBtnText}>Exporter</Text>
-              </Pressable>
-            </View>
-
-            {reportType === "compte-resultat" ? (
-              <>
-                <Text style={styles.smallLabel}>Classe 7 - Revenus</Text>
-                <View style={[styles.box, { backgroundColor: "#dcfce7" }]}>
-                  <RowKV
-                    k="Ventes de services"
-                    v={formatFCFA(report?.incomeStatement.revenue.serviceSales ?? 0)}
-                    vColor="#15803d"
-                  />
-                  <RowKV
-                    k="Produits vendus"
-                    v={formatFCFA(report?.incomeStatement.revenue.productSales ?? 0)}
-                    vColor="#15803d"
-                    small
-                  />
-                </View>
-
-                <Text style={[styles.smallLabel, { marginTop: 14 }]}>
-                  Classe 6 - Charges
-                </Text>
-                <View style={[styles.box, { backgroundColor: "#fee2e2" }]}>
-                  {(report?.incomeStatement.expenses.byCategory ?? []).map((item, index) => (
-                    <RowKV
-                      key={`${item.category}-${index}`}
-                      k={item.category}
-                      v={formatFCFA(item.amount)}
-                      vColor="#b91c1c"
-                      small={index > 0}
-                    />
-                  ))}
-                </View>
-
-                <View style={styles.sep} />
-
-                <View
-                  style={{
-                    flexDirection: "row",
-                    justifyContent: "space-between",
-                    alignItems: "flex-end",
-                  }}
-                >
-                  <View>
-                    <Text
-                      style={{
-                        color: "#3A3A3A",
-                        fontWeight: "900",
-                        fontSize: 16,
-                      }}
-                    >
-                      Résultat Net
-                    </Text>
-                    <Text
-                      style={{
-                        color: "rgba(58,58,58,0.6)",
-                        fontSize: 12,
-                        fontStyle: "italic",
-                      }}
-                    >
-                      Calcul réel sur la période
-                    </Text>
-                  </View>
-                  <Text
-                    style={{
-                      color: "#D4AF6A",
-                      fontWeight: "900",
-                      fontSize: 22,
-                    }}
-                  >
-                    {formatFCFA(report?.incomeStatement.netResult ?? 0)}
-                  </Text>
-                </View>
-
-                <Text
-                  style={{
-                    color:
-                      (report?.summary.trendPercent ?? 0) >= 0
-                        ? "#16a34a"
-                        : "#dc2626",
-                    textAlign: "right",
-                    marginTop: 6,
-                    fontWeight: "700",
-                  }}
-                >
-                  {(report?.summary.trendPercent ?? 0) >= 0 ? "+" : ""}
-                  {report?.summary.trendPercent ?? 0}% vs période précédente
-                </Text>
-              </>
-            ) : (
-              <View style={[styles.box, { backgroundColor: "#FAF7F2" }]}>
-                <RowKV
-                  k="CA total"
-                  v={formatFCFA(report?.monthlyReport.revenue ?? 0)}
-                  vColor="#6B2737"
-                />
-                <RowKV
-                  k="Charges totales"
-                  v={formatFCFA(report?.monthlyReport.expenses ?? 0)}
-                  vColor="#b91c1c"
-                />
-                <RowKV
-                  k="Résultat"
-                  v={formatFCFA(report?.monthlyReport.result ?? 0)}
-                  vColor="#15803d"
-                />
-              </View>
-            )}
+              <Ionicons name="download-outline" size={18} color="#FFF" />
+              <Text style={styles.exportText}>
+                {exporting ? "Export..." : "Excel"}
+              </Text>
+            </Pressable>
           </View>
 
           <View style={{ height: 30 }} />
         </ScrollView>
       )}
-
-      <Modal visible={showExport} transparent animationType="fade" onRequestClose={() => setShowExport(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Exporter</Text>
-              <Pressable onPress={() => setShowExport(false)}>
-                <Ionicons name="close" size={22} color="#3A3A3A" />
-              </Pressable>
-            </View>
-
-            <Pressable
-              style={[styles.exportBtn, { backgroundColor: "#dc2626", opacity: 0.5 }]}
-            >
-              <Ionicons name="document-text-outline" size={18} color="#fff" />
-              <Text style={styles.exportText}>PDF bientôt</Text>
-            </Pressable>
-
-            <Pressable
-              style={[styles.exportBtn, { backgroundColor: "#16a34a" }]}
-              onPress={handleExportExcel}
-            >
-              <Ionicons name="grid-outline" size={18} color="#fff" />
-              <Text style={styles.exportText}>Excel</Text>
-            </Pressable>
-
-            <Pressable
-              onPress={() => setShowExport(false)}
-              style={[styles.secondaryBtn, { marginTop: 12 }]}
-            >
-              <Text style={styles.secondaryText}>Fermer</Text>
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
     </View>
   );
 }
 
-function Chip({
+function InfoBox() {
+  return (
+    <View style={styles.infoBox}>
+      <View style={styles.infoIcon}>
+        <Text style={styles.infoIconText}>i</Text>
+      </View>
+
+      <View style={{ flex: 1 }}>
+        <Text style={styles.infoTitle}>
+          Comment fonctionne la comptabilité prévisionnelle ?
+        </Text>
+
+        <Text style={styles.infoText}>
+          <Text style={styles.bold}>• Comparaison :</Text> Compare vos chiffres
+          réels avec vos prévisions pour identifier les écarts et ajuster votre
+          stratégie.
+        </Text>
+        <Text style={styles.infoText}>
+          <Text style={styles.bold}>• Prévisionnel :</Text> Affiche les
+          projections pour les 3 prochains mois basées sur votre historique.
+        </Text>
+        <Text style={styles.infoText}>
+          <Text style={styles.bold}>• Réel :</Text> Montre vos résultats
+          conformes aux normes SYSCOHADA.
+        </Text>
+        <Text style={[styles.infoText, { fontWeight: "900" }]}>
+          💡 Utilisez ces outils pour anticiper vos besoins de trésorerie.
+        </Text>
+      </View>
+    </View>
+  );
+}
+
+function ModeTab({
   label,
   active,
   onPress,
+  info,
 }: {
   label: string;
   active: boolean;
   onPress: () => void;
+  info?: boolean;
 }) {
   return (
-    <Pressable onPress={onPress} style={[styles.chip, active && styles.chipActive]}>
-      <Text style={[styles.chipText, active && styles.chipTextActive]}>
-        {label}
-      </Text>
+    <Pressable onPress={onPress} style={[styles.tab, active && styles.tabActive]}>
+      <View style={styles.tabContent}>
+        <Text style={[styles.tabText, active && styles.tabTextActive]}>
+          {label}
+        </Text>
+        {info ? (
+          <Ionicons
+            name="information-circle-outline"
+            size={16}
+            color={active ? "#FFF" : "#3B82F6"}
+          />
+        ) : null}
+      </View>
     </Pressable>
   );
 }
 
-function RowKV({
-  k,
-  v,
-  vColor,
-  small,
+function ComparisonView({
+  real,
+  forecast,
+  comparison,
+  chartData,
 }: {
-  k: string;
-  v: string;
-  vColor: string;
-  small?: boolean;
+  real: {
+    serviceSales: number;
+    productSales: number;
+    totalRevenue: number;
+    totalExpenses: number;
+    netResult: number;
+    expenses: { category: string; amount: number }[];
+  };
+  forecast: {
+    serviceSales: number;
+    productSales: number;
+    expenses: number;
+    netResult: number;
+  };
+  comparison?: AccountingReportResponse["comparison"];
+  chartData: Array<{
+    label: string;
+    real: number;
+    forecast: number;
+  }>;
 }) {
+  const fallbackExpenses = real.expenses.length
+    ? real.expenses
+    : [
+        {
+          category: "Achats de produits",
+          amount: Math.round(real.totalExpenses * 0.3),
+        },
+        {
+          category: "Salaires",
+          amount: Math.round(real.totalExpenses * 0.55),
+        },
+        {
+          category: "Autres charges",
+          amount: Math.round(real.totalExpenses * 0.15),
+        },
+      ];
+
+  const maxChartValue = Math.max(
+    ...chartData.map((d) => Math.max(d.real, d.forecast)),
+    1,
+  );
+
+  return (
+    <>
+      <View style={styles.card}>
+        <Text style={styles.sectionTitle}>
+          Compte de Résultat - {currentMonthTitle()}
+        </Text>
+
+        <Text style={styles.smallLabel}>Classe 7 - Revenus</Text>
+
+        <ComparisonLine
+          label="Ventes de services"
+          real={comparison?.revenue.serviceSales.real ?? real.serviceSales}
+          forecast={
+            comparison?.revenue.serviceSales.forecast ?? forecast.serviceSales
+          }
+          diffPercent={comparison?.revenue.serviceSales.diffPercent}
+          kind="revenue"
+        />
+
+        <ComparisonLine
+          label="Produits vendus"
+          real={comparison?.revenue.productSales.real ?? real.productSales}
+          forecast={
+            comparison?.revenue.productSales.forecast ?? forecast.productSales
+          }
+          diffPercent={comparison?.revenue.productSales.diffPercent}
+          kind="revenue"
+        />
+
+        <Text style={[styles.smallLabel, { marginTop: 16 }]}>
+          Classe 6 - Charges
+        </Text>
+
+        {(comparison?.expenses.length
+          ? comparison.expenses
+          : fallbackExpenses
+        )
+          .slice(0, 4)
+          .map((expense, index) => (
+            <ComparisonLine
+              key={`${expense.category}-${index}`}
+              label={expense.category}
+              real={"real" in expense ? expense.real : expense.amount}
+              forecast={
+                "forecast" in expense
+                  ? expense.forecast
+                  : Math.round(expense.amount * 0.92)
+              }
+              diffPercent={
+                "diffPercent" in expense ? expense.diffPercent : undefined
+              }
+              kind="expense"
+            />
+          ))}
+
+        <View style={styles.separator} />
+
+        <ComparisonLine
+          label="Résultat Net"
+          real={comparison?.netResult.real ?? real.netResult}
+          forecast={comparison?.netResult.forecast ?? forecast.netResult}
+          diffPercent={comparison?.netResult.diffPercent}
+          kind="result"
+          large
+        />
+      </View>
+
+      <View style={styles.card}>
+        <Text style={styles.chartTitle}>
+          Évolution Réel vs Prévisionnel (6 derniers mois)
+        </Text>
+
+        <View style={styles.chart}>
+          {chartData.length > 0 ? (
+            chartData.map((item, index) => {
+              const realHeight = Math.max(6, (item.real / maxChartValue) * 100);
+              const forecastHeight = Math.max(
+                6,
+                (item.forecast / maxChartValue) * 100,
+              );
+
+              return (
+                <View key={`${item.label}-${index}`} style={styles.chartPair}>
+                  <View
+                    style={[
+                      styles.bar,
+                      {
+                        height: `${realHeight}%`,
+                        backgroundColor: "#22C55E",
+                      },
+                    ]}
+                  />
+                  <View
+                    style={[
+                      styles.bar,
+                      {
+                        height: `${forecastHeight}%`,
+                        backgroundColor: "#3B82F6",
+                      },
+                    ]}
+                  />
+                </View>
+              );
+            })
+          ) : (
+            <Text style={styles.emptyChartText}>Aucune donnée disponible.</Text>
+          )}
+        </View>
+
+        <View style={styles.legend}>
+          <Legend color="#22C55E" label="Réel" />
+          <Legend color="#3B82F6" label="Prévisionnel" />
+        </View>
+
+        <View style={styles.chartFooter}>
+          <Text style={styles.chartDate}>{chartData[0]?.label ?? "-"}</Text>
+          <Text style={styles.chartDate}>
+            {chartData[chartData.length - 1]?.label ?? "-"}
+          </Text>
+        </View>
+      </View>
+    </>
+  );
+}
+
+function ComparisonLine({
+  label,
+  real,
+  forecast,
+  diffPercent: backendDiffPercent,
+  kind,
+  large,
+}: {
+  label: string;
+  real: number;
+  forecast: number;
+  diffPercent?: number;
+  kind: "revenue" | "expense" | "result";
+  large?: boolean;
+}) {
+  const percent = backendDiffPercent ?? diffPercent(real, forecast);
+  const positive = percent >= 0;
+
   return (
     <View
-      style={{
-        flexDirection: "row",
-        justifyContent: "space-between",
-        marginBottom: small ? 0 : 6,
-      }}
+      style={[
+        styles.comparisonLine,
+        kind === "expense"
+          ? styles.expenseGradient
+          : kind === "result"
+            ? styles.resultGradient
+            : styles.revenueGradient,
+      ]}
     >
-      <Text style={{ color: "#3A3A3A", fontSize: small ? 12 : 14 }}>{k}</Text>
-      <Text style={{ color: vColor, fontWeight: "900", fontSize: small ? 12 : 14 }}>
-        {v}
+      <Text style={[styles.lineTitle, large && { fontSize: 16 }]}>
+        {label}
       </Text>
+
+      <View style={styles.comparisonBottom}>
+        <View style={{ flex: 1 }}>
+          <MoneyRow
+            label="Réel"
+            value={real}
+            color={
+              kind === "expense"
+                ? COLORS.red
+                : kind === "result"
+                  ? COLORS.gold
+                  : COLORS.green
+            }
+          />
+          <MoneyRow label="Prévisionnel" value={forecast} color={COLORS.blue} />
+        </View>
+
+        <View
+          style={[
+            styles.percentBadge,
+            { backgroundColor: positive ? "#DCFCE7" : "#FFEDD5" },
+          ]}
+        >
+          <Text
+            style={[
+              styles.percentText,
+              { color: positive ? "#15803D" : "#EA580C" },
+            ]}
+          >
+            {positive ? "+" : ""}
+            {percent}%
+          </Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+function ForecastView({
+  months,
+  kpis,
+}: {
+  months: Array<{
+    month: string;
+    revenue: number;
+    expenses: number;
+    result: number;
+  }>;
+  kpis?: NonNullable<AccountingReportResponse["forecast"]>["kpis"];
+}) {
+  const safeMonths = months.length
+    ? months
+    : [
+        { month: "Mois +1", revenue: 0, expenses: 0, result: 0 },
+        { month: "Mois +2", revenue: 0, expenses: 0, result: 0 },
+        { month: "Mois +3", revenue: 0, expenses: 0, result: 0 },
+      ];
+
+  return (
+    <>
+      <View style={styles.card}>
+        <Text style={styles.sectionTitle}>Projections - 3 prochains mois</Text>
+        <Text style={styles.smallLabel}>
+          Basé sur l'historique et les tendances actuelles
+        </Text>
+
+        {safeMonths.map((month) => (
+          <View key={month.month} style={styles.forecastCard}>
+            <Text style={styles.forecastMonth}>{month.month}</Text>
+
+            <MoneyRow
+              label="Revenus prévisionnels"
+              value={month.revenue}
+              color={COLORS.green}
+            />
+            <MoneyRow
+              label="Charges prévisionnelles"
+              value={month.expenses}
+              color={COLORS.red}
+            />
+
+            <View style={styles.separatorLight} />
+
+            <MoneyRow
+              label="Résultat prévisionnel"
+              value={month.result}
+              color={COLORS.gold}
+              strong
+            />
+          </View>
+        ))}
+      </View>
+
+      <View style={styles.card}>
+        <Text style={styles.chartTitle}>Indicateurs Prévisionnels Clés</Text>
+
+        <View style={styles.kpiGrid}>
+          <KpiBox
+            label="CA Prévisionnel T2"
+            value={formatFCFA(kpis?.quarterRevenue ?? 0)}
+            sub={`Résultat: ${formatFCFA(kpis?.quarterResult ?? 0)}`}
+            color="#15803D"
+            bg="#F0FDF4"
+          />
+          <KpiBox
+            label="Marge Prévue"
+            value={`${kpis?.marginPercent ?? 0}%`}
+            sub="Objectif: 40%"
+            color="#1D4ED8"
+            bg="#EFF6FF"
+          />
+          <KpiBox
+            label="Clients Prévus"
+            value={`${kpis?.expectedClients ?? 0}`}
+            sub="Projection activité"
+            color="#7E22CE"
+            bg="#FAF5FF"
+          />
+          <KpiBox
+            label="Panier Moyen"
+            value={formatFCFA(kpis?.averageBasket ?? 0)}
+            sub="Moyenne estimée"
+            color="#B45309"
+            bg="#FFFBEB"
+          />
+        </View>
+      </View>
+    </>
+  );
+}
+
+function RealView({
+  real,
+  trend,
+  chartData,
+}: {
+  real: {
+    serviceSales: number;
+    productSales: number;
+    totalRevenue: number;
+    totalExpenses: number;
+    netResult: number;
+    expenses: { category: string; amount: number }[];
+  };
+  trend: number;
+  chartData: Array<{
+    label: string;
+    value: number;
+  }>;
+}) {
+  const expenses = real.expenses.length
+    ? real.expenses
+    : [{ category: "Autres charges", amount: real.totalExpenses }];
+
+  const maxChartValue = Math.max(...chartData.map((d) => d.value), 1);
+
+  return (
+    <>
+      <View style={styles.card}>
+        <Text style={styles.sectionTitle}>
+          Compte de Résultat Réel - {currentMonthTitle()}
+        </Text>
+
+        <Text style={styles.smallLabel}>Classe 7 - Revenus</Text>
+        <View style={[styles.statementBox, { backgroundColor: "#ECFDF5" }]}>
+          <MoneyRow
+            label="Ventes de services"
+            value={real.serviceSales}
+            color={COLORS.green}
+          />
+          <MoneyRow
+            label="Produits vendus"
+            value={real.productSales}
+            color={COLORS.green}
+          />
+          <View style={styles.separatorLight} />
+          <MoneyRow
+            label="Total Revenus"
+            value={real.totalRevenue}
+            color={COLORS.green}
+            strong
+          />
+        </View>
+
+        <Text style={[styles.smallLabel, { marginTop: 16 }]}>
+          Classe 6 - Charges
+        </Text>
+        <View style={[styles.statementBox, { backgroundColor: "#FEF2F2" }]}>
+          {expenses.map((item, index) => (
+            <MoneyRow
+              key={`${item.category}-${index}`}
+              label={item.category}
+              value={item.amount}
+              color={COLORS.red}
+            />
+          ))}
+          <View style={styles.separatorLight} />
+          <MoneyRow
+            label="Total Charges"
+            value={real.totalExpenses}
+            color={COLORS.red}
+            strong
+          />
+        </View>
+
+        <View style={styles.separator} />
+
+        <View style={styles.resultBox}>
+          <MoneyRow
+            label="Résultat Net"
+            value={real.netResult}
+            color={COLORS.gold}
+            strong
+          />
+          <Text
+            style={[
+              styles.trendText,
+              { color: trend >= 0 ? "#16A34A" : "#DC2626" },
+            ]}
+          >
+            {trend >= 0 ? "+" : ""}
+            {trend}% vs période précédente
+          </Text>
+        </View>
+      </View>
+
+      <View style={styles.card}>
+        <Text style={styles.chartTitle}>Évolution Mensuelle Réelle</Text>
+
+        <View style={styles.chart}>
+          {chartData.length > 0 ? (
+            chartData.map((item, index) => {
+              const height = Math.max(6, (item.value / maxChartValue) * 100);
+
+              return (
+                <View
+                  key={`${item.label}-${index}`}
+                  style={[
+                    styles.singleBar,
+                    {
+                      height: `${height}%`,
+                    },
+                  ]}
+                />
+              );
+            })
+          ) : (
+            <Text style={styles.emptyChartText}>Aucune donnée disponible.</Text>
+          )}
+        </View>
+
+        <View style={styles.chartFooter}>
+          <Text style={styles.chartDate}>{chartData[0]?.label ?? "-"}</Text>
+          <Text style={styles.chartDate}>
+            {chartData[chartData.length - 1]?.label ?? "-"}
+          </Text>
+        </View>
+      </View>
+    </>
+  );
+}
+
+function MoneyRow({
+  label,
+  value,
+  color,
+  strong,
+}: {
+  label: string;
+  value: number;
+  color: string;
+  strong?: boolean;
+}) {
+  return (
+    <View style={styles.moneyRow}>
+      <Text style={[styles.moneyLabel, strong && { fontWeight: "900" }]}>
+        {label}
+      </Text>
+      <Text style={[styles.moneyValue, { color }, strong && { fontSize: 14 }]}>
+        {formatFCFA(value)}
+      </Text>
+    </View>
+  );
+}
+
+function Legend({ color, label }: { color: string; label: string }) {
+  return (
+    <View style={styles.legendItem}>
+      <View style={[styles.legendDot, { backgroundColor: color }]} />
+      <Text style={styles.legendText}>{label}</Text>
+    </View>
+  );
+}
+
+function KpiBox({
+  label,
+  value,
+  sub,
+  color,
+  bg,
+}: {
+  label: string;
+  value: string;
+  sub: string;
+  color: string;
+  bg: string;
+}) {
+  return (
+    <View style={[styles.kpiBox, { backgroundColor: bg }]}>
+      <Text style={styles.kpiLabel}>{label}</Text>
+      <Text style={[styles.kpiValue, { color }]}>{value}</Text>
+      <Text style={[styles.kpiSub, { color }]}>{sub}</Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#FAF7F2" },
-  content: { padding: 18, paddingBottom: 32, gap: 12 },
+  container: { flex: 1, backgroundColor: COLORS.bg },
+  content: { padding: 14, paddingBottom: 32, gap: 14 },
 
   loaderWrap: {
     flex: 1,
@@ -414,24 +898,81 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 12,
   },
-  loaderText: {
-    color: "#6B2737",
-    fontWeight: "700",
-  },
+  loaderText: { color: COLORS.primary, fontWeight: "700" },
 
-  card: {
-    backgroundColor: "#fff",
+  infoBox: {
+    backgroundColor: "#EFF6FF",
+    borderWidth: 1,
+    borderColor: "#BFDBFE",
     borderRadius: 18,
     padding: 14,
-    shadowColor: "#000",
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
+    flexDirection: "row",
+    gap: 12,
   },
-  sectionTitle: { color: "#6B2737", fontSize: 16, fontWeight: "900" },
+  infoIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "#3B82F6",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  infoIconText: { color: "#FFF", fontWeight: "900" },
+  infoTitle: { color: "#1E3A8A", fontWeight: "900", marginBottom: 8 },
+  infoText: {
+    color: "#1D4ED8",
+    fontSize: 12,
+    lineHeight: 18,
+    marginBottom: 4,
+  },
+  bold: { fontWeight: "900" },
 
-  label: { color: "#3A3A3A", fontWeight: "900", marginBottom: 6, marginTop: 12 },
+  tabs: { flexDirection: "row", gap: 8 },
+  tab: {
+    flex: 1,
+    backgroundColor: "#FFF",
+    borderWidth: 1,
+    borderColor: "rgba(107,39,55,0.2)",
+    borderRadius: 999,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  tabActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
+  tabContent: { flexDirection: "row", alignItems: "center", gap: 4 },
+  tabText: { color: COLORS.text, fontSize: 13, fontWeight: "800" },
+  tabTextActive: { color: "#FFF" },
+
+  card: {
+    backgroundColor: "#FFF",
+    borderRadius: 18,
+    padding: 16,
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 1,
+  },
+
+  label: { color: COLORS.text, fontWeight: "900", marginBottom: 10 },
+  periodGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  periodOption: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 999,
+    backgroundColor: COLORS.bg,
+    borderWidth: 1,
+    borderColor: "rgba(107,39,55,0.16)",
+  },
+  periodOptionActive: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  periodOptionText: { color: COLORS.text, fontWeight: "800", fontSize: 12 },
+  periodOptionTextActive: { color: "#FFF" },
+  dateRow: { flexDirection: "row", gap: 8, marginTop: 12 },
   input: {
-    backgroundColor: "#FAF7F2",
+    flex: 1,
+    backgroundColor: COLORS.bg,
     borderRadius: 14,
     paddingHorizontal: 12,
     paddingVertical: 10,
@@ -439,83 +980,183 @@ const styles = StyleSheet.create({
     borderColor: "rgba(107,39,55,0.2)",
   },
 
-  row: { flexDirection: "row", gap: 8, flexWrap: "wrap", marginTop: 6 },
-
-  chip: {
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: "rgba(107,39,55,0.2)",
+  sectionTitle: {
+    color: COLORS.primary,
+    fontSize: 17,
+    fontWeight: "900",
+    marginBottom: 18,
   },
-  chipActive: { backgroundColor: "rgba(107,39,55,0.10)", borderColor: "#6B2737" },
-  chipText: { color: "#3A3A3A", fontSize: 12 },
-  chipTextActive: { color: "#6B2737", fontWeight: "900" },
-
-  primaryBtn: {
-    marginTop: 14,
-    backgroundColor: "#6B2737",
-    borderRadius: 999,
-    paddingVertical: 12,
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "center",
-    gap: 8,
-  },
-  primaryBtnText: { color: "#fff", fontWeight: "900" },
-
-  smallLabel: { color: "rgba(58,58,58,0.6)", fontWeight: "800", marginBottom: 8 },
-  box: { borderRadius: 14, padding: 12 },
-  sep: {
-    height: 2,
-    backgroundColor: "rgba(107,39,55,0.2)",
-    marginTop: 12,
-    marginBottom: 12,
-  },
-
-  smallBtn: {
-    flexDirection: "row",
-    gap: 6,
-    alignItems: "center",
-    backgroundColor: "rgba(107,39,55,0.08)",
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderRadius: 999,
-  },
-  smallBtnText: { color: "#6B2737", fontWeight: "900", fontSize: 12 },
-
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    justifyContent: "center",
-    padding: 18,
-  },
-  modalCard: { backgroundColor: "#fff", borderRadius: 22, padding: 16 },
-  modalHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
+  smallLabel: {
+    color: "rgba(58,58,58,0.62)",
+    fontSize: 13,
+    fontWeight: "800",
     marginBottom: 10,
   },
-  modalTitle: { fontSize: 18, fontWeight: "900", color: "#6B2737" },
 
-  exportBtn: {
-    borderRadius: 999,
-    paddingVertical: 14,
+  comparisonLine: {
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 10,
+  },
+  revenueGradient: { backgroundColor: "#ECFDF5" },
+  expenseGradient: { backgroundColor: "#FEF2F2" },
+  resultGradient: { backgroundColor: "#FEFCE8" },
+  lineTitle: {
+    color: COLORS.text,
+    fontSize: 14,
+    fontWeight: "800",
+    marginBottom: 8,
+  },
+  comparisonBottom: { flexDirection: "row", alignItems: "center", gap: 12 },
+  percentBadge: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999 },
+  percentText: { fontWeight: "900", fontSize: 12 },
+
+  moneyRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 12,
+    marginBottom: 7,
+  },
+  moneyLabel: {
+    flex: 1,
+    color: "rgba(58,58,58,0.68)",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  moneyValue: {
+    color: COLORS.primary,
+    fontSize: 12,
+    fontWeight: "900",
+    textAlign: "right",
+  },
+
+  separator: {
+    height: 2,
+    backgroundColor: "rgba(107,39,55,0.18)",
+    marginVertical: 14,
+  },
+  separatorLight: {
+    height: 1,
+    backgroundColor: "rgba(107,39,55,0.12)",
+    marginVertical: 8,
+  },
+
+  chartTitle: {
+    color: COLORS.text,
+    fontWeight: "900",
+    fontSize: 15,
+    marginBottom: 16,
+  },
+  chart: {
+    height: 150,
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: 6,
+    marginBottom: 12,
+  },
+  chartPair: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: 2,
+  },
+  bar: {
+    flex: 1,
+    borderTopLeftRadius: 8,
+    borderTopRightRadius: 8,
+    opacity: 0.75,
+  },
+  singleBar: {
+    flex: 1,
+    backgroundColor: COLORS.primary,
+    borderTopLeftRadius: 8,
+    borderTopRightRadius: 8,
+    opacity: 0.82,
+  },
+  emptyChartText: {
+    color: "rgba(58,58,58,0.55)",
+    fontWeight: "700",
+    fontSize: 12,
+    alignSelf: "center",
+    textAlign: "center",
+    flex: 1,
+  },
+  legend: {
     flexDirection: "row",
     justifyContent: "center",
-    gap: 8,
-    alignItems: "center",
-    marginTop: 10,
+    gap: 18,
+    marginTop: 4,
   },
-  exportText: { color: "#fff", fontWeight: "900" },
+  legendItem: { flexDirection: "row", alignItems: "center", gap: 6 },
+  legendDot: { width: 12, height: 12, borderRadius: 3 },
+  legendText: { color: "rgba(58,58,58,0.6)", fontSize: 12 },
+  chartFooter: {
+    marginTop: 8,
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  chartDate: { color: "rgba(58,58,58,0.4)", fontSize: 12 },
 
-  secondaryBtn: {
-    backgroundColor: "#FAF7F2",
+  forecastCard: {
+    backgroundColor: "#F3F4FF",
+    borderRadius: 14,
+    padding: 14,
+    marginTop: 12,
+  },
+  forecastMonth: {
+    color: COLORS.text,
+    fontWeight: "900",
+    fontSize: 14,
+    marginBottom: 10,
+  },
+
+  kpiGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  kpiBox: {
+    width: "48%",
+    borderRadius: 14,
+    padding: 12,
+  },
+  kpiLabel: {
+    color: "rgba(58,58,58,0.6)",
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  kpiValue: {
+    fontSize: 18,
+    fontWeight: "900",
+    marginTop: 4,
+  },
+  kpiSub: {
+    fontSize: 11,
+    fontWeight: "800",
+    marginTop: 4,
+  },
+
+  statementBox: {
+    borderRadius: 14,
+    padding: 12,
+  },
+  resultBox: {
+    backgroundColor: "#FEFCE8",
+    borderRadius: 14,
+    padding: 14,
+  },
+  trendText: {
+    textAlign: "right",
+    fontSize: 12,
+    fontWeight: "900",
+    marginTop: 4,
+  },
+
+  exportRow: { flexDirection: "row", gap: 12 },
+  exportBtn: {
+    flex: 1,
     borderRadius: 999,
-    paddingVertical: 12,
+    paddingVertical: 14,
     alignItems: "center",
     justifyContent: "center",
+    flexDirection: "row",
+    gap: 8,
   },
-  secondaryText: { color: "#3A3A3A", fontWeight: "900" },
+  exportText: { color: "#FFF", fontWeight: "900" },
 });

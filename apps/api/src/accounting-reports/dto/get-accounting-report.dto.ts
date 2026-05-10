@@ -4,8 +4,19 @@ export class GetAccountingReportDto {
   @IsIn(["compte-resultat", "rapport-mensuel"])
   reportType!: "compte-resultat" | "rapport-mensuel";
 
-  @IsIn(["Ce mois", "Mois dernier", "Cette année", "Personnalisé"])
-  periodType!: "Ce mois" | "Mois dernier" | "Cette année" | "Personnalisé";
+  @IsIn([
+    "Ce mois",
+    "Mois dernier",
+    "Trimestre en cours",
+    "Cette année",
+    "Personnalisé",
+  ])
+  periodType!:
+    | "Ce mois"
+    | "Mois dernier"
+    | "Trimestre en cours"
+    | "Cette année"
+    | "Personnalisé";
 
   @IsOptional()
   @IsString()

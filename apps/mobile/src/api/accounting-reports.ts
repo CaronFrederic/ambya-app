@@ -2,7 +2,13 @@ import { apiFetch } from "./client";
 import * as SecureStore from "expo-secure-store";
 
 export type ReportType = "compte-resultat" | "rapport-mensuel";
-export type PeriodType = "Ce mois" | "Mois dernier" | "Cette année" | "Personnalisé";
+export type ViewMode = "comparaison" | "previsionnel" | "reel";
+
+export type PeriodType =
+  | "Ce mois"
+  | "Mois dernier"
+  | "Cette année"
+  | "Personnalisé";
 
 export type AccountingReportResponse = {
   reportType: ReportType;
@@ -45,6 +51,61 @@ export type AccountingReportResponse = {
       amount: number;
     }[];
   };
+  comparison?: {
+  revenue: {
+    serviceSales: {
+      real: number;
+      forecast: number;
+      diffPercent: number;
+    };
+    productSales: {
+      real: number;
+      forecast: number;
+      diffPercent: number;
+    };
+  };
+  expenses: Array<{
+    category: string;
+    real: number;
+    forecast: number;
+    diffPercent: number;
+  }>;
+  netResult: {
+    real: number;
+    forecast: number;
+    diffPercent: number;
+  };
+};
+
+forecast?: {
+  months: Array<{
+    month: string;
+    revenue: number;
+    expenses: number;
+    result: number;
+  }>;
+  kpis: {
+    quarterRevenue: number;
+    quarterExpenses: number;
+    quarterResult: number;
+    marginPercent: number;
+    expectedClients: number;
+    averageBasket: number;
+  };
+};
+
+charts?: {
+  realVsForecast: Array<{
+    label: string;
+    real: number;
+    forecast: number;
+  }>;
+  realMonthly: Array<{
+    label: string;
+    value: number;
+  }>;
+};
+
 };
 
 export type GetAccountingReportParams = {
@@ -68,10 +129,8 @@ function buildQuery(params: GetAccountingReportParams) {
 
 export function getAccountingReport(params: GetAccountingReportParams) {
   return apiFetch<AccountingReportResponse>(
-    `/api/pro/accounting-reports?${buildQuery(params)}`,
-    {
-      method: "GET",
-    },
+    `/pro/accounting-reports?${buildQuery(params)}`,
+    { method: "GET" },
   );
 }
 
@@ -92,11 +151,10 @@ export async function getAccountingReportExportUrl(
   search.set("reportType", params.reportType);
   search.set("periodType", params.periodType);
   search.set("format", "excel");
+  search.set("token", token);
 
   if (params.startDate) search.set("startDate", params.startDate);
   if (params.endDate) search.set("endDate", params.endDate);
-
-  search.set("token", token);
 
   return `${API_BASE_URL}/api/pro/accounting-reports/export?${search.toString()}`;
 }
