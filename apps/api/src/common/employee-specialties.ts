@@ -71,6 +71,10 @@ export function employeeCanPerformCategory(
   category?: ServiceCategory | string | null,
 ): boolean {
   const employeeSpecialties = normalizeEmployeeSpecialties(specialties)
+  if (employeeSpecialties.length === 0) {
+    return true
+  }
+
   const compatible = getCompatibleSpecialtiesForCategory(category)
 
   return compatible.some((specialty) => employeeSpecialties.includes(specialty))

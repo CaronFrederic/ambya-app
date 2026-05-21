@@ -29,7 +29,13 @@ import { requireOnlineAction } from "../../src/offline/guard";
 
 function getNextDays(count: number, fromIso?: string) {
   const items: Array<{ label: string; iso: string }> = [];
-  const anchor = fromIso ? new Date(`${fromIso}T00:00:00.000Z`) : new Date();
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+  const requestedAnchor = fromIso
+    ? new Date(`${fromIso}T00:00:00.000Z`)
+    : today;
+  const anchor =
+    requestedAnchor.getTime() >= today.getTime() ? requestedAnchor : today;
 
   for (let i = 0; i < count; i++) {
     const next = new Date(anchor);
@@ -47,6 +53,17 @@ function getNextDays(count: number, fromIso?: string) {
   }
 
   return items;
+}
+
+function getTodayIso() {
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+  return today.toISOString().slice(0, 10);
+}
+
+function getFutureOrTodayIso(value?: string) {
+  if (!value) return getTodayIso();
+  return value >= getTodayIso() ? value : getTodayIso();
 }
 
 function formatEmployeeLabel(employee: {
@@ -144,8 +161,9 @@ export default function AppointmentDetailsScreen() {
 
   useEffect(() => {
     if (!initialDateIso) return;
-    setSelectedDateIso(initialDateIso);
-    setSelectedTime(initialTime ?? null);
+    const safeDateIso = getFutureOrTodayIso(initialDateIso);
+    setSelectedDateIso(safeDateIso);
+    setSelectedTime(safeDateIso === initialDateIso ? initialTime ?? null : null);
     setSelectedEmployeeId(sharedEmployeeId);
     setEmployeeSelectionTouched(false);
   }, [initialDateIso, initialTime, sharedEmployeeId]);
@@ -184,13 +202,40 @@ export default function AppointmentDetailsScreen() {
     });
   }, [availability.data?.slots, selectedDateIso]);
 
+  const displayedSlots = useMemo(() => {
+    if (
+      !initialDateIso ||
+      !initialTime ||
+      selectedDateIso !== initialDateIso ||
+      upcomingSlots.some((slot) => slot.time === initialTime)
+    ) {
+      return upcomingSlots;
+    }
+
+    return [
+      ...upcomingSlots,
+      {
+        time: initialTime,
+        available: true,
+      },
+    ].sort((left, right) => left.time.localeCompare(right.time));
+  }, [initialDateIso, initialTime, selectedDateIso, upcomingSlots]);
+
   useEffect(() => {
     if (!selectedTime) return;
     if (!availability.isFetched) return;
+    if (selectedDateIso === initialDateIso && selectedTime === initialTime) return;
     if (upcomingSlots.some((slot) => slot.time === selectedTime)) return;
     setSelectedTime(null);
     setSelectedEmployeeId(undefined);
-  }, [availability.isFetched, selectedTime, upcomingSlots]);
+  }, [
+    availability.isFetched,
+    initialDateIso,
+    initialTime,
+    selectedDateIso,
+    selectedTime,
+    upcomingSlots,
+  ]);
 
   const nextStartAt =
     selectedDateIso && selectedTime
@@ -387,7 +432,7 @@ export default function AppointmentDetailsScreen() {
                 <Card>
                   <Text style={styles.sectionTitle}>Modifier l'heure</Text>
                   <View style={styles.timeGrid}>
-                    {upcomingSlots.map((slot) => {
+                    {displayedSlots.map((slot) => {
                       const active = selectedTime === slot.time;
                       return (
                         <Pressable

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { api } from './client'
+import { api, apiRequest } from './client'
 import { useOfflineCachedQuery } from './useOfflineCachedQuery'
 
 export type EmployeeScheduleStatus =
@@ -240,8 +240,10 @@ export function useConfirmEmployeeScheduleItem() {
 
   return useMutation({
     mutationFn: async ({ kind, id }: { kind: string; id: string }) => {
-      const res = await api.patch(`/employee/schedule-items/${kind}/${id}/confirm`)
-      return res.data
+      return apiRequest({
+        method: 'PATCH',
+        url: `/employee/schedule-items/${kind}/${id}/confirm`,
+      })
     },
     onSuccess: async (_data, variables) => {
       await invalidateEmployeeQueries(queryClient)
@@ -257,8 +259,10 @@ export function useCompleteEmployeeScheduleItem() {
 
   return useMutation({
     mutationFn: async ({ kind, id }: { kind: string; id: string }) => {
-      const res = await api.patch(`/employee/schedule-items/${kind}/${id}/complete`)
-      return res.data
+      return apiRequest({
+        method: 'PATCH',
+        url: `/employee/schedule-items/${kind}/${id}/complete`,
+      })
     },
     onSuccess: async (_data, variables) => {
       await invalidateEmployeeQueries(queryClient)
@@ -274,8 +278,10 @@ export function usePayEmployeeScheduleItem() {
 
   return useMutation({
     mutationFn: async ({ kind, id }: { kind: string; id: string }) => {
-      const res = await api.patch(`/employee/schedule-items/${kind}/${id}/pay`)
-      return res.data
+      return apiRequest({
+        method: 'PATCH',
+        url: `/employee/schedule-items/${kind}/${id}/pay`,
+      })
     },
     onSuccess: async (_data, variables) => {
       await invalidateEmployeeQueries(queryClient)
@@ -291,8 +297,10 @@ export function useCancelEmployeeScheduleItem() {
 
   return useMutation({
     mutationFn: async ({ kind, id }: { kind: string; id: string }) => {
-      const res = await api.patch(`/employee/schedule-items/${kind}/${id}/cancel`)
-      return res.data
+      return apiRequest({
+        method: 'PATCH',
+        url: `/employee/schedule-items/${kind}/${id}/cancel`,
+      })
     },
     onSuccess: async (_data, variables) => {
       await invalidateEmployeeQueries(queryClient)

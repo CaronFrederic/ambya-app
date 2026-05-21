@@ -1,6 +1,6 @@
 import { setOfflineStatus } from './store'
 
-const BASE_URL = process.env.EXPO_PUBLIC_API_URL
+const BASE_URL = process.env.EXPO_PUBLIC_API_URL?.trim().replace(/\/+$/, '')
 
 export async function probeApiReachability() {
   if (!BASE_URL) return

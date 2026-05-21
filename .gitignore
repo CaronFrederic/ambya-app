@@ -6,6 +6,7 @@ build
 .expo
 .expo-shared
 coverage
+*.tsbuildinfo
 
 # compiled output
 /dist
@@ -50,6 +51,13 @@ lerna-debug.log*
 .env.test.local
 .env.production.local
 .env.local
+apps/mobile/.env
+apps/mobile/.env.demo
+apps/mobile/.env.development
+apps/mobile/.env.test
+apps/api/.env
+apps/api/.env.demo
+apps/api/.env.test
 
 # temp directory
 .temp
@@ -63,5 +71,6 @@ pids
 
 # Diagnostic reports (https://nodejs.org/api/report.html)
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
+docs/**/*.pdf
 
 /generated/prisma

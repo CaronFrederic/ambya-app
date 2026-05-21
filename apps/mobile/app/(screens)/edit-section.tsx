@@ -25,6 +25,7 @@ import { colors, overlays } from '../../src/theme/colors'
 import { spacing } from '../../src/theme/spacing'
 import { radius } from '../../src/theme/radius'
 import { typography } from '../../src/theme/typography'
+import { DEFAULT_COUNTRY_NAME } from '../../src/constants/countries'
 
 // ✅ labels + helpers
 import {
@@ -89,10 +90,10 @@ function mapToChips(map: LabelMap, opts?: { exclude?: string[] }): Chip[] {
 
 // ---------- API ----------
 async function patchMeProfile(token: string, body: any) {
-  const api = process.env.EXPO_PUBLIC_API_URL
+  const api = process.env.EXPO_PUBLIC_API_URL?.trim().replace(/\/+$/, '')
   if (!api) throw new Error('EXPO_PUBLIC_API_URL missing')
 
-  const res = await fetch(`${api}/me/profile`, {
+  const res = await fetch(`${api}/api/me/profile`, {
     method: 'PATCH',
     headers: {
       'Content-Type': 'application/json',
@@ -164,7 +165,7 @@ export default function EditSectionScreen() {
   const [gender, setGender] = useState<string | null>(null)
   const [ageRange, setAgeRange] = useState<string | null>(null)
   const [city, setCity] = useState('')
-  const [country, setCountry] = useState('')
+  const [country] = useState(DEFAULT_COUNTRY_NAME)
 
   const [hairTypes, setHairTypes] = useState<string[]>([])
   const [hairTexture, setHairTexture] = useState<string | null>(null)
@@ -201,7 +202,6 @@ export default function EditSectionScreen() {
     setGender(profile.gender ?? null)
     setAgeRange(profile.ageRange ?? null)
     setCity(profile.city ?? '')
-    setCountry(profile.country ?? '')
 
     setHairTypes(q?.hair?.hairTypes ?? [])
     setHairTexture(q?.hair?.hairTexture ?? null)
@@ -396,14 +396,10 @@ export default function EditSectionScreen() {
                 style={styles.input}
               />
 
-              <FieldLabel text="Pays*" />
-              <TextInput
-                value={country}
-                onChangeText={setCountry}
-                placeholder="Ex: Gabon"
-                placeholderTextColor={colors.textMuted}
-                style={styles.input}
-              />
+              <FieldLabel text="Pays*" hint="Marché actuellement actif" />
+              <View style={styles.readOnlyBox}>
+                <Text style={styles.readOnlyText}>{country}</Text>
+              </View>
             </View>
           )}
 
@@ -611,7 +607,9 @@ function SelectList({
             onPress={() => onChange(o.value)}
             style={[styles.selectRow, selected && styles.selectRowSelected]}
           >
-            <Text style={styles.selectRowText}>{o.label}</Text>
+            <Text style={[styles.selectRowText, selected && styles.selectRowTextSelected]}>
+              {o.label}
+            </Text>
             {selected && <Ionicons name="checkmark" size={18} color={colors.brand} />}
           </Pressable>
         )
@@ -643,7 +641,10 @@ function ChipGroup({
             disabled={disabled}
             style={[styles.chip, isOn && styles.chipOn, disabled && styles.chipDisabled]}
           >
-            <Text style={[styles.chipText, isOn && styles.chipTextOn]}>{c.label}</Text>
+            <Text style={[styles.chipText, isOn && styles.chipTextOn]}>
+              {isOn ? '✓ ' : ''}
+              {c.label}
+            </Text>
           </Pressable>
         )
       })}
@@ -716,8 +717,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: spacing.md,
   },
-  selectRowSelected: { borderColor: overlays.brand20, backgroundColor: colors.card },
+  selectRowSelected: { borderColor: colors.brand, backgroundColor: overlays.brand10 },
   selectRowText: { color: colors.text, ...typography.body, fontWeight: '700', flex: 1 },
+  selectRowTextSelected: { color: colors.brand, fontWeight: '900' },
 
   chipWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   chip: {
@@ -728,10 +730,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
   },
-  chipOn: { borderColor: overlays.brand20, backgroundColor: colors.card },
+  chipOn: { borderColor: colors.brand, backgroundColor: colors.brand },
   chipDisabled: { opacity: 0.5 },
   chipText: { color: colors.text, ...typography.small, fontWeight: '700' },
-  chipTextOn: { color: colors.brand },
+  chipTextOn: { color: colors.brandForeground, fontWeight: '900' },
 
   textAreaWrap: {
     backgroundColor: colors.card,

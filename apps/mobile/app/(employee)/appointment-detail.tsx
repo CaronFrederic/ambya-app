@@ -73,19 +73,27 @@ export default function EmployeeAppointmentDetailScreen() {
   }
 
   const appointment = detail.data.item
+  const isPastAppointment = new Date(appointment.startAt).getTime() <= Date.now()
 
   const handleConfirm = async () => {
+    if (isPastAppointment) {
+      Alert.alert(
+        'Action impossible',
+        'Ce rendez-vous est deja passe. Il ne peut plus etre pris en charge.',
+      )
+      return
+    }
     if (!requireOnlineAction('confirmer un rendez-vous')) return
     try {
       await confirmMutation.mutateAsync({ kind, id })
-      Alert.alert('Rendez-vous confirmé', 'Le rendez-vous a été pris en charge.')
+      Alert.alert('Rendez-vous confirmé', 'Le rendez-vous a bien été pris en charge.')
     } catch (error: any) {
       Alert.alert('Action impossible', error?.message ?? 'Erreur inconnue')
     }
   }
 
   const handleComplete = async () => {
-    if (!requireOnlineAction('marquer un rendez-vous comme termine')) return
+    if (!requireOnlineAction('marquer un rendez-vous comme terminé')) return
     try {
       await completeMutation.mutateAsync({ kind, id })
       Alert.alert('Rendez-vous terminé', 'Le rendez-vous a été marqué comme terminé.')
@@ -108,7 +116,7 @@ export default function EmployeeAppointmentDetailScreen() {
     if (!requireOnlineAction('annuler un rendez-vous')) return
     Alert.alert(
       'Annuler ce rendez-vous',
-      'Le rendez-vous client sera annulé et ne pourra plus être pris en charge depuis cet agenda.',
+      'Le rendez-vous client sera annulé et ne pourra plus être repris depuis cet agenda.',
       [
         { text: 'Retour', style: 'cancel' },
         {
@@ -133,7 +141,10 @@ export default function EmployeeAppointmentDetailScreen() {
     completeMutation.isPending ||
     payMutation.isPending ||
     cancelMutation.isPending
-  const canConfirm = appointment.kind === 'appointment' && appointment.status === 'PENDING'
+  const canConfirm =
+    appointment.kind === 'appointment' &&
+    appointment.status === 'PENDING' &&
+    !isPastAppointment
   const canComplete = appointment.status === 'PENDING' || appointment.status === 'CONFIRMED'
   const canPay = !appointment.isPaid
   const canCancel =
@@ -144,7 +155,7 @@ export default function EmployeeAppointmentDetailScreen() {
     <Screen noPadding style={styles.screen}>
       <EmployeeHeader
         title="Détail du rendez-vous"
-        subtitle={`${appointment.clientName} - ${appointment.service.name}`}
+        subtitle={`${appointment.clientName} · ${appointment.service.name}`}
         canGoBack
       />
 
@@ -230,6 +241,15 @@ export default function EmployeeAppointmentDetailScreen() {
 
         <Card style={styles.actionsCard}>
           <Text style={styles.sectionTitle}>Actions</Text>
+          {appointment.kind === 'appointment' &&
+          appointment.status === 'PENDING' &&
+          isPastAppointment ? (
+            <Text style={styles.actionHint}>
+              Ce rendez-vous est deja passe. Il ne peut plus etre pris en
+              charge, mais vous pouvez encore regulariser son paiement ou le
+              cloturer si besoin.
+            </Text>
+          ) : null}
           {canConfirm ? (
             <Button
               title={confirmMutation.isPending ? 'Confirmation...' : 'Prendre en charge / confirmer'}
@@ -274,7 +294,7 @@ export default function EmployeeAppointmentDetailScreen() {
           ) : null}
           <Button
             title="Retour à l’agenda"
-            onPress={() => router.back()}
+            onPress={() => router.replace('/(employee)/appointments')}
             variant="secondary"
             style={styles.actionButton}
           />
@@ -431,6 +451,12 @@ const styles = StyleSheet.create({
     flex: 1,
     color: colors.text,
     ...typography.body,
+  },
+  actionHint: {
+    marginTop: spacing.sm,
+    color: colors.textMuted,
+    ...typography.small,
+    lineHeight: 20,
   },
   actionButton: {
     marginTop: spacing.md,

@@ -26,7 +26,8 @@ async function bootstrap() {
         origin.startsWith('http://127.0.0.1:') ||
         origin.startsWith('exp://') ||
         origin.startsWith('exps://') ||
-        origin.includes('.ngrok-free.app');
+        origin.includes('.ngrok-free.app') ||
+        origin.includes('.ngrok-free.dev');
 
       if (allowedOrigins.includes(origin) || isLocalOrigin) {
         callback(null, true);

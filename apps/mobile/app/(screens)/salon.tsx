@@ -53,7 +53,7 @@ export default function SalonDetailScreen() {
   const { data, isLoading } = useSalonDetails(salonId);
 
   const [activeTab, setActiveTab] = useState<TabKey>("about");
-  const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
+  const [expandedCategories, setExpandedCategories] = useState<string[]>([]);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [cart, setCart] = useState<CartItem[]>([]);
   const { setCart: setBookingCart, patch } = useBooking();
@@ -144,6 +144,14 @@ export default function SalonDetailScreen() {
     () => cart.reduce((sum, x) => sum + x.price * x.quantity, 0),
     [cart],
   );
+
+  const toggleCategory = (category: string) => {
+    setExpandedCategories((current) =>
+      current.includes(category)
+        ? current.filter((value) => value !== category)
+        : [...current, category],
+    );
+  };
 
   return (
     <Screen noPadding style={styles.screen}>
@@ -392,13 +400,11 @@ export default function SalonDetailScreen() {
         {activeTab === "services" ? (
           <View style={{ gap: spacing.md }}>
             {Object.entries(servicesByCategory).map(([category, services]) => {
-              const expanded = expandedCategory === category;
+              const expanded = expandedCategories.includes(category);
               return (
                 <View key={category} style={styles.accordion}>
                   <Pressable
-                    onPress={() =>
-                      setExpandedCategory(expanded ? null : category)
-                    }
+                    onPress={() => toggleCategory(category)}
                     style={styles.accordionHeader}
                   >
                     <Text style={styles.accordionTitle}>{category}</Text>
@@ -491,7 +497,12 @@ export default function SalonDetailScreen() {
           <Pressable
             onPress={() => {
               setBookingCart(cart);
-              patch({ salonId: data?.id, salonName: data?.name });
+              patch({
+                salonId: data?.id,
+                salonName: data?.name,
+                depositEnabled: data?.depositEnabled ?? false,
+                depositPercentage: data?.depositPercentage ?? 30,
+              });
               router.push("/(screens)/recap");
             }}
             style={styles.cartCta}

@@ -131,7 +131,7 @@ export default function EmployeeAppointmentsScreen() {
                         color={colors.textMuted}
                       />
                       <Text style={styles.metaText}>
-                        {appointment.kind === 'blocked_slot' ? 'Bloque en salon' : 'Rendez-vous client'}
+                        {appointment.kind === 'blocked_slot' ? 'Créneau bloqué' : 'Rendez-vous client'}
                       </Text>
                     </View>
                   </View>

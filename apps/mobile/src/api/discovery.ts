@@ -71,6 +71,8 @@ export type SalonDetailsPayload = {
   };
   rating: number;
   reviewCount: number;
+  depositEnabled?: boolean;
+  depositPercentage?: number | null;
   reviews: Array<{
     id: string;
     author: string;

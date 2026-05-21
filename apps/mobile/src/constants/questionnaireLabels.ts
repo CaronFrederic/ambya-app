@@ -12,7 +12,7 @@ export const MAP_GENDER = mapFromPairs([
   ['female', 'Femme'],
   ['male', 'Homme'],
   ['other', 'Autre'],
-  ['na', 'Prefere ne pas dire'],
+  ['na', 'Préfère ne pas dire'],
 ])
 
 export const MAP_AGE = mapFromPairs([
@@ -30,9 +30,9 @@ export const MAP_ALLERGIES = mapFromPairs([
 
 export const MAP_HAIR_TYPES = mapFromPairs([
   ['straight', 'Raides'],
-  ['wavy', 'Ondules'],
-  ['curly', 'Boucles'],
-  ['coily', 'Crepus'],
+  ['wavy', 'Ondulés'],
+  ['curly', 'Bouclés'],
+  ['coily', 'Crépus'],
   ['locks', 'Locks'],
   ['extensions', 'Extensions'],
   ['other', 'Autres'],
@@ -41,13 +41,13 @@ export const MAP_HAIR_TYPES = mapFromPairs([
 export const MAP_HAIR_TEXTURE = mapFromPairs([
   ['thin', 'Fins'],
   ['medium', 'Moyens'],
-  ['thick', 'Epais'],
-  ['very_thick', 'Tres epais'],
+  ['thick', 'Épais'],
+  ['very_thick', 'Très épais'],
   ['na', 'Je ne sais pas'],
 ])
 
 export const MAP_HAIR_LENGTH = mapFromPairs([
-  ['very_short', 'Tres courts'],
+  ['very_short', 'Très courts'],
   ['short', 'Courts'],
   ['medium', 'Mi-longs'],
   ['long', 'Longs'],
@@ -56,21 +56,21 @@ export const MAP_HAIR_LENGTH = mapFromPairs([
 
 export const MAP_HAIR_CONCERNS = mapFromPairs([
   ['fall', 'Chute'],
-  ['dry', 'Secheresse'],
+  ['dry', 'Sécheresse'],
   ['break', 'Casse'],
   ['frizz', 'Frisottis'],
   ['dandruff', 'Pellicules'],
   ['growth', 'Croissance'],
   ['volume', 'Manque de volume'],
-  ['scalp_sensitive', 'Sensibilite du cuir chevelu'],
+  ['scalp_sensitive', 'Sensibilité du cuir chevelu'],
   ['na', 'Je ne sais pas'],
 ])
 
 export const MAP_NAIL_TYPE = mapFromPairs([
   ['smooth', 'Lisses'],
-  ['ridged', 'Stries'],
-  ['delicate', 'Delicats'],
-  ['irregular', 'Irreguliers'],
+  ['ridged', 'Striés'],
+  ['delicate', 'Délicats'],
+  ['irregular', 'Irréguliers'],
   ['hard', 'Durs'],
   ['fragile', 'Fragiles'],
   ['na', 'Je ne sais pas'],
@@ -79,24 +79,24 @@ export const MAP_NAIL_TYPE = mapFromPairs([
 export const MAP_NAIL_STATE = mapFromPairs([
   ['brittle', 'Cassants'],
   ['soft', 'Mous'],
-  ['split', 'Ongles qui se dedoublent'],
-  ['irritated', 'Irrites'],
+  ['split', 'Ongles qui se dédoublent'],
+  ['irritated', 'Irrités'],
   ['normal', 'Ongles normaux'],
   ['na', 'Je ne sais pas'],
 ])
 
 export const MAP_NAIL_CONCERNS = mapFromPairs([
   ['cuticles', 'Cuticules'],
-  ['dehydration', 'Deshydratation'],
+  ['dehydration', 'Déshydratation'],
   ['heaviness', 'Lourdeur'],
   ['short', 'Ongles courts'],
-  ['bitten', 'Ongles ronges'],
+  ['bitten', 'Ongles rongés'],
   ['product_allergy', 'Allergies produits'],
   ['na', 'Je ne sais pas'],
 ])
 
 export const MAP_FACE_SKIN = mapFromPairs([
-  ['dry', 'Seche'],
+  ['dry', 'Sèche'],
   ['combo', 'Mixte'],
   ['oily', 'Grasse'],
   ['sensitive', 'Sensible'],
@@ -105,27 +105,27 @@ export const MAP_FACE_SKIN = mapFromPairs([
 ])
 
 export const MAP_FACE_CONCERNS = mapFromPairs([
-  ['acne', 'Acne'],
+  ['acne', 'Acné'],
   ['redness', 'Rougeurs'],
   ['spots', 'Taches'],
-  ['sensitivity', 'Sensibilite'],
-  ['dehydration', 'Deshydratation'],
+  ['sensitivity', 'Sensibilité'],
+  ['dehydration', 'Déshydratation'],
   ['aging', 'Rides et vieillissement'],
   ['texture', 'Texture'],
-  ['dull', "Manque d'eclat"],
+  ['dull', "Manque d'éclat"],
   ['na', 'Je ne sais pas'],
 ])
 
 export const MAP_BODY_SKIN = mapFromPairs([
   ['normal', 'Normale'],
-  ['dry', 'Seche'],
+  ['dry', 'Sèche'],
   ['sensitive', 'Sensible'],
   ['na', 'Je ne sais pas'],
 ])
 
 export const MAP_ZONES = mapFromPairs([
   ['neck', 'Nuque'],
-  ['shoulders', 'Epaules'],
+  ['shoulders', 'Épaules'],
   ['back', 'Dos'],
   ['lower_back', 'Lombaires'],
   ['arms', 'Bras'],
@@ -138,16 +138,16 @@ export const MAP_WELLBEING = mapFromPairs([
   ['stress', 'Stress'],
   ['muscle_pain', 'Douleurs musculaires'],
   ['circulation', 'Circulation'],
-  ['detox', 'Detox'],
-  ['water_retention', "Retention d'eau"],
+  ['detox', 'Détox'],
+  ['water_retention', "Rétention d'eau"],
   ['relax', 'Relaxation'],
   ['na', 'Je ne sais pas'],
 ])
 
 export const MAP_ACTIVITY = mapFromPairs([
-  ['sedentary', 'Sedentaire'],
+  ['sedentary', 'Sédentaire'],
   ['occasional', 'Occasionnel'],
-  ['regular', 'Regulier'],
+  ['regular', 'Régulier'],
   ['sporty', 'Sportif'],
   ['na', 'Je ne sais pas'],
 ])
@@ -156,7 +156,7 @@ export const MAP_FITNESS_GOALS = mapFromPairs([
   ['muscle', 'Prise de muscle'],
   ['weight_loss', 'Perte de poids'],
   ['endurance', 'Endurance'],
-  ['fitness', 'Condition generale'],
+  ['fitness', 'Condition générale'],
   ['back_in_shape', 'Remise en forme'],
   ['na', 'Je ne sais pas'],
 ])
@@ -165,16 +165,16 @@ export const MAP_FITNESS_CONCERNS = mapFromPairs([
   ['joint_pain', 'Douleurs articulaires'],
   ['low_cardio', 'Cardio faible'],
   ['breath', 'Essoufflement'],
-  ['slow_recovery', 'Recuperation lente'],
+  ['slow_recovery', 'Récupération lente'],
   ['fatigue', 'Fatigue'],
-  ['posture', 'Posture / mobilite'],
+  ['posture', 'Posture / mobilité'],
   ['na', 'Je ne sais pas'],
 ])
 
 export const MAP_PAYMENT_PREFS = mapFromPairs([
   ['momo', 'Mobile Money'],
   ['card', 'Carte bancaire'],
-  ['cash', 'Especes'],
+  ['cash', 'Espèces'],
   ['mixed', 'Mixte'],
 ])
 

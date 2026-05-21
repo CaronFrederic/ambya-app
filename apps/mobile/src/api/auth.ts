@@ -62,6 +62,53 @@ type RegisterResponse = {
   };
 };
 
+async function readApiError(res: Response, fallback: string) {
+  const raw = await res.text().catch(() => "");
+
+  if (!raw) return fallback;
+
+  try {
+    const parsed = JSON.parse(raw) as {
+      message?: string | string[];
+      error?: string;
+    };
+    const message = Array.isArray(parsed.message)
+      ? parsed.message.join("\n")
+      : parsed.message;
+
+    const readable = message || parsed.error || fallback;
+    return toFriendlyAuthError(readable);
+  } catch {
+    return toFriendlyAuthError(raw || fallback);
+  }
+}
+
+function toFriendlyAuthError(message: string) {
+  const normalized = message.toLowerCase();
+
+  if (normalized.includes("email deja utilise") || normalized.includes("email déjà utilisé")) {
+    return "Cet email est déjà utilisé.";
+  }
+
+  if (
+    normalized.includes("telephone deja utilise") ||
+    normalized.includes("téléphone déjà utilisé") ||
+    normalized.includes("telephone déjà utilisé")
+  ) {
+    return "Ce numéro de téléphone est déjà utilisé.";
+  }
+
+  if (normalized.includes("must be an email") || normalized.includes("email must be an email")) {
+    return "Vérifie le format de ton email.";
+  }
+
+  if (normalized.includes("password must be longer than or equal to 6")) {
+    return "Choisis un mot de passe de 6 caractères minimum.";
+  }
+
+  return message;
+}
+
 export async function login(payload: LoginPayload) {
   const res = await api.post<LoginResponse>("/auth/login", payload);
   return res.data;
@@ -90,8 +137,11 @@ export async function registerClient(
   });
 
   if (!res.ok) {
-    const msg = await res.text().catch(() => "");
-    throw new Error(msg || `Register failed (${res.status})`);
+    const msg = await readApiError(
+      res,
+      "Impossible de créer le compte pour le moment.",
+    );
+    throw new Error(msg);
   }
 
   return res.json();
@@ -108,8 +158,11 @@ export async function patchMeProfile(accessToken: string, payload: unknown) {
   });
 
   if (!res.ok) {
-    const msg = await res.text().catch(() => "");
-    throw new Error(msg || `PATCH /api/me/profile failed (${res.status})`);
+    const msg = await readApiError(
+      res,
+      "Impossible de mettre à jour le profil pour le moment.",
+    );
+    throw new Error(msg);
   }
 
   return res.json();

@@ -17,7 +17,7 @@ import {
   LoyaltyReason,
   ServiceCategory,
 } from "@prisma/client";
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 
 export async function seedTest(prisma: PrismaClient) {
   const hashedPassword = await bcrypt.hash("password123", 10);

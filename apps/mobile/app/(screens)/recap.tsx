@@ -5,6 +5,7 @@ import { Ionicons } from "@expo/vector-icons";
 
 import { Screen } from "../../src/components/Screen";
 import { Button } from "../../src/components/Button";
+import { InfoHint } from "../../src/components/InfoHint";
 import { useBooking } from "../../src/providers/BookingProvider";
 
 import { colors, overlays } from "../../src/theme/colors";
@@ -12,24 +13,34 @@ import { spacing } from "../../src/theme/spacing";
 import { radius } from "../../src/theme/radius";
 import { typography } from "../../src/theme/typography";
 
-function formatFCFA(v: number) {
-  return `${v.toLocaleString("fr-FR")} FCFA`;
+function formatFCFA(value: number) {
+  return `${value.toLocaleString("fr-FR")} FCFA`;
 }
 
 export default function RecapScreen() {
   const { draft } = useBooking();
 
-  const { totalPrice, totalDuration } = useMemo(() => {
-    const totalPrice = draft.cart.reduce(
+  const { totalPrice, totalDuration, depositAmount } = useMemo(() => {
+    const computedTotalPrice = draft.cart.reduce(
       (sum, item) => sum + item.price * (item.quantity || 1),
       0,
     );
-    const totalDuration = draft.cart.reduce(
+    const computedTotalDuration = draft.cart.reduce(
       (sum, item) => sum + (item.duration || 30) * (item.quantity || 1),
       0,
     );
-    return { totalPrice, totalDuration };
-  }, [draft.cart]);
+    const computedDepositAmount = draft.depositEnabled
+      ? Math.round(
+          computedTotalPrice * ((draft.depositPercentage ?? 30) / 100),
+        )
+      : 0;
+
+    return {
+      totalPrice: computedTotalPrice,
+      totalDuration: computedTotalDuration,
+      depositAmount: computedDepositAmount,
+    };
+  }, [draft.cart, draft.depositEnabled, draft.depositPercentage]);
 
   return (
     <Screen noPadding style={styles.screen}>
@@ -42,7 +53,7 @@ export default function RecapScreen() {
             onPress={() => router.back()}
           />
         </View>
-        <Text style={styles.headerTitle}>Récap prestations</Text>
+        <Text style={styles.headerTitle}>Récapitulatif des prestations</Text>
       </View>
 
       <ScrollView
@@ -58,6 +69,17 @@ export default function RecapScreen() {
             <Text style={styles.summaryLabel}>Montant total</Text>
             <Text style={styles.summaryPrice}>{formatFCFA(totalPrice)}</Text>
           </View>
+          {draft.depositEnabled ? (
+            <View style={styles.summaryRow}>
+              <View style={styles.inlineLabel}>
+                <Text style={styles.summaryLabel}>
+                  Acompte possible ({draft.depositPercentage ?? 30}%)
+                </Text>
+                <InfoHint text="Le salon autorise ici un acompte. Vous pourrez choisir entre acompte et paiement complet à l’étape de paiement." />
+              </View>
+              <Text style={styles.summaryValue}>{formatFCFA(depositAmount)}</Text>
+            </View>
+          ) : null}
         </View>
 
         <Text style={styles.sectionTitle}>Services sélectionnés</Text>
@@ -69,11 +91,11 @@ export default function RecapScreen() {
                 <Text style={styles.itemName} numberOfLines={2}>
                   {item.name}
                 </Text>
-                {!!item.quantity && item.quantity > 1 && (
+                {!!item.quantity && item.quantity > 1 ? (
                   <View style={styles.qtyPill}>
                     <Text style={styles.qtyText}>x{item.quantity}</Text>
                   </View>
-                )}
+                ) : null}
               </View>
 
               <View style={styles.itemMetaRow}>
@@ -106,7 +128,7 @@ export default function RecapScreen() {
 
       <View style={styles.bottomBar}>
         <Button
-          title="Modifier services"
+          title="Modifier les services"
           variant="outline"
           onPress={() => router.back()}
           style={{ flex: 1 }}
@@ -145,14 +167,21 @@ const styles = StyleSheet.create({
     borderRadius: radius.xl,
     padding: spacing.md,
     marginBottom: spacing.lg,
+    gap: spacing.sm,
   },
   summaryRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: spacing.sm,
+    gap: spacing.md,
   },
-  summaryLabel: { color: colors.textMuted, ...typography.small },
+  inlineLabel: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    flex: 1,
+  },
+  summaryLabel: { color: colors.textMuted, ...typography.small, flexShrink: 1 },
   summaryValue: { color: colors.brand, ...typography.body, fontWeight: "600" },
   summaryPrice: { color: colors.brand, ...typography.h3 },
 

@@ -7,6 +7,7 @@ import { LinearGradient } from 'expo-linear-gradient'
 import { Button } from '../../src/components/Button'
 import { Card } from '../../src/components/Card'
 import { FeedbackState } from '../../src/components/FeedbackState'
+import { InfoHint } from '../../src/components/InfoHint'
 import { Input } from '../../src/components/Input'
 import { Screen } from '../../src/components/Screen'
 import { EmployeeCalendarPicker } from '../../src/components/employee/EmployeeCalendarPicker'
@@ -21,6 +22,12 @@ import {
 } from '../../src/api/employee-portal'
 import { useOfflineStatus } from '../../src/providers/OfflineProvider'
 import { requireOnlineAction } from '../../src/offline/guard'
+import {
+  buildGabonPhoneHint,
+  formatGabonPhone,
+  getGabonNationalPhoneDigits,
+  isValidGabonPhone,
+} from '../../src/constants/countries'
 import { colors, overlays } from '../../src/theme/colors'
 import { radius } from '../../src/theme/radius'
 import { spacing } from '../../src/theme/spacing'
@@ -111,7 +118,10 @@ export default function EmployeeDashboardScreen() {
     if (!blockTime) nextErrors.blockTime = 'Selectionnez une heure.'
     if (!selectedService) nextErrors.service = 'Selectionnez un service.'
     if (!clientName.trim()) nextErrors.clientName = 'Le nom du client est requis.'
-    if (!phone.trim()) nextErrors.phone = 'Le telephone est requis.'
+    if (!phone.trim()) nextErrors.phone = 'Le téléphone est requis.'
+    if (phone.trim() && !isValidGabonPhone(phone)) {
+      nextErrors.phone = 'Saisissez un numéro gabonais valide.'
+    }
 
     setErrors(nextErrors)
 
@@ -289,8 +299,9 @@ export default function EmployeeDashboardScreen() {
         <View style={styles.banner}>
           <Ionicons name="alert-circle-outline" size={18} color={colors.premium} />
           <Text style={styles.bannerText}>
-            Ce creneau sera bloque uniquement pour vous et visible dans votre agenda.
+            Ce créneau sera bloqué pour votre agenda employé et ne pourra plus être réservé sur ce créneau.
           </Text>
+          <InfoHint text="Utilisez ce blocage pour une réservation interne ou pour rendre un créneau indisponible." />
         </View>
 
         <EmployeePickerField
@@ -342,14 +353,23 @@ export default function EmployeeDashboardScreen() {
           error={errors.service}
         />
         {activePicker === 'service' ? (
-          <EmployeeSelectList
-            options={services.map((item) => item.name)}
-            value={serviceName}
-            onSelect={(option) => {
-              setServiceName(option)
-              setActivePicker(null)
-            }}
-          />
+          services.length > 0 ? (
+            <EmployeeSelectList
+              options={services.map((item) => item.name)}
+              value={serviceName}
+              onSelect={(option) => {
+                setServiceName(option)
+                setActivePicker(null)
+              }}
+            />
+          ) : (
+            <View style={styles.emptyServiceBox}>
+              <Text style={styles.emptyServiceTitle}>Aucun service disponible</Text>
+              <Text style={styles.emptyServiceText}>
+                Aucun service actif n'est rattaché à votre salon pour le moment.
+              </Text>
+            </View>
+          )
         ) : null}
 
         <Input
@@ -357,21 +377,23 @@ export default function EmployeeDashboardScreen() {
           placeholder="Ex: Marie Dupont"
           value={clientName}
           onChangeText={setClientName}
+          hint="À renseigner uniquement si ce créneau est réservé manuellement pour un client."
           error={errors.clientName}
         />
 
         <Input
-          label="Telephone *"
-          placeholder="+241 XX XX XX XX"
-          value={phone}
-          onChangeText={setPhone}
+          label="Téléphone *"
+          placeholder="01 23 45 67"
+          value={formatGabonPhone(phone)}
+          onChangeText={(value) => setPhone(getGabonNationalPhoneDigits(value))}
           keyboardType="phone-pad"
+          hint={buildGabonPhoneHint()}
           error={errors.phone}
         />
 
         <Input
           label="Note (optionnelle)"
-          placeholder="Informations complementaires..."
+          placeholder="Informations complémentaires..."
           value={note}
           onChangeText={setNote}
           multiline
@@ -539,6 +561,23 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
     color: colors.textMuted,
     ...typography.body,
+  },
+  emptyServiceBox: {
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: overlays.brand20,
+    backgroundColor: overlays.brand05,
+    padding: spacing.md,
+    gap: 4,
+  },
+  emptyServiceTitle: {
+    color: colors.brand,
+    ...typography.small,
+    fontWeight: '800',
+  },
+  emptyServiceText: {
+    color: colors.textMuted,
+    ...typography.small,
   },
   appointmentCard: {
     borderRadius: radius.xl,

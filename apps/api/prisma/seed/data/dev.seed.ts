@@ -11,7 +11,7 @@ import {
   SalonClient,
   ServiceCategory,
 } from "@prisma/client";
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 
 export async function seedDev(prisma: PrismaClient) {
   const password = await bcrypt.hash("password123", 10);

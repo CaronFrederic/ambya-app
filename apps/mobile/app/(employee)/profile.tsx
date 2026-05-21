@@ -18,6 +18,12 @@ import { radius } from '../../src/theme/radius'
 import { spacing } from '../../src/theme/spacing'
 import { typography } from '../../src/theme/typography'
 import { requireOnlineAction } from '../../src/offline/guard'
+import {
+  buildGabonPhoneHint,
+  formatGabonPhone,
+  getGabonNationalPhoneDigits,
+  isValidGabonPhone,
+} from '../../src/constants/countries'
 
 export default function EmployeeProfileScreen() {
   const { refreshAuth } = useAuthRefresh()
@@ -32,6 +38,7 @@ export default function EmployeeProfileScreen() {
   const [phone, setPhone] = useState('')
   const [isEditing, setIsEditing] = useState(false)
   const [showResetConfirm, setShowResetConfirm] = useState(false)
+  const [formError, setFormError] = useState<{ email?: string; phone?: string }>({})
 
   useEffect(() => {
     if (!profileQuery.data?.profile || isEditing) return
@@ -57,12 +64,24 @@ export default function EmployeeProfileScreen() {
 
   const handleUpdate = async () => {
     if (!requireOnlineAction('mettre a jour le profil employe')) return
+    const nextError: { email?: string; phone?: string } = {}
+
+    if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      nextError.email = 'Saisissez une adresse email valide.'
+    }
+    if (phone.trim() && !isValidGabonPhone(phone)) {
+      nextError.phone = 'Saisissez un numéro gabonais valide.'
+    }
+
+    setFormError(nextError)
+    if (Object.keys(nextError).length > 0) return
+
     try {
       await updateProfile.mutateAsync({
         firstName: firstName.trim(),
         lastName: lastName.trim(),
         email: email.trim(),
-        phone: phone.trim(),
+        phone: getGabonNationalPhoneDigits(phone).trim(),
       })
       await profileQuery.refetch()
       setIsEditing(false)
@@ -78,6 +97,7 @@ export default function EmployeeProfileScreen() {
     setEmail(profileQuery.data?.profile.email ?? '')
     setPhone(profileQuery.data?.profile.phone ?? '')
     setIsEditing(false)
+    setFormError({})
   }
 
   if (profileQuery.isLoading) {
@@ -116,7 +136,7 @@ export default function EmployeeProfileScreen() {
           <Text style={styles.formTitle}>Mes informations</Text>
 
           <Input
-            label="Prenom"
+            label="Prénom"
             value={firstName}
             onChangeText={setFirstName}
             containerStyle={styles.field}
@@ -137,14 +157,18 @@ export default function EmployeeProfileScreen() {
             autoCapitalize="none"
             containerStyle={styles.field}
             editable={isEditing}
+            hint="Adresse utilisée pour vous contacter au besoin."
+            error={formError.email}
           />
           <Input
-            label="Telephone"
-            value={phone}
-            onChangeText={setPhone}
+            label="Téléphone"
+            value={formatGabonPhone(phone)}
+            onChangeText={(value) => setPhone(getGabonNationalPhoneDigits(value))}
             keyboardType="phone-pad"
             containerStyle={styles.field}
             editable={isEditing}
+            hint={buildGabonPhoneHint()}
+            error={formError.phone}
           />
           <Input label="Role" value={profile.role} editable={false} containerStyle={styles.field} />
           <Input label="Salon" value={profile.salon} editable={false} />

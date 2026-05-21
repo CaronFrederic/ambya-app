@@ -15,6 +15,7 @@ import { useQueryClient } from '@tanstack/react-query'
 
 import { Screen } from '../../src/components/Screen'
 import { Button } from '../../src/components/Button'
+import { InfoHint } from '../../src/components/InfoHint'
 
 import { colors, overlays } from '../../src/theme/colors'
 import { spacing } from '../../src/theme/spacing'
@@ -61,6 +62,12 @@ const SECTIONS = [
   { key: 'important', title: 'Informations importantes' },
 ] as const
 
+const SECTION_HINTS: Record<string, string> = {
+  hair: 'Informations sur la nature et les besoins de vos cheveux.',
+  practical: 'Choix utiles pour adapter vos rendez-vous et vos services.',
+  important: 'Informations à signaler avant une prestation.',
+}
+
 type LoyaltyTier = 'BRONZE' | 'SILVER' | 'GOLD' | 'PLATINUM'
 
 export default function ProfileScreen() {
@@ -68,7 +75,7 @@ export default function ProfileScreen() {
   const qc = useQueryClient()
 
   const [tab, setTab] = useState<TabKey>('infos')
-  const [open, setOpen] = useState<string>('general')
+  const [openSections, setOpenSections] = useState<string[]>(['general'])
   const [token, setToken] = useState<string | null>(null)
 
   useEffect(() => {
@@ -335,8 +342,15 @@ export default function ProfileScreen() {
                 <SectionAccordion
                   key={s.key}
                   title={s.title}
-                  open={open === s.key}
-                  onToggle={() => setOpen(open === s.key ? '' : s.key)}
+                  open={openSections.includes(s.key)}
+                  hint={SECTION_HINTS[s.key]}
+                  onToggle={() =>
+                    setOpenSections((current) =>
+                      current.includes(s.key)
+                        ? current.filter((value) => value !== s.key)
+                        : [...current, s.key],
+                    )
+                  }
                   onEdit={() =>
                     router.push({
                       pathname: '/(screens)/edit-section',
@@ -421,12 +435,14 @@ function TabButton({ active, label, onPress }: { active: boolean; label: string;
 
 function SectionAccordion({
   title,
+  hint,
   open,
   onToggle,
   onEdit,
   children,
 }: {
   title: string
+  hint?: string
   open: boolean
   onToggle: () => void
   onEdit: () => void
@@ -435,7 +451,10 @@ function SectionAccordion({
   return (
     <View style={styles.sectionCard}>
       <Pressable onPress={onToggle} style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>{title}</Text>
+        <View style={styles.sectionTitleWrap}>
+          <Text style={styles.sectionTitle}>{title}</Text>
+          {hint ? <InfoHint text={hint} /> : null}
+        </View>
 
         <View style={styles.sectionRight}>
           <Pressable
@@ -624,7 +643,7 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.lg,
-    paddingBottom: 80,
+    paddingBottom: 132,
   },
 
   sectionCard: {
@@ -632,12 +651,12 @@ const styles = StyleSheet.create({
     borderRadius: radius.xl,
     borderWidth: 1,
     borderColor: colors.border,
-    overflow: 'hidden',
     shadowColor: colors.shadowColor,
     shadowOpacity: 0.06,
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 4 },
     elevation: 1,
+    zIndex: 1,
   },
   sectionHeader: {
     paddingHorizontal: spacing.lg,
@@ -646,6 +665,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: spacing.md,
+    zIndex: 5,
+    elevation: 5,
+  },
+  sectionTitleWrap: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    zIndex: 6,
+    elevation: 6,
   },
   sectionTitle: { color: colors.text, ...typography.h3, fontWeight: '700', flex: 1 },
   sectionRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
@@ -667,6 +696,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.lg,
     backgroundColor: colors.card,
+    zIndex: 1,
   },
 
   kvRow: { gap: 4 },

@@ -37,7 +37,7 @@ export default function EmployeeAvailabilityScreen() {
         <View style={styles.infoBanner}>
           <Ionicons name="alert-circle-outline" size={18} color="#D4AF6A" />
           <Text style={styles.infoText}>
-            Ces rendez-vous clients ne sont encore assignés à aucun employé.
+            Ces rendez-vous clients ne sont pas encore attribués. Prenez-les en charge si votre planning le permet.
           </Text>
         </View>
 
@@ -106,7 +106,7 @@ export default function EmployeeAvailabilityScreen() {
                 <Button
                   title={claimSlot.isPending ? 'Attribution...' : 'Prendre en charge'}
                   onPress={async () => {
-                    if (!requireOnlineAction('prendre en charge un creneau')) return
+                    if (!requireOnlineAction('prendre en charge un créneau')) return
                     try {
                       await claimSlot.mutateAsync({ id: slot.id })
                       Alert.alert('Créneau assigné', 'Le créneau a été ajouté à votre agenda.')

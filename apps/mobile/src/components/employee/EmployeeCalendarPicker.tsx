@@ -35,8 +35,9 @@ export function EmployeeCalendarPicker({
   onClear,
 }: EmployeeCalendarPickerProps) {
   const selectedDate = useMemo(() => parseDate(value), [value])
+  const today = useMemo(() => startOfDay(new Date()), [])
   const [cursor, setCursor] = useState(
-    selectedDate ?? new Date(2026, 2, 1),
+    selectedDate && selectedDate >= today ? selectedDate : today,
   )
 
   const monthLabel = `${MONTH_NAMES[cursor.getMonth()]} ${cursor.getFullYear()}`
@@ -68,17 +69,24 @@ export function EmployeeCalendarPicker({
         {days.map((day) => {
           const isCurrentMonth = day.getMonth() === cursor.getMonth()
           const isSelected = sameDay(day, selectedDate)
+          const isPast = startOfDay(day) < today
 
           return (
             <Pressable
               key={day.toISOString()}
+              disabled={isPast}
               onPress={() => onChange(formatDate(day))}
-              style={[styles.dayCell, isSelected && styles.dayCellSelected]}
+              style={[
+                styles.dayCell,
+                isPast && styles.dayCellDisabled,
+                isSelected && styles.dayCellSelected,
+              ]}
             >
               <Text
                 style={[
                   styles.dayText,
                   !isCurrentMonth && styles.dayTextMuted,
+                  isPast && styles.dayTextDisabled,
                   isSelected && styles.dayTextSelected,
                 ]}
               >
@@ -95,7 +103,6 @@ export function EmployeeCalendarPicker({
         </Pressable>
         <Pressable
           onPress={() => {
-            const today = new Date()
             setCursor(today)
             onChange(formatDate(today))
           }}
@@ -134,6 +141,10 @@ function parseDate(value?: string) {
 
 function addMonths(date: Date, delta: number) {
   return new Date(date.getFullYear(), date.getMonth() + delta, 1)
+}
+
+function startOfDay(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate())
 }
 
 function sameDay(left: Date, right: Date | null) {
@@ -194,9 +205,15 @@ const styles = StyleSheet.create({
   dayCellSelected: {
     backgroundColor: '#1877F2',
   },
+  dayCellDisabled: {
+    opacity: 0.35,
+  },
   dayText: {
     color: colors.text,
     fontSize: 12,
+  },
+  dayTextDisabled: {
+    color: colors.textMuted,
   },
   dayTextMuted: {
     color: colors.textMuted,

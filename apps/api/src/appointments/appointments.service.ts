@@ -1876,20 +1876,21 @@ export class AppointmentsService {
         })
       : null;
 
-    const leaveDelegate =
-      anyPrisma.employeeLeaveRequest ?? anyPrisma.leaveRequest ?? null;
-
-    const leaveConflict = leaveDelegate
-      ? await leaveDelegate.findFirst({
-          where: {
-            employeeId,
-            status: 'APPROVED',
-            startAt: { lt: endAt },
-            endAt: { gt: startAt },
-          },
-          select: { id: true },
-        })
-      : null;
+    // Beta source of truth for employee leave requests.
+    // Use an explicit parameterized SQL read because the legacy
+    // EmployeeLeaveRequest model has very similar naming but different fields.
+    const leaveConflicts = await prisma.$queryRaw<Array<{ id: string }>>(
+      Prisma.sql`
+        SELECT "id"
+        FROM "LeaveRequest"
+        WHERE "employeeId" = ${employeeId}
+          AND "status" = 'APPROVED'
+          AND "startAt" < ${endAt}
+          AND "endAt" > ${startAt}
+        LIMIT 1
+      `,
+    );
+    const leaveConflict = leaveConflicts[0] ?? null;
 
     return Boolean(appointmentConflict || blockedSlotConflict || leaveConflict);
   }

@@ -11,8 +11,8 @@ import { spacing } from '../../src/theme/spacing'
 import { radius } from '../../src/theme/radius'
 import { typography } from '../../src/theme/typography'
 
-function formatFCFA(v: number) {
-  return `${v.toLocaleString('fr-FR')} FCFA`
+function formatFCFA(value: number) {
+  return `${value.toLocaleString('fr-FR')} FCFA`
 }
 
 export default function BookingSuccessScreen() {
@@ -24,6 +24,8 @@ export default function BookingSuccessScreen() {
     totalAmount?: string
     paymentStatus?: string
     paymentMethod?: string
+    paymentChoice?: string
+    depositPercentage?: string
   }>()
   const { draft } = useBooking()
 
@@ -36,7 +38,7 @@ export default function BookingSuccessScreen() {
   const salonName = params.salonName || draft.salonName || '-'
   const serviceLabel =
     params.serviceLabel ||
-    (draft.cart?.length > 0 ? draft.cart.map((x) => x.name).join(' + ') : '-')
+    (draft.cart?.length > 0 ? draft.cart.map((item) => item.name).join(' + ') : '-')
   const dateLabel = params.dateIso
     ? new Date(`${params.dateIso}T00:00:00.000Z`).toLocaleDateString('fr-FR', {
         day: '2-digit',
@@ -53,7 +55,24 @@ export default function BookingSuccessScreen() {
   const timeLabel = params.timeLabel || draft.time || '-'
   const paymentStatus = params.paymentStatus || 'CREATED'
   const paymentMethod = params.paymentMethod || 'CASH'
+  const paymentChoice = params.paymentChoice === 'deposit' ? 'deposit' : 'full'
+  const depositPercentage = Number(params.depositPercentage ?? draft.depositPercentage ?? 30)
   const isPaid = paymentStatus === 'SUCCEEDED'
+
+  const paymentLabel = isPaid
+    ? paymentMethod === 'CARD'
+      ? 'Carte enregistrée'
+      : paymentMethod === 'MOMO'
+        ? 'Mobile Money enregistré'
+        : 'Paiement à encaisser sur place'
+    : paymentMethod === 'CASH'
+      ? 'Paiement à régler au salon'
+      : 'Paiement en attente de confirmation'
+
+  const choiceLabel =
+    paymentChoice === 'deposit'
+      ? `Acompte réglé (${depositPercentage}%)`
+      : 'Paiement complet'
 
   return (
     <Screen style={styles.screen} noPadding>
@@ -68,7 +87,7 @@ export default function BookingSuccessScreen() {
           </Text>
           <Text style={styles.subtitle}>
             {isPaid
-              ? 'Votre paiement beta interne a bien été enregistré. Le salon doit encore valider votre rendez-vous.'
+              ? 'Votre paiement a bien été enregistré. Le salon doit encore confirmer votre rendez-vous.'
               : paymentMethod === 'CASH'
                 ? 'Votre rendez-vous est en attente de validation par le salon. Le paiement se fera sur place.'
                 : 'Votre rendez-vous est en attente de validation par le salon.'}
@@ -95,28 +114,23 @@ export default function BookingSuccessScreen() {
 
           <View style={styles.divider} />
 
-          <Text style={styles.label}>Service</Text>
+          <Text style={styles.label}>Services</Text>
           <Text style={styles.value}>{serviceLabel}</Text>
 
-          <Text style={[styles.label, { marginTop: spacing.md }]}>
-            Paiement{' '}
-            <Text style={{ color: colors.brand, fontWeight: '700' }}>
-              {isPaid
-                ? paymentMethod === 'CARD'
-                  ? 'Carte enregistrée'
-                  : paymentMethod === 'MOMO'
-                    ? 'Mobile Money enregistré'
-                    : 'Encaissé'
-                : 'À régler'}
-            </Text>
-          </Text>
+          <Text style={[styles.label, { marginTop: spacing.md }]}>Mode de règlement</Text>
+          <Text style={styles.value}>{choiceLabel}</Text>
 
-          {!!totalAmount && (
-            <Text style={[styles.label, { marginTop: spacing.sm }]}>
-              Montant{' '}
-              <Text style={{ color: colors.brand, fontWeight: '700' }}>{formatFCFA(totalAmount)}</Text>
-            </Text>
-          )}
+          <Text style={[styles.label, { marginTop: spacing.md }]}>Statut du paiement</Text>
+          <Text style={[styles.value, { color: colors.brand }]}>{paymentLabel}</Text>
+
+          {!!totalAmount ? (
+            <>
+              <Text style={[styles.label, { marginTop: spacing.md }]}>Montant affiché</Text>
+              <Text style={[styles.value, { color: colors.brand }]}>
+                {formatFCFA(totalAmount)}
+              </Text>
+            </>
+          ) : null}
         </View>
 
         <View style={styles.actions}>

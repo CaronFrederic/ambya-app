@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useMemo, useState } from "react";
+import React, { createContext, useCallback, useContext, useMemo, useState } from "react";
 
 export type CartItem = {
   id: string;
@@ -47,20 +47,31 @@ export function BookingProvider({ children }: { children: React.ReactNode }) {
     paymentChoice: "full",
   });
 
+  const setCart = useCallback((cart: CartItem[]) => {
+    setDraft((d) => ({ ...d, cart }));
+  }, []);
+
+  const patch = useCallback((partial: Partial<BookingDraft>) => {
+    setDraft((d) => ({ ...d, ...partial }));
+  }, []);
+
+  const reset = useCallback(() => {
+    setDraft({
+      cart: [],
+      depositEnabled: true,
+      depositPercentage: 30,
+      paymentChoice: "full",
+    });
+  }, []);
+
   const value = useMemo<BookingContextValue>(
     () => ({
       draft,
-      setCart: (cart) => setDraft((d) => ({ ...d, cart })),
-      patch: (partial) => setDraft((d) => ({ ...d, ...partial })),
-      reset: () =>
-        setDraft({
-          cart: [],
-          depositEnabled: true,
-          depositPercentage: 30,
-          paymentChoice: "full",
-        }),
+      setCart,
+      patch,
+      reset,
     }),
-    [draft],
+    [draft, patch, reset, setCart],
   );
 
   return (

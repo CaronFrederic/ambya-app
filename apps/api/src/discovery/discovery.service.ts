@@ -248,6 +248,8 @@ export class DiscoveryService {
         city: true,
         country: true,
         phone: true,
+        depositEnabled: true,
+        depositPercentage: true,
         coverImageUrl: true,
         galleryImageUrls: true,
         socialLinks: true,
@@ -342,6 +344,8 @@ export class DiscoveryService {
       city: salon.city,
       country: salon.country,
       phone: salon.phone,
+      depositEnabled: salon.depositEnabled,
+      depositPercentage: salon.depositPercentage,
       coverImageUrl:
         typeof salon.coverImageUrl === 'string' && salon.coverImageUrl
           ? salon.coverImageUrl

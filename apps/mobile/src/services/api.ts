@@ -1,4 +1,4 @@
-const baseUrl = process.env.EXPO_PUBLIC_API_URL;
+const baseUrl = process.env.EXPO_PUBLIC_API_URL?.trim().replace(/\/+$/, "");
 
 if (!baseUrl) {
   // En dev, ça aide à voir vite le problème
@@ -6,7 +6,7 @@ if (!baseUrl) {
 }
 
 export async function getHealth() {
-  const res = await fetch(`${baseUrl}/health`);
+  const res = await fetch(`${baseUrl}/api/health`);
   if (!res.ok) {
     throw new Error(`Health check failed: ${res.status}`);
   }

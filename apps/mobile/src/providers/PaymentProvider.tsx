@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useMemo, useState } from 'react'
+import { GABON_MOBILE_MONEY_PROVIDERS } from '../constants/countries'
 
 export type CardBrand = 'Visa' | 'Mastercard' | 'Amex' | 'Autre'
 
@@ -12,7 +13,7 @@ export type CardPaymentMethod = {
   isDefault?: boolean
 }
 
-export type MobileMoneyProvider = 'Airtel Money' | 'Moov Money' | 'Orange Money' | 'MTN' | 'Autre'
+export type MobileMoneyProvider = (typeof GABON_MOBILE_MONEY_PROVIDERS)[number]
 
 export type MobileMoneyMethod = {
   id: string
@@ -58,7 +59,7 @@ const seedMobileMoney: MobileMoneyMethod[] = [
    {
      id: 'mm_1',
      provider: 'Airtel Money',
-     phone: '+24106123456',
+     phone: '+241 077 123 456',
      holderName: 'Marie Kouassi',
      isDefault: true,
    },

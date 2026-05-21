@@ -27,6 +27,7 @@ import { colors, overlays } from '../../../src/theme/colors'
 import { spacing } from '../../../src/theme/spacing'
 import { radius } from '../../../src/theme/radius'
 import { typography } from '../../../src/theme/typography'
+import { GABON_MOBILE_MONEY_PROVIDERS } from '../../../src/constants/countries'
 
 // -------------------------
 // Helpers
@@ -53,11 +54,11 @@ function normalizePhone(v: string) {
   return (v ?? '').replace(/[^\d+]/g, '').slice(0, 20)
 }
 
-type MobileMoneyProvider = 'Airtel Money' | 'Moov Money' | 'Orange Money' | 'MTN' | 'Autre'
-const MM_PROVIDERS: MobileMoneyProvider[] = ['Airtel Money', 'Moov Money', 'Orange Money', 'MTN', 'Autre']
+type MobileMoneyProvider = (typeof GABON_MOBILE_MONEY_PROVIDERS)[number]
+const MM_PROVIDERS: MobileMoneyProvider[] = [...GABON_MOBILE_MONEY_PROVIDERS]
 
 // -------------------------
-// API types (aligné à ton Prisma PaymentMethod)
+// API types (aligné avec Prisma PaymentMethod)
 // -------------------------
 type PaymentType = 'MOMO' | 'CARD' | 'CASH'
 
@@ -86,12 +87,13 @@ type CreatePaymentMethodBody = {
   isDefault?: boolean
 }
 
-const API_URL = process.env.EXPO_PUBLIC_API_URL
+const API_URL = process.env.EXPO_PUBLIC_API_URL?.trim().replace(/\/+$/, '')
 const BASE = '/me/payment-methods'
 
 async function apiFetch<T>(token: string, path: string, init?: RequestInit): Promise<T> {
   if (!API_URL) throw new Error('EXPO_PUBLIC_API_URL manquant')
-  const res = await fetch(`${API_URL}${path}`, {
+  const normalizedPath = path.startsWith('/api/') ? path : `/api${path.startsWith('/') ? path : `/${path}`}`
+  const res = await fetch(`${API_URL}${normalizedPath}`, {
     ...init,
     headers: {
       'Content-Type': 'application/json',

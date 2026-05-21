@@ -48,7 +48,12 @@ function detectBrand(digits: string) {
 }
 
 export default function CardPaymentDetailsScreen() {
-  const params = useLocalSearchParams<{ amount?: string; saveCard?: string }>();
+  const params = useLocalSearchParams<{
+    amount?: string;
+    saveCard?: string;
+    paymentChoice?: string;
+    depositPercentage?: string;
+  }>();
   const { draft } = useBooking();
   const qc = useQueryClient();
   const { isOffline } = useOfflineStatus();
@@ -125,6 +130,8 @@ export default function CardPaymentDetailsScreen() {
           totalAmount: String(result?.totalAmount ?? amount),
           paymentStatus: String(result?.payment?.status ?? "SUCCEEDED"),
           paymentMethod: String(result?.payment?.method ?? "CARD"),
+          paymentChoice: String(params.paymentChoice ?? "full"),
+          depositPercentage: String(params.depositPercentage ?? "30"),
         },
       });
     },
@@ -156,7 +163,7 @@ export default function CardPaymentDetailsScreen() {
               color={colors.brandForeground}
             />
           </Pressable>
-          <Text style={styles.headerTitle}>Paiement beta par carte</Text>
+        <Text style={styles.headerTitle}>Paiement par carte (bêta)</Text>
         </View>
 
         <ScrollView
@@ -209,17 +216,17 @@ export default function CardPaymentDetailsScreen() {
 
             {saveCard ? (
               <Text style={styles.saveHint}>
-                Cette carte sera enregistree pour vos prochains paiements.
+                Cette carte sera enregistrée pour vos prochains paiements.
               </Text>
             ) : null}
 
             <Text style={styles.saveHint}>
-              Le salon devra encore confirmer le rendez-vous apres ce paiement beta.
+              Le salon devra encore confirmer votre rendez-vous après ce paiement.
             </Text>
 
             <Card style={styles.amountCard}>
               <View style={styles.amountRow}>
-                <Text style={styles.amountLabel}>Montant a payer</Text>
+                <Text style={styles.amountLabel}>Montant à payer</Text>
                 <Text style={styles.amountValue}>{formatFCFA(amount)}</Text>
               </View>
             </Card>

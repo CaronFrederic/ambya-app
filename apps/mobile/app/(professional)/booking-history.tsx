@@ -107,7 +107,7 @@ export default function BookingHistoryScreen() {
 
   const handleOpenDetails = (booking: Booking) => {
     router.push({
-      pathname: "/(professional)/booking-details",
+      pathname: "/(professional)/booking-details" as any,
       params: {
         id: booking.id,
         clientId: booking.clientId,
@@ -119,7 +119,7 @@ export default function BookingHistoryScreen() {
         status: booking.status,
         date: booking.date,
       },
-    });
+    } as any);
   };
 
   const loadHistory = async (currentFilter?: "all" | Status) => {

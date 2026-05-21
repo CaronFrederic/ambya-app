@@ -5,22 +5,29 @@ import * as SecureStore from 'expo-secure-store'
 import { Picker } from '@react-native-picker/picker'
 
 import { useCountries } from '../src/api/config'
-import { FALLBACK_COUNTRIES } from '../src/constants/countries'
+import {
+  DEFAULT_COUNTRY_CODE,
+  DEFAULT_CURRENCY,
+  getDefaultCountry,
+  getEnabledCountries,
+} from '../src/constants/countries'
 import { colors, overlays } from '../src/theme/colors'
 import { spacing } from '../src/theme/spacing'
 import { radius } from '../src/theme/radius'
 import { Stack } from '../src/components/Stack'
 
-const logo = require('../assets/splash-logo.png') // idéalement PNG transparent
+const logo = require('../assets/splash-logo.png')
 
 export default function IndexSplash() {
   const { data } = useCountries()
-  const [selectedCode, setSelectedCode] = useState('GA')
+  const [selectedCode, setSelectedCode] = useState(DEFAULT_COUNTRY_CODE)
   const [booting, setBooting] = useState(true)
 
-  const countries = data?.length ? data : FALLBACK_COUNTRIES
-  const selected = countries.find(c => c.code === selectedCode)
-  const currency = selected?.currency ?? 'FCFA'
+  const countries = getEnabledCountries(data)
+  const selected =
+    countries.find((country) => country.code === selectedCode) ??
+    getDefaultCountry(countries)
+  const currency = selected.currency ?? DEFAULT_CURRENCY
 
   useEffect(() => {
     const boot = async () => {
@@ -34,7 +41,7 @@ export default function IndexSplash() {
       }
       setBooting(false)
     }
-    boot()
+    void boot()
   }, [])
 
   const onContinue = async () => {
@@ -45,38 +52,62 @@ export default function IndexSplash() {
 
   if (booting) {
     return (
-      <View style={{ flex: 1, backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center' }}>
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: colors.brand,
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
         <ActivityIndicator color={colors.premium} size="large" />
       </View>
     )
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.brand, alignItems: 'center', justifyContent: 'center', padding: spacing.lg }}>
-      <Image source={logo} resizeMode="contain" style={{ width: 240, height: 240, marginBottom: spacing.xl }} />
+    <View
+      style={{
+        flex: 1,
+        backgroundColor: colors.brand,
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: spacing.lg,
+      }}
+    >
+      <Image
+        source={logo}
+        resizeMode="contain"
+        style={{ width: 240, height: 240, marginBottom: spacing.xl }}
+      />
 
       <View style={{ width: '100%', maxWidth: 340 }}>
         <Stack gap={spacing.md}>
-          <Text style={{ color: colors.premium, fontWeight: '500' }}>Sélectionnez votre pays</Text>
+          <Text style={{ color: colors.premium, fontWeight: '500' }}>Votre pays</Text>
 
-          <View style={{
-            backgroundColor: overlays.white06,
-            borderRadius: radius.full,
-            borderWidth: 1,
-            borderColor: overlays.premium20,
-          }}>
+          <View
+            style={{
+              backgroundColor: overlays.white06,
+              borderRadius: radius.full,
+              borderWidth: 1,
+              borderColor: overlays.premium20,
+            }}
+          >
             <Picker
               selectedValue={selectedCode}
               onValueChange={setSelectedCode}
               dropdownIconColor={colors.brandForeground}
               style={{ color: colors.brandForeground }}
+              enabled={countries.length > 1}
             >
-              {countries.map(c => <Picker.Item key={c.code} label={c.name} value={c.code} />)}
+              {countries.map((country) => (
+                <Picker.Item key={country.code} label={country.name} value={country.code} />
+              ))}
             </Picker>
           </View>
 
           <Text style={{ color: colors.premium, textAlign: 'center' }}>
-            Devise: {currency}
+            Marché actuel : {selected.name} · Devise {currency}
           </Text>
 
           <Pressable

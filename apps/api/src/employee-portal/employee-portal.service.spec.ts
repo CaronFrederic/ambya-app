@@ -161,4 +161,51 @@ describe('EmployeePortalService', () => {
       ),
     ).rejects.toBeInstanceOf(BadRequestException)
   })
+
+  it('rejects confirmation for past appointments before assigning the employee', async () => {
+    const prisma = {
+      appointment: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'appointment-1',
+          employeeId: null,
+          salonId: 'salon-1',
+          status: 'PENDING',
+          startAt: new Date('2000-01-01T10:00:00.000Z'),
+          endAt: new Date('2000-01-01T10:30:00.000Z'),
+          service: {
+            id: 'service-1',
+            name: 'Coupe Homme',
+            category: ServiceCategory.HAIR,
+            durationMin: 30,
+            price: 5000,
+          },
+          client: {
+            id: 'client-1',
+            email: 'client@example.com',
+            phone: null,
+            clientProfile: { nickname: 'client' },
+          },
+          paymentIntents: [],
+        }),
+        update: jest.fn(),
+      },
+    }
+
+    service = new EmployeePortalService(prisma as any)
+    jest.spyOn(service as any, 'getEmployeeContext').mockResolvedValue({
+      id: 'employee-1',
+      salonId: 'salon-1',
+      specialties: [],
+    })
+
+    await expect(
+      service.confirmScheduleItem(
+        { userId: 'user-1' } as any,
+        'appointment',
+        'appointment-1',
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException)
+
+    expect(prisma.appointment.update).not.toHaveBeenCalled()
+  })
 })

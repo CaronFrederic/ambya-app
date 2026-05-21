@@ -354,6 +354,9 @@ export class EmployeePortalService {
     ) {
       throw new ForbiddenException('Appointment is assigned to another employee')
     }
+    if (appointment.startAt.getTime() <= Date.now()) {
+      throw new BadRequestException('Impossible de confirmer un rendez-vous passe.')
+    }
     if (
       appointment.status !== AppointmentStatus.PENDING &&
       appointment.status !== AppointmentStatus.CONFIRMED

@@ -1,15 +1,17 @@
-import React, { useState } from 'react'
+import React, { useMemo, useState } from 'react'
 import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native'
 
 import { Button } from '../../src/components/Button'
 import { Card } from '../../src/components/Card'
+import { FeedbackState } from '../../src/components/FeedbackState'
+import { InfoHint } from '../../src/components/InfoHint'
 import { Input } from '../../src/components/Input'
 import { Screen } from '../../src/components/Screen'
-import { FeedbackState } from '../../src/components/FeedbackState'
 import { EmployeeCalendarPicker } from '../../src/components/employee/EmployeeCalendarPicker'
 import { EmployeeHeader } from '../../src/components/employee/EmployeeHeader'
 import { EmployeeModal } from '../../src/components/employee/EmployeeModal'
 import { EmployeePickerField } from '../../src/components/employee/EmployeePickerField'
+import { EmployeeSelectList } from '../../src/components/employee/EmployeeSelectList'
 import {
   useCancelEmployeeLeaveRequest,
   useCreateEmployeeLeaveRequest,
@@ -23,7 +25,37 @@ import { typography } from '../../src/theme/typography'
 import { useOfflineStatus } from '../../src/providers/OfflineProvider'
 import { requireOnlineAction } from '../../src/offline/guard'
 
-type PickerType = 'start' | 'end' | null
+type PickerType = 'start' | 'end' | 'type' | null
+
+const LEAVE_TYPES = [
+  'Vacances',
+  'Arrêt maladie',
+  'Événement familial',
+  'Raison administrative',
+  'Formation',
+  'Autre',
+] as const
+
+function buildLeaveReason(type: string, details: string) {
+  if (type === 'Autre') return details.trim()
+  return details.trim() ? `${type} - ${details.trim()}` : type
+}
+
+function parseLeaveReason(reason: string) {
+  const matchedType =
+    LEAVE_TYPES.find((type) => reason === type || reason.startsWith(`${type} - `)) ??
+    'Autre'
+
+  if (matchedType === 'Autre') {
+    return { leaveType: 'Autre', details: reason }
+  }
+
+  const details = reason.replace(`${matchedType} - `, '').trim()
+  return {
+    leaveType: matchedType,
+    details: details === matchedType ? '' : details,
+  }
+}
 
 export default function EmployeeLeaveScreen() {
   const leaveRequests = useEmployeeLeaveRequests()
@@ -35,37 +67,58 @@ export default function EmployeeLeaveScreen() {
   const [editingLeaveId, setEditingLeaveId] = useState<string | null>(null)
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
-  const [reason, setReason] = useState('')
+  const [leaveType, setLeaveType] = useState<string>('')
+  const [reasonDetails, setReasonDetails] = useState('')
   const [activePicker, setActivePicker] = useState<PickerType>(null)
-  const [errors, setErrors] = useState<{ startDate?: string; endDate?: string; reason?: string }>({})
+  const [errors, setErrors] = useState<{
+    startDate?: string
+    endDate?: string
+    leaveType?: string
+    reasonDetails?: string
+  }>({})
+
+  const reasonPreview = useMemo(
+    () => buildLeaveReason(leaveType, reasonDetails),
+    [leaveType, reasonDetails],
+  )
 
   const closeModal = () => {
     setShowModal(false)
     setEditingLeaveId(null)
     setStartDate('')
     setEndDate('')
-    setReason('')
+    setLeaveType('')
+    setReasonDetails('')
     setActivePicker(null)
     setErrors({})
   }
 
   const validateForm = () => {
-    const nextErrors: { startDate?: string; endDate?: string; reason?: string } = {}
+    const nextErrors: {
+      startDate?: string
+      endDate?: string
+      leaveType?: string
+      reasonDetails?: string
+    } = {}
 
     if (!isValidDateValue(startDate)) {
-      nextErrors.startDate = 'Selectionnez une date de debut valide.'
+      nextErrors.startDate = 'Sélectionnez une date de début valide.'
     }
 
     if (!isValidDateValue(endDate)) {
-      nextErrors.endDate = 'Selectionnez une date de fin valide.'
+      nextErrors.endDate = 'Sélectionnez une date de fin valide.'
     }
 
     if (isValidDateValue(startDate) && isValidDateValue(endDate) && compareDates(startDate, endDate) > 0) {
-      nextErrors.endDate = 'La date de fin doit etre apres la date de debut.'
+      nextErrors.endDate = 'La date de fin doit être après la date de début.'
     }
 
-    if (!reason.trim()) {
-      nextErrors.reason = 'Le motif est requis.'
+    if (!leaveType) {
+      nextErrors.leaveType = 'Sélectionnez un type de congé.'
+    }
+
+    if (leaveType === 'Autre' && !reasonDetails.trim()) {
+      nextErrors.reasonDetails = 'Précisez le motif de votre demande.'
     }
 
     setErrors(nextErrors)
@@ -73,30 +126,30 @@ export default function EmployeeLeaveScreen() {
   }
 
   const handleSubmit = async () => {
-    if (!requireOnlineAction(editingLeaveId ? 'modifier une demande de conges' : 'envoyer une demande de conges')) return
+    if (!requireOnlineAction(editingLeaveId ? 'modifier une demande de congé' : 'envoyer une demande de congé')) return
     if (!validateForm()) return
 
     try {
+      const payload = {
+        startAt: toStartOfDayIso(startDate),
+        endAt: toEndOfDayIso(endDate),
+        reason: buildLeaveReason(leaveType, reasonDetails),
+      }
+
       if (editingLeaveId) {
         await updateLeaveRequest.mutateAsync({
           id: editingLeaveId,
-          startAt: toStartOfDayIso(startDate),
-          endAt: toEndOfDayIso(endDate),
-          reason: reason.trim(),
+          ...payload,
         })
       } else {
-        await createLeaveRequest.mutateAsync({
-          startAt: toStartOfDayIso(startDate),
-          endAt: toEndOfDayIso(endDate),
-          reason: reason.trim(),
-        })
+        await createLeaveRequest.mutateAsync(payload)
       }
       closeModal()
       Alert.alert(
-        editingLeaveId ? 'Demande modifiee' : 'Demande envoyee',
+        editingLeaveId ? 'Demande modifiée' : 'Demande envoyée',
         editingLeaveId
-          ? 'Votre demande de conges a bien ete mise a jour.'
-          : 'Votre demande de conges a bien ete enregistree.',
+          ? 'Votre demande de congé a bien été mise à jour.'
+          : 'Votre demande de congé a bien été enregistrée.',
       )
     } catch (error: any) {
       Alert.alert(
@@ -112,20 +165,22 @@ export default function EmployeeLeaveScreen() {
   }
 
   const openEditModal = (leave: { id: string; startAt: string; endAt: string; reason: string }) => {
+    const parsed = parseLeaveReason(leave.reason)
     setEditingLeaveId(leave.id)
     setStartDate(toDateInputValue(leave.startAt))
     setEndDate(toDateInputValue(leave.endAt))
-    setReason(leave.reason)
+    setLeaveType(parsed.leaveType)
+    setReasonDetails(parsed.leaveType === 'Autre' ? parsed.details : parsed.details)
     setErrors({})
     setActivePicker(null)
     setShowModal(true)
   }
 
   const handleCancelLeave = (leaveId: string) => {
-    if (!requireOnlineAction('annuler une demande de conges')) return
+    if (!requireOnlineAction('annuler une demande de congé')) return
     Alert.alert(
       'Annuler cette demande',
-      'Cette demande de conges en attente sera supprimee.',
+      'Cette demande en attente sera supprimée.',
       [
         { text: 'Retour', style: 'cancel' },
         {
@@ -134,7 +189,7 @@ export default function EmployeeLeaveScreen() {
           onPress: async () => {
             try {
               await cancelLeaveRequest.mutateAsync({ id: leaveId })
-              Alert.alert('Demande annulee', 'La demande de conges a bien ete annulee.')
+              Alert.alert('Demande annulée', 'La demande de congé a bien été annulée.')
             } catch (error: any) {
               Alert.alert('Action impossible', error?.message ?? 'Erreur inconnue')
             }
@@ -146,7 +201,7 @@ export default function EmployeeLeaveScreen() {
 
   return (
     <Screen noPadding style={styles.screen}>
-      <EmployeeHeader title="Demandes de conges" subtitle="Gerez vos conges" />
+      <EmployeeHeader title="Demandes de congé" subtitle="Gérez vos congés" />
 
       <ScrollView
         showsVerticalScrollIndicator={false}
@@ -154,39 +209,47 @@ export default function EmployeeLeaveScreen() {
         keyboardDismissMode="interactive"
         contentContainerStyle={styles.content}
       >
-        <Button
-          title="Nouvelle demande"
-          onPress={openCreateModal}
-          style={styles.newRequestButton}
-          disabled={isOffline}
-        />
+        <View style={styles.titleRow}>
+          <Button
+            title="Nouvelle demande"
+            onPress={openCreateModal}
+            style={styles.newRequestButton}
+            disabled={isOffline}
+          />
+          <InfoHint text="Permet de créer une nouvelle demande de congé à soumettre au salon." />
+        </View>
 
         <View style={styles.list}>
           {leaveRequests.isLoading ? (
             <FeedbackState
               icon="time-outline"
               title="Chargement des demandes"
-              description="Vos demandes de conges arrivent."
+              description="Vos demandes de congé arrivent."
             />
           ) : leaveRequests.isError ? (
             <FeedbackState
               icon="alert-circle-outline"
-              title="Impossible de charger les conges"
-              description="Reessayez dans un instant."
-              actionLabel="Reessayer"
+              title="Impossible de charger les congés"
+              description="Réessayez dans un instant."
+              actionLabel="Réessayer"
               onAction={() => void leaveRequests.refetch()}
             />
           ) : (leaveRequests.data?.items.length ?? 0) === 0 ? (
             <FeedbackState
               icon="document-text-outline"
-              title="Aucune demande de conges"
-              description="Vos futures demandes apparaitront ici."
+              title="Aucune demande de congé"
+              description="Vos futures demandes apparaîtront ici."
             />
           ) : (
             leaveRequests.data?.items.map((leave) => (
               <Card key={leave.id} style={styles.card}>
                 <View style={styles.cardHeader}>
-                  <Text style={styles.cardTitle}>{leave.reason}</Text>
+                  <View style={styles.cardTitleWrap}>
+                    <Text style={styles.cardTitle}>{leave.reason}</Text>
+                    {leave.status === 'PENDING' ? (
+                      <InfoHint text="Demande envoyée, en attente de validation." />
+                    ) : null}
+                  </View>
                   <View
                     style={[
                       styles.statusPill,
@@ -208,9 +271,9 @@ export default function EmployeeLeaveScreen() {
                       ]}
                     >
                       {leave.status === 'APPROVED'
-                        ? 'Approuve'
+                        ? 'Approuvé'
                         : leave.status === 'REJECTED'
-                          ? 'Refuse'
+                          ? 'Refusé'
                           : 'En attente'}
                     </Text>
                   </View>
@@ -246,7 +309,7 @@ export default function EmployeeLeaveScreen() {
 
       <EmployeeModal
         visible={showModal}
-        title={editingLeaveId ? 'Modifier la demande' : 'Nouvelle demande de conges'}
+        title={editingLeaveId ? 'Modifier la demande' : 'Nouvelle demande de congé'}
         onClose={closeModal}
         footer={
           <>
@@ -256,7 +319,7 @@ export default function EmployeeLeaveScreen() {
                 createLeaveRequest.isPending || updateLeaveRequest.isPending
                   ? 'Enregistrement...'
                   : editingLeaveId
-                    ? 'Mettre a jour'
+                    ? 'Mettre à jour'
                     : 'Envoyer'
               }
               onPress={handleSubmit}
@@ -267,7 +330,7 @@ export default function EmployeeLeaveScreen() {
         }
       >
         <EmployeePickerField
-          label="Date de debut"
+          label="Date de début"
           placeholder="jj/mm/aaaa"
           value={startDate}
           onPress={() => setActivePicker((current) => (current === 'start' ? null : 'start'))}
@@ -310,16 +373,63 @@ export default function EmployeeLeaveScreen() {
           />
         ) : null}
 
-        <Input
-          label="Motif"
-          placeholder="Conges annuels, evenement familial..."
-          value={reason}
-          onChangeText={setReason}
-          multiline
-          numberOfLines={4}
-          inputStyle={styles.multilineInput}
-          error={errors.reason}
+        <View style={styles.inlineHeader}>
+          <Text style={styles.inlineLabel}>Type de congé</Text>
+          <InfoHint text="Vacances, arrêt maladie, événement familial ou autre besoin reconnu par le salon." />
+        </View>
+        <EmployeePickerField
+          label=""
+          placeholder="Sélectionner un type"
+          value={leaveType}
+          onPress={() => setActivePicker((current) => (current === 'type' ? null : 'type'))}
+          icon="chevron-down"
+          error={errors.leaveType}
         />
+        {activePicker === 'type' ? (
+          <EmployeeSelectList
+            options={[...LEAVE_TYPES]}
+            value={leaveType}
+            onSelect={(value) => {
+              setLeaveType(value)
+              setActivePicker(null)
+              if (value !== 'Autre') {
+                setErrors((current) => ({ ...current, reasonDetails: undefined }))
+              }
+            }}
+          />
+        ) : null}
+
+        {leaveType === 'Autre' ? (
+          <Input
+            label="Précisez le motif"
+            placeholder="Exemple : rendez-vous administratif important"
+            value={reasonDetails}
+            onChangeText={setReasonDetails}
+            multiline
+            numberOfLines={4}
+            inputStyle={styles.multilineInput}
+            error={errors.reasonDetails}
+          />
+        ) : null}
+
+        {leaveType && leaveType !== 'Autre' ? (
+          <Input
+            label="Commentaire complémentaire (optionnel)"
+            placeholder="Ajoutez un détail si nécessaire"
+            value={reasonDetails}
+            onChangeText={setReasonDetails}
+            multiline
+            numberOfLines={3}
+            inputStyle={styles.multilineInput}
+          />
+        ) : null}
+
+        {reasonPreview ? (
+          <View style={styles.previewBox}>
+            <Text style={styles.previewLabel}>Résumé envoyé</Text>
+            <Text style={styles.previewValue}>{reasonPreview}</Text>
+          </View>
+        ) : null}
       </EmployeeModal>
     </Screen>
   )
@@ -374,8 +484,14 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     gap: spacing.lg,
   },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
   newRequestButton: {
     height: 48,
+    flex: 1,
   },
   list: {
     gap: spacing.md,
@@ -388,6 +504,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: spacing.sm,
+  },
+  cardTitleWrap: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
   },
   cardTitle: {
     flex: 1,
@@ -449,6 +571,37 @@ const styles = StyleSheet.create({
   cardActionButton: {
     flex: 1,
   },
+  inlineHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  inlineLabel: {
+    color: colors.text,
+    ...typography.small,
+    fontWeight: '700',
+    flex: 1,
+  },
+  previewBox: {
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(212,175,106,0.4)',
+    backgroundColor: '#FBF5E9',
+    padding: spacing.md,
+    gap: spacing.xs,
+  },
+  previewLabel: {
+    color: colors.textMuted,
+    ...typography.small,
+    fontWeight: '700',
+  },
+  previewValue: {
+    color: colors.text,
+    ...typography.body,
+    fontWeight: '700',
+  },
   multilineInput: {
     minHeight: 88,
     textAlignVertical: 'top',
@@ -457,4 +610,3 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 })
-

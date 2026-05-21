@@ -20,7 +20,10 @@ import { SectionTitle } from "../../src/components/SectionTitle";
 import { useHomeDiscovery } from "../../src/api/discovery";
 import { useCountries } from "../../src/api/config";
 import { useMeSummary } from "../../src/api/me";
-import { FALLBACK_COUNTRIES } from "../../src/constants/countries";
+import {
+  DEFAULT_COUNTRY_NAME,
+  getEnabledCountries,
+} from "../../src/constants/countries";
 import { colors, overlays } from "../../src/theme/colors";
 import { radius } from "../../src/theme/radius";
 import { spacing } from "../../src/theme/spacing";
@@ -46,11 +49,9 @@ export default function Home() {
   useEffect(() => {
     const loadCountry = async () => {
       const countryCode = await SecureStore.getItemAsync("countryCode");
-      const countries = countriesData?.length
-        ? countriesData
-        : FALLBACK_COUNTRIES;
+      const countries = getEnabledCountries(countriesData);
       const selectedCountry = countries.find((item) => item.code === countryCode);
-      setFallbackCountry(selectedCountry?.name);
+      setFallbackCountry(selectedCountry?.name ?? DEFAULT_COUNTRY_NAME);
     };
 
     void loadCountry();

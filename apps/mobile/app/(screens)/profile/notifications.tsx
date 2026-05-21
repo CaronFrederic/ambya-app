@@ -89,9 +89,11 @@ export default function NotificationsScreen() {
   return (
     <Screen noPadding style={styles.screen}>
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.headerBack} hitSlop={10}>
-          <Ionicons name="arrow-back" size={22} color="#fff" />
-        </Pressable>
+        <View style={styles.headerTopRow}>
+          <Pressable onPress={() => router.back()} style={styles.headerBack} hitSlop={10}>
+            <Ionicons name="arrow-back" size={22} color="#fff" />
+          </Pressable>
+        </View>
         <Text style={styles.headerTitle}>Notifications</Text>
       </View>
 
@@ -146,8 +148,20 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: radius.xl,
     borderBottomRightRadius: radius.xl,
   },
-  headerBack: { position: 'absolute', left: spacing.lg, top: spacing.xl + 10, padding: 6 },
-  headerTitle: { color: '#fff', ...typography.h2, marginTop: spacing.lg },
+  headerTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 40,
+  },
+  headerBack: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: overlays.white06,
+  },
+  headerTitle: { color: '#fff', ...typography.h2, marginTop: spacing.md, fontWeight: '700' },
 
   content: { padding: spacing.lg, gap: spacing.lg },
   topRow: { gap: 10 },
