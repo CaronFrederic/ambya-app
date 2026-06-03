@@ -49,3 +49,30 @@ export function isLikelyNetworkError(error: unknown) {
   )
 }
 
+export function isAuthExpiredError(error: unknown) {
+  const maybe = error as {
+    message?: string
+    status?: number
+    response?: {
+      status?: number
+      data?: {
+        message?: string | string[]
+      }
+    }
+  }
+
+  if (maybe?.status === 401 || maybe?.response?.status === 401) return true
+
+  const message = String(maybe?.message ?? '').toLowerCase()
+  const responseMessage = Array.isArray(maybe?.response?.data?.message)
+    ? maybe.response.data.message.join(' ').toLowerCase()
+    : String(maybe?.response?.data?.message ?? '').toLowerCase()
+
+  return (
+    message === 'session_expired' ||
+    message.includes('jwt expired') ||
+    responseMessage.includes('jwt expired') ||
+    responseMessage.includes('unauthorized')
+  )
+}
+

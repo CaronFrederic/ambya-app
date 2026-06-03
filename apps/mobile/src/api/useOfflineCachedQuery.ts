@@ -6,7 +6,11 @@ import {
 } from '@tanstack/react-query'
 
 import { readOfflineCache, writeOfflineCache } from '../offline/cache'
-import { isLikelyNetworkError, setOfflineStatus } from '../offline/store'
+import {
+  isAuthExpiredError,
+  isLikelyNetworkError,
+  setOfflineStatus,
+} from '../offline/store'
 
 type OfflineCachedQueryOptions<
   TQueryFnData,
@@ -37,8 +41,14 @@ export function useOfflineCachedQuery<
         setOfflineStatus(false)
         return data
       } catch (error) {
-        if (isLikelyNetworkError(error)) {
-          setOfflineStatus(true)
+        const isNetworkError = isLikelyNetworkError(error)
+        const canUseCachedData = isNetworkError || isAuthExpiredError(error)
+
+        if (canUseCachedData) {
+          if (isNetworkError) {
+            setOfflineStatus(true)
+          }
+
           const cached = await readOfflineCache<TQueryFnData>(cacheKey)
           if (cached) {
             return cached.data

@@ -1,7 +1,8 @@
 // src/api/me.ts
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, buildApiUrl } from './client'
 import * as SecureStore from 'expo-secure-store'
+import { useOfflineCachedQuery } from './useOfflineCachedQuery'
 
 // ---- Types ----
 export type LoyaltyTier = 'BRONZE' | 'SILVER' | 'GOLD' | 'PLATINUM'
@@ -96,18 +97,20 @@ export async function fetchMeLoyalty() {
 
 // ---- React Query hooks ----
 export function useMeSummary(enabled: boolean) {
-  return useQuery({
+  return useOfflineCachedQuery({
     queryKey: ['me', 'summary'],
     queryFn: fetchMeSummary,
+    cacheKey: 'me:summary',
     enabled,
     staleTime: 30_000,
   })
 }
 
 export function useMeLoyalty(enabled: boolean) {
-  return useQuery({
+  return useOfflineCachedQuery({
     queryKey: ['me', 'loyalty'],
     queryFn: fetchMeLoyalty,
+    cacheKey: 'me:loyalty',
     enabled,
     staleTime: 30_000,
   })
