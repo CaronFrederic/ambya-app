@@ -16,10 +16,12 @@ import { ProHeader } from "./components/ProHeader";
 import {
   blockClient,
   getClientDetails,
+  getSalonClients,
   updateClientDepositExempt,
   updateClientNotes,
   type ClientBookingHistoryItem,
   type ClientDetails,
+  type ClientListItem,
   type ClientPreferredEmployee,
   type ClientPreferredService,
 } from "../../src/api/clients";
@@ -148,10 +150,15 @@ function mapPreferredServices(items?: ClientPreferredService[]) {
 
 export default function ClientDetailsScreen() {
   const params = useLocalSearchParams<{ id?: string; client?: string }>();
-  const clientId = params.id;
-  const fallbackClientName = params.client ?? "Marie Kouassi";
+  const routeClientId = params.id;
+  const fallbackClientName = params.client ?? "Client";
 
   const [client, setClient] = useState<ClientDetails | null>(null);
+  const [clients, setClients] = useState<ClientListItem[]>([]);
+const [selectedClientId, setSelectedClientId] = useState<string | undefined>(
+  routeClientId
+);
+const [search, setSearch] = useState("");
   const [depositExempt, setDepositExempt] = useState(false);
   const [privateNotes, setPrivateNotes] = useState("");
   const [savingNotes, setSavingNotes] = useState(false);
@@ -161,30 +168,55 @@ export default function ClientDetailsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  const loadClient = async () => {
-    if (!clientId) return;
-    const token = await getAccessToken();
-    const data = await getClientDetails(token, clientId);
-    setClient(data);
-    setDepositExempt(data.depositExempt);
-    setPrivateNotes(data.notes ?? "");
-  };
+  const loadClients = async () => {
+  const token = await getAccessToken();
+  const data = await getSalonClients(token, search);
+
+  setClients(data);
+
+  if (!selectedClientId && data.length > 0) {
+    setSelectedClientId(data[0].id);
+  }
+};
+
+const loadClient = async (id?: string) => {
+  if (!id) return;
+
+  const token = await getAccessToken();
+  const data = await getClientDetails(token, id);
+
+  setClient(data);
+  setDepositExempt(data.depositExempt);
+  setPrivateNotes(data.notes ?? "");
+};
 
   const initialLoad = async () => {
-    try {
-      setLoading(true);
-      await loadClient();
-    } catch (error) {
-      console.error("Client details load error:", error);
-    } finally {
-      setLoading(false);
+  try {
+    setLoading(true);
+
+    const token = await getAccessToken();
+    const list = await getSalonClients(token, search);
+
+    setClients(list);
+
+    const firstClientId = selectedClientId || routeClientId || list[0]?.id;
+
+    if (firstClientId) {
+      setSelectedClientId(firstClientId);
+      await loadClient(firstClientId);
     }
-  };
+  } catch (error) {
+    console.error("Client details load error:", error);
+  } finally {
+    setLoading(false);
+  }
+};
 
   const onRefresh = async () => {
     try {
       setRefreshing(true);
-      await loadClient();
+      await loadClients();
+      await loadClient(selectedClientId);
     } catch (error) {
       console.error("Client details refresh error:", error);
     } finally {
@@ -193,8 +225,14 @@ export default function ClientDetailsScreen() {
   };
 
   useEffect(() => {
-    initialLoad();
-  }, [clientId]);
+  initialLoad();
+}, []);
+
+useEffect(() => {
+  if (selectedClientId) {
+    loadClient(selectedClientId);
+  }
+}, [selectedClientId]);
 
   const bookings = useMemo(() => mapHistory(client?.bookingHistory), [client]);
   const preferredEmployees = useMemo(
@@ -209,14 +247,14 @@ export default function ClientDetailsScreen() {
   const clientName = client?.fullName || fallbackClientName;
 
   const handleToggleDeposit = async (nextValue: boolean) => {
-    if (!clientId) return;
+    if (!selectedClientId) return;
 
     try {
       setUpdatingDeposit(true);
       setDepositExempt(nextValue);
 
       const token = await getAccessToken();
-      const updated = await updateClientDepositExempt(token, clientId, nextValue);
+      const updated = await updateClientDepositExempt(token, selectedClientId, nextValue);
 
       setClient(updated);
       setDepositExempt(updated.depositExempt);
@@ -229,12 +267,12 @@ export default function ClientDetailsScreen() {
   };
 
   const handleSaveNotes = async () => {
-    if (!clientId) return;
+    if (!selectedClientId) return;
 
     try {
       setSavingNotes(true);
       const token = await getAccessToken();
-      const updated = await updateClientNotes(token, clientId, privateNotes);
+      const updated = await updateClientNotes(token, selectedClientId, privateNotes);
       setClient(updated);
       setPrivateNotes(updated.notes ?? "");
     } catch (error) {
@@ -245,12 +283,12 @@ export default function ClientDetailsScreen() {
   };
 
   const handleBlockClient = async () => {
-    if (!clientId) return;
+    if (!selectedClientId) return;
 
     try {
       setBlockingClient(true);
       const token = await getAccessToken();
-      const updated = await blockClient(token, clientId);
+      const updated = await blockClient(token, selectedClientId);
       setClient(updated);
     } catch (error) {
       console.error("Block client error:", error);
@@ -276,6 +314,60 @@ export default function ClientDetailsScreen() {
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
           }
         >
+          <View style={styles.card}>
+  <Text style={styles.sectionTitleAccent}>👥 Clients du salon</Text>
+
+  <View style={styles.searchBox}>
+    <Ionicons name="search-outline" size={18} color={COLORS.muted} />
+    <TextInput
+      value={search}
+      onChangeText={setSearch}
+      placeholder="Rechercher un client..."
+      placeholderTextColor={COLORS.muted}
+      style={styles.searchInput}
+      returnKeyType="search"
+      onSubmitEditing={async () => {
+        await loadClients();
+      }}
+    />
+  </View>
+
+  <ScrollView
+    horizontal
+    showsHorizontalScrollIndicator={false}
+    contentContainerStyle={styles.clientsRow}
+  >
+    {clients.map((item) => {
+      const active = item.id === selectedClientId;
+
+      return (
+        <Pressable
+          key={item.id}
+          onPress={() => setSelectedClientId(item.id)}
+          style={[styles.clientChip, active && styles.clientChipActive]}
+        >
+          <View style={[styles.clientChipAvatar, active && styles.clientChipAvatarActive]}>
+            <Text style={[styles.clientChipAvatarText, active && styles.clientChipAvatarTextActive]}>
+              {item.fullName.slice(0, 1).toUpperCase()}
+            </Text>
+          </View>
+
+          <View style={{ maxWidth: 150 }}>
+            <Text
+              numberOfLines={1}
+              style={[styles.clientChipName, active && styles.clientChipNameActive]}
+            >
+              {item.fullName}
+            </Text>
+            <Text numberOfLines={1} style={styles.clientChipPhone}>
+              {item.phone ?? "Téléphone non renseigné"}
+            </Text>
+          </View>
+        </Pressable>
+      );
+    })}
+  </ScrollView>
+</View>
           <View style={styles.card}>
             <View style={styles.headerRow}>
               <View style={styles.avatar}>
@@ -570,7 +662,7 @@ export default function ClientDetailsScreen() {
 
             <Pressable
               onPress={handleBlockClient}
-              disabled={blockingClient || !clientId}
+              disabled={blockingClient || !selectedClientId}
             >
               <Text style={styles.dangerText}>
                 {client?.blocked ? "Client bloqué" : "Bloquer ce client"}
@@ -1079,4 +1171,82 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     marginTop: 2,
   },
+  searchBox: {
+  flexDirection: "row",
+  alignItems: "center",
+  gap: 8,
+  backgroundColor: "#F7F2ED",
+  borderRadius: 16,
+  paddingHorizontal: 12,
+  marginBottom: 14,
+  borderWidth: 1,
+  borderColor: COLORS.border,
+},
+
+searchInput: {
+  flex: 1,
+  paddingVertical: 12,
+  color: COLORS.text,
+  fontWeight: "600",
+},
+
+clientsRow: {
+  gap: 10,
+  paddingRight: 6,
+},
+
+clientChip: {
+  flexDirection: "row",
+  alignItems: "center",
+  gap: 10,
+  backgroundColor: "#FFF",
+  borderWidth: 1,
+  borderColor: COLORS.border,
+  borderRadius: 18,
+  paddingHorizontal: 12,
+  paddingVertical: 10,
+},
+
+clientChipActive: {
+  backgroundColor: COLORS.primary,
+  borderColor: COLORS.primary,
+},
+
+clientChipAvatar: {
+  width: 38,
+  height: 38,
+  borderRadius: 19,
+  backgroundColor: "rgba(107,39,55,0.10)",
+  alignItems: "center",
+  justifyContent: "center",
+},
+
+clientChipAvatarActive: {
+  backgroundColor: "#FFF",
+},
+
+clientChipAvatarText: {
+  color: COLORS.primary,
+  fontWeight: "900",
+},
+
+clientChipAvatarTextActive: {
+  color: COLORS.primary,
+},
+
+clientChipName: {
+  color: COLORS.text,
+  fontWeight: "900",
+  fontSize: 13,
+},
+
+clientChipNameActive: {
+  color: "#FFF",
+},
+
+clientChipPhone: {
+  color: COLORS.muted,
+  fontSize: 11,
+  fontWeight: "600",
+},
 });

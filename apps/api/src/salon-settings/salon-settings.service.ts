@@ -208,7 +208,7 @@ export class SalonSettingsService {
             }))
           })
 
-    return this.prisma.$transaction(async (tx) => {
+    await this.prisma.$transaction(async (tx) => {
       const updatedSalon = await tx.salon.update({
         where: { id: salon.id },
         data: {
@@ -249,7 +249,7 @@ export class SalonSettingsService {
         })
       }
 
-      return updatedSalon
+      return this.getSettings(user)
     })
   }
 }

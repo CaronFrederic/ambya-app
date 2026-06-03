@@ -1,10 +1,24 @@
-import React, { useMemo, useState } from "react";
-import { View, Text, ScrollView, Pressable, StyleSheet, TextInput, Switch, Modal, Image } from "react-native";
+import React, { useEffect, useMemo, useState } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  Image,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 import * as ImagePicker from "expo-image-picker";
+import * as SecureStore from "expo-secure-store";
+
 import { ProHeader } from "./components/ProHeader";
 import { logout } from "../../src/api/auth";
+import { getSalonSettings, updateSalonSettings } from "../../src/api/salon-settings";
 import { useAuthRefresh } from "../../src/providers/AuthRefreshProvider";
-
 const COLORS = {
   bg: "#FAF7F2",
   text: "#3A3A3A",
@@ -29,7 +43,8 @@ export default function SalonSettingsScreen() {
   );
 
   const [activeTab, setActiveTab] = useState<TabId>("infos");
-
+  const [loadingSettings, setLoadingSettings] = useState(true);
+  const [savingSettings, setSavingSettings] = useState(false);
   // infos
   const [name, setName] = useState("Ébène Coiffure & Beauté");
   const [desc, setDesc] = useState(
@@ -96,6 +111,139 @@ export default function SalonSettingsScreen() {
 
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+
+useEffect(() => {
+  async function loadSettings() {
+    try {
+      const token = await SecureStore.getItemAsync("accessToken");
+
+      if (!token) {
+        Alert.alert("Session expirée", "Veuillez vous reconnecter.");
+        return;
+      }
+
+      const settings = await getSalonSettings(token);
+
+      setName(settings.name ?? "");
+      setDesc(settings.description ?? "");
+      setAddress(settings.address ?? "");
+      setPhone(settings.phone ?? "");
+      setEmail(settings.email ?? "");
+
+      setCategories((prev) =>
+        Object.fromEntries(
+          Object.keys(prev).map((category) => [
+            category,
+            settings.categories?.includes(category) ?? false,
+          ])
+        )
+      );
+
+      setProfileImage(settings.coverImageUrl ?? null);
+      setGalleryImages(settings.galleryImageUrls ?? []);
+
+      setInstagramHandle(settings.instagramHandle ?? "");
+      setShowInstagramFeed(settings.showInstagramFeed ?? false);
+      setTiktokHandle(settings.tiktokHandle ?? "");
+      setShowTikTokFeed(settings.showTikTokFeed ?? false);
+      setFacebookUrl(settings.facebookUrl ?? "");
+      setWebsiteUrl(settings.websiteUrl ?? "");
+
+      setScheduleType(settings.scheduleType ?? "standard");
+      setStandardSlots(settings.standardSlots?.length ? settings.standardSlots : [{ start: "09:00", end: "18:00", enabled: true }]);
+      setCustomSlots(settings.customSlots ?? customSlots);
+
+      setPayMobileMoney(settings.paymentSettings?.payMobileMoney ?? true);
+      setPayCard(settings.paymentSettings?.payCard ?? true);
+      setPayCash(settings.paymentSettings?.payCash ?? true);
+      setOrangeMoney(settings.paymentSettings?.orangeMoney ?? "");
+      setMoovMoney(settings.paymentSettings?.moovMoney ?? "");
+      setAirtelMoney(settings.paymentSettings?.airtelMoney ?? "");
+      setBankName(settings.paymentSettings?.bankName ?? "");
+      setIban(settings.paymentSettings?.iban ?? "");
+      setBankOwner(settings.paymentSettings?.bankOwner ?? "");
+
+      setDepositEnabled(settings.depositEnabled ?? false);
+      setDepositPercentage(settings.depositPercentage ?? 30);
+      setCancelPolicyHours((settings.paymentSettings?.cancelPolicyHours ?? 12) as 12 | 24 | 48);
+    } catch (error) {
+      console.log("Load salon settings error:", error);
+      Alert.alert("Erreur", "Impossible de charger les paramètres du salon.");
+    } finally {
+      setLoadingSettings(false);
+    }
+  }
+
+  loadSettings();
+}, []);
+
+async function handleSaveSettings() {
+  if (savingSettings) return;
+
+  try {
+    setSavingSettings(true);
+
+    const token = await SecureStore.getItemAsync("accessToken");
+
+    if (!token) {
+      Alert.alert("Session expirée", "Veuillez vous reconnecter.");
+      return;
+    }
+
+    const selectedCategories = Object.entries(categories)
+      .filter(([, selected]) => selected)
+      .map(([category]) => category);
+
+    const payload = {
+      name: name.trim(),
+      description: desc.trim(),
+      address: address.trim(),
+      phone: phone.trim(),
+      email: email.trim(),
+      categories: selectedCategories,
+
+      coverImageUrl: profileImage,
+      galleryImageUrls: galleryImages,
+
+      instagramHandle: instagramHandle.trim(),
+      showInstagramFeed,
+      tiktokHandle: tiktokHandle.trim(),
+      showTikTokFeed,
+      facebookUrl: facebookUrl.trim(),
+      websiteUrl: websiteUrl.trim(),
+
+      scheduleType,
+      standardSlots,
+      customSlots,
+
+      paymentSettings: {
+        payMobileMoney,
+        payCard,
+        payCash,
+        orangeMoney: orangeMoney.trim(),
+        moovMoney: moovMoney.trim(),
+        airtelMoney: airtelMoney.trim(),
+        bankName: bankName.trim(),
+        iban: iban.trim(),
+        bankOwner: bankOwner.trim(),
+        cancelPolicyHours,
+      },
+
+      depositEnabled,
+      depositPercentage,
+    };
+
+    await updateSalonSettings(token, payload);
+
+    Alert.alert("Succès", "Les paramètres du salon ont été enregistrés.");
+  } catch (error) {
+    console.log("Save salon settings error:", error);
+    Alert.alert("Erreur", "Impossible d’enregistrer les modifications.");
+  } finally {
+    setSavingSettings(false);
+  }
+}
+
 
   async function pickSingleImage(setter: (uri: string) => void) {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -574,9 +722,17 @@ export default function SalonSettingsScreen() {
           </View>
         )}
 
-        <Pressable onPress={() => {}} style={[styles.primaryBtn, { marginTop: 18 }]}>
-          <Text style={styles.primaryBtnText}>Enregistrer les modifications</Text>
-        </Pressable>
+        <Pressable
+  onPress={handleSaveSettings}
+  style={[styles.primaryBtn, { marginTop: 18 }, savingSettings && { opacity: 0.7 }]}
+  disabled={savingSettings}
+>
+  {savingSettings ? (
+    <ActivityIndicator color="#FFF" />
+  ) : (
+    <Text style={styles.primaryBtnText}>Enregistrer les modifications</Text>
+  )}
+</Pressable>
 
         <Pressable
           onPress={() => setShowLogoutModal(true)}
