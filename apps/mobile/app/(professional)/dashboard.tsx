@@ -8,6 +8,9 @@ import {
   SafeAreaView,
   ActivityIndicator,
   RefreshControl,
+  Modal,
+  TextInput,
+  Alert,
 } from "react-native";
 import { router, type Href } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -16,6 +19,7 @@ import {
   getDashboardSummary,
   type DashboardSummary,
 } from "../../src/api/dashboard";
+import { createProBlockedSlot } from "../../src/api/appointments";
 
 const today = new Date().toLocaleDateString("fr-FR", {
   weekday: "long",
@@ -173,6 +177,46 @@ function KPI({ icon, iconColor, bgColor, label, value }: KPIProps) {
 
 function QuickActions() {
   const [isOpen, setIsOpen] = useState(false);
+  const [showBlockModal, setShowBlockModal] = useState(false);
+  const [blocking, setBlocking] = useState(false);
+  const [blockDate, setBlockDate] = useState("");
+  const [blockStart, setBlockStart] = useState("");
+  const [blockEnd, setBlockEnd] = useState("");
+  const [blockReason, setBlockReason] = useState("");
+
+  const handleCreateBlockedSlot = async () => {
+    try {
+      setBlocking(true);
+
+      const token = await getAccessToken();
+
+      if (!token) {
+        Alert.alert("Session expirée", "Veuillez vous reconnecter.");
+        return;
+      }
+
+      await createProBlockedSlot(token, {
+        date: blockDate,
+        startTime: blockStart,
+        endTime: blockEnd,
+        reason: blockReason,
+      });
+
+      Alert.alert("Succès", "Le créneau a été bloqué.");
+      setShowBlockModal(false);
+      setBlockDate("");
+      setBlockStart("");
+      setBlockEnd("");
+      setBlockReason("");
+    } catch (error: any) {
+      Alert.alert(
+        "Erreur",
+        error?.message ?? "Impossible de bloquer le créneau."
+      );
+    } finally {
+      setBlocking(false);
+    }
+  };
 
   const actions: QuickActionItem[] = [
     {
@@ -198,7 +242,7 @@ function QuickActions() {
       icon: "lock-closed-outline",
       onPress: () => {
         setIsOpen(false);
-        router.push("/(professional)/booking-history" as Href);
+        setShowBlockModal(true);
       },
       withBorder: true,
     },
@@ -263,6 +307,79 @@ function QuickActions() {
           ))}
         </View>
       )}
+
+      <Modal visible={showBlockModal} transparent animationType="fade">
+        <View style={styles.blockModalOverlay}>
+          <View style={styles.blockModalCard}>
+            <View style={styles.blockModalHeader}>
+              <View>
+                <Text style={styles.blockModalTitle}>Bloquer un créneau</Text>
+                <Text style={styles.blockModalSubtitle}>
+                  Rendez indisponible une période spécifique
+                </Text>
+              </View>
+
+              <Pressable onPress={() => setShowBlockModal(false)}>
+                <Ionicons name="close-outline" size={28} color={COLORS.white} />
+              </Pressable>
+            </View>
+
+            <View style={styles.blockModalBody}>
+              <Text style={styles.blockLabel}>Date</Text>
+              <TextInput
+                value={blockDate}
+                onChangeText={setBlockDate}
+                placeholder="2026-01-07"
+                style={styles.blockInput}
+              />
+
+              <Text style={styles.blockLabel}>Heure de début</Text>
+              <TextInput
+                value={blockStart}
+                onChangeText={setBlockStart}
+                placeholder="09:00"
+                style={styles.blockInput}
+              />
+
+              <Text style={styles.blockLabel}>Heure de fin</Text>
+              <TextInput
+                value={blockEnd}
+                onChangeText={setBlockEnd}
+                placeholder="12:00"
+                style={styles.blockInput}
+              />
+
+              <Text style={styles.blockLabel}>Raison optionnelle</Text>
+              <TextInput
+                value={blockReason}
+                onChangeText={setBlockReason}
+                placeholder="Ex: Pause déjeuner, formation..."
+                style={[styles.blockInput, { height: 96, textAlignVertical: "top" }]}
+                multiline
+              />
+
+              <View style={styles.blockModalActions}>
+                <Pressable
+                  style={styles.blockCancelBtn}
+                  onPress={() => setShowBlockModal(false)}
+                >
+                  <Text style={styles.blockCancelText}>Annuler</Text>
+                </Pressable>
+
+                <Pressable
+                  style={[styles.blockConfirmBtn, blocking && { opacity: 0.7 }]}
+                  onPress={handleCreateBlockedSlot}
+                  disabled={blocking}
+                >
+                  <Text style={styles.blockConfirmText}>
+                    {blocking ? "Blocage..." : "Bloquer"}
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -687,4 +804,93 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginTop: 10,
   },
+  blockModalOverlay: {
+  flex: 1,
+  backgroundColor: "rgba(0,0,0,0.45)",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: 18,
+},
+
+blockModalCard: {
+  width: "100%",
+  maxWidth: 430,
+  backgroundColor: COLORS.white,
+  borderRadius: 24,
+  overflow: "hidden",
+},
+
+blockModalHeader: {
+  backgroundColor: COLORS.primary,
+  padding: 22,
+  flexDirection: "row",
+  justifyContent: "space-between",
+  alignItems: "flex-start",
+},
+
+blockModalTitle: {
+  color: COLORS.white,
+  fontSize: 18,
+  fontWeight: "900",
+},
+
+blockModalSubtitle: {
+  color: "rgba(255,255,255,0.85)",
+  marginTop: 8,
+  fontWeight: "600",
+},
+
+blockModalBody: {
+  padding: 22,
+},
+
+blockLabel: {
+  color: COLORS.text,
+  fontWeight: "800",
+  marginBottom: 8,
+  marginTop: 10,
+},
+
+blockInput: {
+  borderWidth: 1,
+  borderColor: "rgba(107,39,55,0.20)",
+  borderRadius: 16,
+  paddingHorizontal: 14,
+  paddingVertical: 13,
+  color: COLORS.text,
+  backgroundColor: COLORS.white,
+},
+
+blockModalActions: {
+  flexDirection: "row",
+  gap: 12,
+  marginTop: 24,
+},
+
+blockCancelBtn: {
+  flex: 1,
+  borderWidth: 1,
+  borderColor: "rgba(107,39,55,0.20)",
+  borderRadius: 999,
+  paddingVertical: 14,
+  alignItems: "center",
+},
+
+blockCancelText: {
+  color: COLORS.primary,
+  fontWeight: "900",
+},
+
+blockConfirmBtn: {
+  flex: 1,
+  backgroundColor: COLORS.primary,
+  borderRadius: 999,
+  paddingVertical: 14,
+  alignItems: "center",
+},
+
+blockConfirmText: {
+  color: COLORS.white,
+  fontWeight: "900",
+},
 });

@@ -12,7 +12,7 @@ export type ApiEmployee = {
   phone: string | null;
   email: string | null;
   isActive: boolean;
-  status: "ACTIVE" | "ABSENT" | "ON_LEAVE" | "INACTIVE";
+  status: "ACTIVE" | "ABSENT" | "LEAVE" | "INACTIVE";
   createdAt: string;
   updatedAt: string;
 };
@@ -85,5 +85,34 @@ export function markEmployeeActive( id: string) {
   return apiFetch<ApiEmployee>(`/api/pro/employees/${id}/mark-active`, {
     method: "PATCH",
     
+  });
+}
+export type ApiLeaveRequest = {
+  id: string;
+  employeeId: string;
+  employeeName: string;
+  subject: string;
+  reason: string | null;
+  startDate: string;
+  endDate: string | null;
+  requestDate: string;
+  status: "PENDING" | "APPROVED" | "ACCEPTED" | "REJECTED" | "REFUSED";
+};
+
+export function getEmployeeLeaveRequests() {
+  return apiFetch<ApiLeaveRequest[]>("/pro/employees/leave-requests", {
+    method: "GET",
+  });
+}
+
+export function acceptEmployeeLeaveRequest(id: string) {
+  return apiFetch<ApiLeaveRequest>(`/pro/employees/leave-requests/${id}/accept`, {
+    method: "PATCH",
+  });
+}
+
+export function refuseEmployeeLeaveRequest(id: string) {
+  return apiFetch<ApiLeaveRequest>(`/pro/employees/leave-requests/${id}/refuse`, {
+    method: "PATCH",
   });
 }

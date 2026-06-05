@@ -16,13 +16,17 @@ import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { ProHeader } from "./components/ProHeader";
 import {
+  acceptEmployeeLeaveRequest,
   createEmployee,
   deleteEmployee,
+  getEmployeeLeaveRequests,
   getEmployees,
   markEmployeeAbsent,
   markEmployeeActive,
+  refuseEmployeeLeaveRequest,
   updateEmployee,
   type ApiEmployee,
+  type ApiLeaveRequest,
 } from "../../src/api/pro-employees";
 
 type EmployeeStatus = "active" | "leave" | "absent";
@@ -40,7 +44,7 @@ type Employee = {
 type RequestStatus = "pending" | "accepted" | "refused";
 
 type AppointmentRequest = {
-  id: number;
+  id: string;
   employeeName: string;
   subject: string;
   date: string;
@@ -71,7 +75,7 @@ function mapApiEmployeeToUi(employee: ApiEmployee): Employee {
   let status: EmployeeStatus = "active";
 
   if (employee.status === "ABSENT") status = "absent";
-  if (employee.status === "ON_LEAVE") status = "leave";
+  if (employee.status === "LEAVE") status = "leave";
 
   return {
     id: employee.id,
@@ -84,6 +88,31 @@ function mapApiEmployeeToUi(employee: ApiEmployee): Employee {
     photo: employee.photoUrl,
     phone: employee.phone ?? "",
     email: employee.email ?? "",
+  };
+}
+
+function mapApiLeaveRequestToUi(request: ApiLeaveRequest): AppointmentRequest {
+  let status: RequestStatus = "pending";
+
+  if (request.status === "ACCEPTED" || request.status === "APPROVED") {
+    status = "accepted";
+  }
+
+  if (request.status === "REFUSED" || request.status === "REJECTED") {
+    status = "refused";
+  }
+
+  return {
+    id: request.id,
+    employeeName: request.employeeName,
+    subject: request.subject,
+    date: request.startDate,
+    time: request.endDate
+      ? `${new Date(request.startDate).toLocaleDateString("fr-FR")} → ${new Date(
+          request.endDate
+        ).toLocaleDateString("fr-FR")}`
+      : "Journée",
+    status,
   };
 }
 
@@ -120,41 +149,7 @@ export default function TeamManagementScreen() {
 
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [showAppointmentRequests, setShowAppointmentRequests] = useState(false);
-
-  const [appointmentRequests, setAppointmentRequests] = useState<AppointmentRequest[]>([
-    {
-      id: 1,
-      employeeName: "Marie Kouassi",
-      subject: "Demande de rendez-vous mensuel",
-      date: "2026-02-05",
-      time: "10:00",
-      status: "pending",
-    },
-    {
-      id: 2,
-      employeeName: "Jean Bongo",
-      subject: "Discussion sur planification",
-      date: "2026-02-07",
-      time: "14:30",
-      status: "pending",
-    },
-    {
-      id: 3,
-      employeeName: "Sophie Mbongo",
-      subject: "Retour de congé - Briefing",
-      date: "2026-02-10",
-      time: "09:00",
-      status: "accepted",
-    },
-    {
-      id: 4,
-      employeeName: "Paul N'Guema",
-      subject: "Formation continue",
-      date: "2026-02-12",
-      time: "15:00",
-      status: "refused",
-    },
-  ]);
+  const [appointmentRequests, setAppointmentRequests] = useState<AppointmentRequest[]>([]);
 
   const headerSubtitle = useMemo(
     () => `${employees.length} membres dans votre équipe`,
@@ -172,10 +167,15 @@ export default function TeamManagementScreen() {
     setEmployees(data.map(mapApiEmployeeToUi));
   };
 
+  const loadLeaveRequests = async () => {
+    const data = await getEmployeeLeaveRequests();
+    setAppointmentRequests(data.map(mapApiLeaveRequestToUi));
+  };
+
   const initialLoad = async () => {
     try {
       setLoading(true);
-      await loadEmployees();
+      await Promise.all([loadEmployees(), loadLeaveRequests()]);
     } catch (error) {
       toast(error instanceof Error ? error.message : "Erreur de chargement.");
     } finally {
@@ -186,7 +186,7 @@ export default function TeamManagementScreen() {
   const onRefresh = async () => {
     try {
       setRefreshing(true);
-      await loadEmployees();
+      await Promise.all([loadEmployees(), loadLeaveRequests()]);
     } catch (error) {
       toast(error instanceof Error ? error.message : "Erreur de rafraîchissement.");
     } finally {
@@ -378,18 +378,24 @@ export default function TeamManagementScreen() {
     }
   };
 
-  const handleAcceptRequest = (id: number) => {
-    setAppointmentRequests((prev) =>
-      prev.map((req) => (req.id === id ? { ...req, status: "accepted" } : req))
-    );
-    toast("Demande acceptée");
+  const handleAcceptRequest = async (id: string) => {
+    try {
+      await acceptEmployeeLeaveRequest(id);
+      await Promise.all([loadLeaveRequests(), loadEmployees()]);
+      toast("Demande acceptée");
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Erreur lors de l'acceptation.");
+    }
   };
 
-  const handleRefuseRequest = (id: number) => {
-    setAppointmentRequests((prev) =>
-      prev.map((req) => (req.id === id ? { ...req, status: "refused" } : req))
-    );
-    toast("Demande refusée");
+  const handleRefuseRequest = async (id: string) => {
+    try {
+      await refuseEmployeeLeaveRequest(id);
+      await loadLeaveRequests();
+      toast("Demande refusée");
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Erreur lors du refus.");
+    }
   };
 
   return (
@@ -405,9 +411,7 @@ export default function TeamManagementScreen() {
         <ScrollView
           contentContainerStyle={styles.content}
           showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-          }
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         >
           <Pressable
             onPress={() => {
@@ -435,10 +439,7 @@ export default function TeamManagementScreen() {
                 <View style={styles.rowTop}>
                   <View style={styles.avatar}>
                     {employee.photo ? (
-                      <Image
-                        source={{ uri: employee.photo }}
-                        style={{ width: 48, height: 48, borderRadius: 999 }}
-                      />
+                      <Image source={{ uri: employee.photo }} style={{ width: 48, height: 48, borderRadius: 999 }} />
                     ) : (
                       <Ionicons name="person" size={18} color="#6B2737" />
                     )}
@@ -460,32 +461,19 @@ export default function TeamManagementScreen() {
                   </View>
 
                   <View style={styles.actions}>
-                    <Pressable
-                      onPress={() => handleToggleAbsence(employee.id)}
-                      style={styles.iconBtn}
-                    >
+                    <Pressable onPress={() => handleToggleAbsence(employee.id)} style={styles.iconBtn}>
                       <Ionicons
-                        name={
-                          employee.status === "absent"
-                            ? "checkmark-circle"
-                            : "close-circle"
-                        }
+                        name={employee.status === "absent" ? "checkmark-circle" : "close-circle"}
                         size={20}
                         color={employee.status === "absent" ? "#16a34a" : "#dc2626"}
                       />
                     </Pressable>
 
-                    <Pressable
-                      onPress={() => handleEditEmployee(employee.id)}
-                      style={styles.iconBtn}
-                    >
+                    <Pressable onPress={() => handleEditEmployee(employee.id)} style={styles.iconBtn}>
                       <Ionicons name="create-outline" size={20} color="#6B2737" />
                     </Pressable>
 
-                    <Pressable
-                      onPress={() => setShowDeleteConfirm(employee.id)}
-                      style={styles.iconBtn}
-                    >
+                    <Pressable onPress={() => setShowDeleteConfirm(employee.id)} style={styles.iconBtn}>
                       <Ionicons name="trash-outline" size={20} color="#dc2626" />
                     </Pressable>
                   </View>
@@ -516,95 +504,69 @@ export default function TeamManagementScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.requestsModalCard}>
             <View style={styles.modalHeader}>
-              <Text style={styles.requestsModalTitle}>
-                Demandes de rendez-vous employés
-              </Text>
-              <Pressable
-                onPress={() => setShowAppointmentRequests(false)}
-                style={styles.closeBtn}
-              >
+              <Text style={styles.requestsModalTitle}>Demandes de congés employés</Text>
+              <Pressable onPress={() => setShowAppointmentRequests(false)} style={styles.closeBtn}>
                 <Ionicons name="close" size={24} color="#3A3A3A" />
               </Pressable>
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: 14 }}>
-              {appointmentRequests.map((request) => (
-                <View key={request.id} style={styles.requestCard}>
-                  <View style={styles.requestHeader}>
-                    <View style={{ flex: 1 }}>
-                      <View style={styles.requestTitleRow}>
-                        <Text style={styles.requestEmployeeName}>
-                          {request.employeeName}
-                        </Text>
-                        <View
-                          style={[styles.requestBadge, requestBadgeStyle(request.status)]}
-                        >
-                          <Text
-                            style={[
-                              styles.requestBadgeText,
-                              requestBadgeTextStyle(request.status),
-                            ]}
-                          >
-                            {request.status === "pending"
-                              ? "En attente"
-                              : request.status === "accepted"
-                              ? "Accepté"
-                              : "Refusé"}
-                          </Text>
-                        </View>
-                      </View>
-
-                      <Text style={styles.requestSubject}>{request.subject}</Text>
-
-                      <View style={styles.requestMetaRow}>
-                        <View style={styles.requestMetaItem}>
-                          <Ionicons
-                            name="calendar-outline"
-                            size={14}
-                            color="rgba(58,58,58,0.55)"
-                          />
-                          <Text style={styles.requestMetaText}>
-                            {new Date(request.date).toLocaleDateString("fr-FR")}
-                          </Text>
-                        </View>
-
-                        <View style={styles.requestMetaItem}>
-                          <Ionicons
-                            name="time-outline"
-                            size={14}
-                            color="rgba(58,58,58,0.55)"
-                          />
-                          <Text style={styles.requestMetaText}>{request.time}</Text>
-                        </View>
-                      </View>
-                    </View>
-                  </View>
-
-                  {request.status === "pending" && (
-                    <View style={styles.requestActions}>
-                      <Pressable
-                        onPress={() => handleAcceptRequest(request.id)}
-                        style={styles.acceptBtn}
-                      >
-                        <Ionicons
-                          name="checkmark-circle-outline"
-                          size={18}
-                          color="#fff"
-                        />
-                        <Text style={styles.acceptBtnText}>Accepter</Text>
-                      </Pressable>
-
-                      <Pressable
-                        onPress={() => handleRefuseRequest(request.id)}
-                        style={styles.refuseBtn}
-                      >
-                        <Ionicons name="close-outline" size={18} color="#fff" />
-                        <Text style={styles.refuseBtnText}>Refuser</Text>
-                      </Pressable>
-                    </View>
-                  )}
+              {appointmentRequests.length === 0 ? (
+                <View style={styles.requestCard}>
+                  <Text style={styles.requestSubject}>Aucune demande de congé pour le moment.</Text>
                 </View>
-              ))}
+              ) : (
+                appointmentRequests.map((request) => (
+                  <View key={request.id} style={styles.requestCard}>
+                    <View style={styles.requestHeader}>
+                      <View style={{ flex: 1 }}>
+                        <View style={styles.requestTitleRow}>
+                          <Text style={styles.requestEmployeeName}>{request.employeeName}</Text>
+                          <View style={[styles.requestBadge, requestBadgeStyle(request.status)]}>
+                            <Text style={[styles.requestBadgeText, requestBadgeTextStyle(request.status)]}>
+                              {request.status === "pending"
+                                ? "En attente"
+                                : request.status === "accepted"
+                                ? "Accepté"
+                                : "Refusé"}
+                            </Text>
+                          </View>
+                        </View>
+
+                        <Text style={styles.requestSubject}>{request.subject}</Text>
+
+                        <View style={styles.requestMetaRow}>
+                          <View style={styles.requestMetaItem}>
+                            <Ionicons name="calendar-outline" size={14} color="rgba(58,58,58,0.55)" />
+                            <Text style={styles.requestMetaText}>
+                              {new Date(request.date).toLocaleDateString("fr-FR")}
+                            </Text>
+                          </View>
+
+                          <View style={styles.requestMetaItem}>
+                            <Ionicons name="time-outline" size={14} color="rgba(58,58,58,0.55)" />
+                            <Text style={styles.requestMetaText}>{request.time}</Text>
+                          </View>
+                        </View>
+                      </View>
+                    </View>
+
+                    {request.status === "pending" && (
+                      <View style={styles.requestActions}>
+                        <Pressable onPress={() => handleAcceptRequest(request.id)} style={styles.acceptBtn}>
+                          <Ionicons name="checkmark-circle-outline" size={18} color="#fff" />
+                          <Text style={styles.acceptBtnText}>Accepter</Text>
+                        </Pressable>
+
+                        <Pressable onPress={() => handleRefuseRequest(request.id)} style={styles.refuseBtn}>
+                          <Ionicons name="close-outline" size={18} color="#fff" />
+                          <Text style={styles.refuseBtnText}>Refuser</Text>
+                        </Pressable>
+                      </View>
+                    )}
+                  </View>
+                ))
+              )}
             </ScrollView>
 
             <Pressable
@@ -617,12 +579,7 @@ export default function TeamManagementScreen() {
         </View>
       </Modal>
 
-      <Modal
-        visible={showAbsenceModal !== null}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowAbsenceModal(null)}
-      >
+      <Modal visible={showAbsenceModal !== null} transparent animationType="slide" onRequestClose={() => setShowAbsenceModal(null)}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
@@ -635,49 +592,24 @@ export default function TeamManagementScreen() {
             <View style={styles.alertBox}>
               <Ionicons name="alert-circle" size={16} color="#dc2626" />
               <Text style={styles.alertText}>
-                L'employé sera marqué comme absent et ne pourra pas prendre de
-                rendez-vous pendant cette période.
+                L'employé sera marqué comme absent et ne pourra pas prendre de rendez-vous pendant cette période.
               </Text>
             </View>
 
             <Text style={styles.label}>Date de début *</Text>
-            <TextInput
-              value={absenceStartDate}
-              onChangeText={setAbsenceStartDate}
-              placeholder="YYYY-MM-DD"
-              autoCapitalize="none"
-              style={styles.input}
-            />
+            <TextInput value={absenceStartDate} onChangeText={setAbsenceStartDate} placeholder="YYYY-MM-DD" autoCapitalize="none" style={styles.input} />
 
             <Text style={styles.label}>Date de fin (optionnelle)</Text>
-            <TextInput
-              value={absenceEndDate}
-              onChangeText={setAbsenceEndDate}
-              placeholder="YYYY-MM-DD"
-              autoCapitalize="none"
-              style={styles.input}
-            />
+            <TextInput value={absenceEndDate} onChangeText={setAbsenceEndDate} placeholder="YYYY-MM-DD" autoCapitalize="none" style={styles.input} />
 
             <Text style={styles.label}>Motif (optionnel)</Text>
-            <TextInput
-              value={absenceReason}
-              onChangeText={setAbsenceReason}
-              placeholder="Maladie, urgence..."
-              style={styles.input}
-            />
+            <TextInput value={absenceReason} onChangeText={setAbsenceReason} placeholder="Maladie, urgence..." style={styles.input} />
 
             <View style={styles.modalFooter}>
-              <Pressable
-                onPress={() => setShowAbsenceModal(null)}
-                style={styles.secondaryBtn}
-              >
+              <Pressable onPress={() => setShowAbsenceModal(null)} style={styles.secondaryBtn}>
                 <Text style={styles.secondaryBtnText}>Annuler</Text>
               </Pressable>
-              <Pressable
-                onPress={handleConfirmAbsence}
-                disabled={!absenceStartDate}
-                style={[styles.dangerBtn, !absenceStartDate && { opacity: 0.5 }]}
-              >
+              <Pressable onPress={handleConfirmAbsence} disabled={!absenceStartDate} style={[styles.dangerBtn, !absenceStartDate && { opacity: 0.5 }]}>
                 <Text style={styles.dangerBtnText}>Confirmer</Text>
               </Pressable>
             </View>
@@ -685,12 +617,7 @@ export default function TeamManagementScreen() {
         </View>
       </Modal>
 
-      <Modal
-        visible={showModal}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowModal(false)}
-      >
+      <Modal visible={showModal} transparent animationType="slide" onRequestClose={() => setShowModal(false)}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalCardLarge}>
             <ScrollView showsVerticalScrollIndicator={false}>
@@ -702,10 +629,7 @@ export default function TeamManagementScreen() {
               <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
                 <View style={styles.photoBox}>
                   {editFormData.photo ? (
-                    <Image
-                      source={{ uri: editFormData.photo }}
-                      style={{ width: "100%", height: "100%" }}
-                    />
+                    <Image source={{ uri: editFormData.photo }} style={{ width: "100%", height: "100%" }} />
                   ) : (
                     <Ionicons name="camera" size={24} color="rgba(107,39,55,0.6)" />
                   )}
@@ -718,12 +642,7 @@ export default function TeamManagementScreen() {
                   </Pressable>
 
                   {!!editFormData.photo && (
-                    <Pressable
-                      onPress={() =>
-                        setEditFormData((p) => ({ ...p, photo: null }))
-                      }
-                      style={styles.smallDanger}
-                    >
+                    <Pressable onPress={() => setEditFormData((p) => ({ ...p, photo: null }))} style={styles.smallDanger}>
                       <Ionicons name="trash-outline" size={16} color="#fff" />
                       <Text style={styles.smallPrimaryText}>Retirer</Text>
                     </Pressable>
@@ -732,45 +651,19 @@ export default function TeamManagementScreen() {
               </View>
 
               <Text style={styles.label}>Nom</Text>
-              <TextInput
-                value={editFormData.name}
-                onChangeText={(v) => setEditFormData((p) => ({ ...p, name: v }))}
-                placeholder="Nom"
-                style={styles.input}
-              />
+              <TextInput value={editFormData.name} onChangeText={(v) => setEditFormData((p) => ({ ...p, name: v }))} placeholder="Nom" style={styles.input} />
 
               <Text style={styles.label}>Prénom</Text>
-              <TextInput
-                value={editFormData.firstName}
-                onChangeText={(v) =>
-                  setEditFormData((p) => ({ ...p, firstName: v }))
-                }
-                placeholder="Prénom"
-                style={styles.input}
-              />
+              <TextInput value={editFormData.firstName} onChangeText={(v) => setEditFormData((p) => ({ ...p, firstName: v }))} placeholder="Prénom" style={styles.input} />
 
               <Text style={styles.label}>Téléphone</Text>
-              <TextInput
-                value={editFormData.phone}
-                onChangeText={(v) => setEditFormData((p) => ({ ...p, phone: v }))}
-                placeholder="+241 ..."
-                keyboardType="phone-pad"
-                style={styles.input}
-              />
+              <TextInput value={editFormData.phone} onChangeText={(v) => setEditFormData((p) => ({ ...p, phone: v }))} placeholder="+241 ..." keyboardType="phone-pad" style={styles.input} />
 
               <Text style={styles.label}>Email</Text>
-              <TextInput
-                value={editFormData.email}
-                onChangeText={(v) => setEditFormData((p) => ({ ...p, email: v }))}
-                placeholder="email@exemple.com"
-                keyboardType="email-address"
-                autoCapitalize="none"
-                style={styles.input}
-              />
+              <TextInput value={editFormData.email} onChangeText={(v) => setEditFormData((p) => ({ ...p, email: v }))} placeholder="email@exemple.com" keyboardType="email-address" autoCapitalize="none" style={styles.input} />
 
               <Text style={styles.helpText}>
-                Ces informations seront utilisées pour inviter l'employé à créer
-                son mot de passe.
+                Ces informations seront utilisées pour inviter l'employé à créer son mot de passe.
               </Text>
 
               <Text style={styles.label}>Rôle / Spécialité</Text>
@@ -793,9 +686,7 @@ export default function TeamManagementScreen() {
                             customRole: next.includes("Autre") ? p.customRole : "",
                           }));
 
-                          if (!next.includes("Autre")) {
-                            setCustomRole("");
-                          }
+                          if (!next.includes("Autre")) setCustomRole("");
 
                           return next;
                         });
@@ -838,20 +729,12 @@ export default function TeamManagementScreen() {
                   <Text style={styles.secondaryBtnText}>Annuler</Text>
                 </Pressable>
 
-                <Pressable
-                  onPress={handleSaveEmployee}
-                  style={[styles.primaryBtnSmall, submitting && { opacity: 0.6 }]}
-                  disabled={submitting}
-                >
+                <Pressable onPress={handleSaveEmployee} style={[styles.primaryBtnSmall, submitting && { opacity: 0.6 }]} disabled={submitting}>
                   {submitting ? (
                     <ActivityIndicator size="small" color="#fff" />
                   ) : (
                     <>
-                      <Ionicons
-                        name={editingEmployee ? "save-outline" : "mail-outline"}
-                        size={18}
-                        color="#fff"
-                      />
+                      <Ionicons name={editingEmployee ? "save-outline" : "mail-outline"} size={18} color="#fff" />
                       <Text style={styles.primaryBtnText}>
                         {editingEmployee ? "Enregistrer" : "Envoyer l'invitation"}
                       </Text>
@@ -866,12 +749,7 @@ export default function TeamManagementScreen() {
         </View>
       </Modal>
 
-      <Modal
-        visible={showInvitationSent}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowInvitationSent(false)}
-      >
+      <Modal visible={showInvitationSent} transparent animationType="fade" onRequestClose={() => setShowInvitationSent(false)}>
         <View style={styles.modalOverlay}>
           <View style={styles.confirmCard}>
             <View style={styles.confirmIcon}>
@@ -879,25 +757,16 @@ export default function TeamManagementScreen() {
             </View>
             <Text style={styles.confirmTitle}>Invitation envoyée !</Text>
             <Text style={styles.confirmText}>
-              L'employé peut créer son mot de passe via email/SMS et accéder à
-              l'espace via le login unique.
+              L'employé peut créer son mot de passe via email/SMS et accéder à l'espace via le login unique.
             </Text>
-            <Pressable
-              onPress={() => setShowInvitationSent(false)}
-              style={styles.primaryBtn}
-            >
+            <Pressable onPress={() => setShowInvitationSent(false)} style={styles.primaryBtn}>
               <Text style={styles.primaryBtnText}>Compris</Text>
             </Pressable>
           </View>
         </View>
       </Modal>
 
-      <Modal
-        visible={showDeleteConfirm !== null}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowDeleteConfirm(null)}
-      >
+      <Modal visible={showDeleteConfirm !== null} transparent animationType="fade" onRequestClose={() => setShowDeleteConfirm(null)}>
         <View style={styles.modalOverlay}>
           <View style={styles.confirmCard}>
             <View style={[styles.confirmIcon, { backgroundColor: "#fee2e2" }]}>
@@ -907,16 +776,10 @@ export default function TeamManagementScreen() {
             <Text style={styles.confirmText}>Cette action est irréversible.</Text>
 
             <View style={{ flexDirection: "row", gap: 10 }}>
-              <Pressable
-                onPress={() => setShowDeleteConfirm(null)}
-                style={[styles.secondaryBtn, { flex: 1 }]}
-              >
+              <Pressable onPress={() => setShowDeleteConfirm(null)} style={[styles.secondaryBtn, { flex: 1 }]}>
                 <Text style={styles.secondaryBtnText}>Annuler</Text>
               </Pressable>
-              <Pressable
-                onPress={() => handleDeleteEmployee(showDeleteConfirm!)}
-                style={[styles.dangerBtn, { flex: 1 }]}
-              >
+              <Pressable onPress={() => handleDeleteEmployee(showDeleteConfirm!)} style={[styles.dangerBtn, { flex: 1 }]}>
                 <Text style={styles.dangerBtnText}>Supprimer</Text>
               </Pressable>
             </View>
@@ -969,389 +832,69 @@ function requestBadgeTextStyle(status: RequestStatus) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#FAF7F2" },
   content: { padding: 18, paddingBottom: 32, gap: 12 },
-
-  loaderWrap: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    gap: 12,
-  },
-  loaderText: {
-    color: "#6B2737",
-    fontWeight: "700",
-  },
-
-  primaryBtn: {
-    backgroundColor: "#6B2737",
-    borderRadius: 999,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    flexDirection: "row",
-    gap: 8,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  primaryBtnSmall: {
-    backgroundColor: "#6B2737",
-    borderRadius: 999,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    flexDirection: "row",
-    gap: 8,
-    justifyContent: "center",
-    alignItems: "center",
-    flex: 1,
-  },
+  loaderWrap: { flex: 1, justifyContent: "center", alignItems: "center", gap: 12 },
+  loaderText: { color: "#6B2737", fontWeight: "700" },
+  primaryBtn: { backgroundColor: "#6B2737", borderRadius: 999, paddingVertical: 14, paddingHorizontal: 16, flexDirection: "row", gap: 8, justifyContent: "center", alignItems: "center" },
+  primaryBtnSmall: { backgroundColor: "#6B2737", borderRadius: 999, paddingVertical: 12, paddingHorizontal: 14, flexDirection: "row", gap: 8, justifyContent: "center", alignItems: "center", flex: 1 },
   primaryBtnText: { color: "#fff", fontSize: 14, fontWeight: "600" },
-
-  card: {
-    backgroundColor: "#fff",
-    borderRadius: 18,
-    padding: 14,
-    shadowColor: "#000",
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-  },
+  card: { backgroundColor: "#fff", borderRadius: 18, padding: 14, shadowColor: "#000", shadowOpacity: 0.06, shadowRadius: 10 },
   rowTop: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
-
-  avatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 999,
-    backgroundColor: "rgba(107,39,55,0.10)",
-    justifyContent: "center",
-    alignItems: "center",
-    overflow: "hidden",
-  },
+  avatar: { width: 48, height: 48, borderRadius: 999, backgroundColor: "rgba(107,39,55,0.10)", justifyContent: "center", alignItems: "center", overflow: "hidden" },
   empName: { color: "#3A3A3A", fontSize: 15, fontWeight: "700" },
-  empRole: {
-    color: "rgba(58,58,58,0.6)",
-    marginTop: 2,
-    marginBottom: 8,
-    fontSize: 12,
-  },
-
-  badge: {
-    alignSelf: "flex-start",
-    borderRadius: 999,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-  },
+  empRole: { color: "rgba(58,58,58,0.6)", marginTop: 2, marginBottom: 8, fontSize: 12 },
+  badge: { alignSelf: "flex-start", borderRadius: 999, paddingVertical: 6, paddingHorizontal: 10 },
   badgeText: { fontSize: 12, fontWeight: "700", color: "#3A3A3A" },
-
   actions: { flexDirection: "row", gap: 8 },
   iconBtn: { padding: 4 },
-
-  toastWrap: {
-    flex: 1,
-    justifyContent: "flex-start",
-    alignItems: "center",
-    paddingTop: 90,
-  },
-  toast: {
-    backgroundColor: "#6B2737",
-    borderRadius: 999,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    flexDirection: "row",
-    gap: 8,
-    alignItems: "center",
-  },
+  toastWrap: { flex: 1, justifyContent: "flex-start", alignItems: "center", paddingTop: 90 },
+  toast: { backgroundColor: "#6B2737", borderRadius: 999, paddingVertical: 10, paddingHorizontal: 14, flexDirection: "row", gap: 8, alignItems: "center" },
   toastText: { color: "#fff", fontWeight: "600" },
-
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    justifyContent: "center",
-    padding: 18,
-  },
+  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", padding: 18 },
   modalCard: { backgroundColor: "#fff", borderRadius: 22, padding: 16 },
-  modalCardLarge: {
-    backgroundColor: "#fff",
-    borderRadius: 22,
-    padding: 16,
-    maxHeight: "92%",
-  },
-  modalHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 10,
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: "800",
-    color: "#6B2737",
-    marginBottom: 12,
-  },
-
-  alertBox: {
-    backgroundColor: "#FEF2F2",
-    borderRadius: 14,
-    padding: 12,
-    flexDirection: "row",
-    gap: 10,
-    marginBottom: 12,
-  },
+  modalCardLarge: { backgroundColor: "#fff", borderRadius: 22, padding: 16, maxHeight: "92%" },
+  modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 },
+  modalTitle: { fontSize: 18, fontWeight: "800", color: "#6B2737", marginBottom: 12 },
+  alertBox: { backgroundColor: "#FEF2F2", borderRadius: 14, padding: 12, flexDirection: "row", gap: 10, marginBottom: 12 },
   alertText: { flex: 1, color: "#3A3A3A", fontSize: 12 },
-
-  label: {
-    color: "#3A3A3A",
-    fontSize: 13,
-    fontWeight: "700",
-    marginBottom: 6,
-    marginTop: 8,
-  },
-  input: {
-    backgroundColor: "#FAF7F2",
-    borderRadius: 16,
-    paddingHorizontal: 14,
-    paddingVertical: Platform.OS === "ios" ? 12 : 10,
-    borderWidth: 1,
-    borderColor: "rgba(107,39,55,0.2)",
-  },
-
+  label: { color: "#3A3A3A", fontSize: 13, fontWeight: "700", marginBottom: 6, marginTop: 8 },
+  input: { backgroundColor: "#FAF7F2", borderRadius: 16, paddingHorizontal: 14, paddingVertical: Platform.OS === "ios" ? 12 : 10, borderWidth: 1, borderColor: "rgba(107,39,55,0.2)" },
   helpText: { color: "rgba(58,58,58,0.6)", fontSize: 12, marginTop: 8 },
-
   modalFooter: { flexDirection: "row", gap: 10, marginTop: 14 },
-  secondaryBtn: {
-    backgroundColor: "#FAF7F2",
-    borderRadius: 999,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  secondaryBtn: { backgroundColor: "#FAF7F2", borderRadius: 999, paddingVertical: 12, paddingHorizontal: 14, alignItems: "center", justifyContent: "center" },
   secondaryBtnText: { color: "#3A3A3A", fontWeight: "700" },
-  dangerBtn: {
-    backgroundColor: "#dc2626",
-    borderRadius: 999,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  dangerBtn: { backgroundColor: "#dc2626", borderRadius: 999, paddingVertical: 12, paddingHorizontal: 14, alignItems: "center", justifyContent: "center" },
   dangerBtnText: { color: "#fff", fontWeight: "800" },
-
-  confirmCard: {
-    backgroundColor: "#fff",
-    borderRadius: 22,
-    padding: 18,
-    alignItems: "center",
-  },
-  confirmIcon: {
-    width: 54,
-    height: 54,
-    borderRadius: 999,
-    backgroundColor: "#dcfce7",
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 10,
-  },
-  confirmTitle: {
-    fontSize: 18,
-    fontWeight: "900",
-    color: "#3A3A3A",
-    marginBottom: 6,
-    textAlign: "center",
-  },
-  confirmText: {
-    fontSize: 13,
-    color: "rgba(58,58,58,0.7)",
-    textAlign: "center",
-    marginBottom: 14,
-  },
-
+  confirmCard: { backgroundColor: "#fff", borderRadius: 22, padding: 18, alignItems: "center" },
+  confirmIcon: { width: 54, height: 54, borderRadius: 999, backgroundColor: "#dcfce7", justifyContent: "center", alignItems: "center", marginBottom: 10 },
+  confirmTitle: { fontSize: 18, fontWeight: "900", color: "#3A3A3A", marginBottom: 6, textAlign: "center" },
+  confirmText: { fontSize: 13, color: "rgba(58,58,58,0.7)", textAlign: "center", marginBottom: 14 },
   chipsWrap: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 4 },
-  chip: {
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderRadius: 999,
-    backgroundColor: "#fff",
-    borderWidth: 1,
-    borderColor: "rgba(107,39,55,0.2)",
-  },
-  chipActive: {
-    backgroundColor: "rgba(107,39,55,0.10)",
-    borderColor: "#6B2737",
-  },
+  chip: { paddingVertical: 8, paddingHorizontal: 10, borderRadius: 999, backgroundColor: "#fff", borderWidth: 1, borderColor: "rgba(107,39,55,0.2)" },
+  chipActive: { backgroundColor: "rgba(107,39,55,0.10)", borderColor: "#6B2737" },
   chipText: { fontSize: 12, color: "#3A3A3A" },
   chipTextActive: { fontWeight: "800", color: "#6B2737" },
-
-  photoBox: {
-    width: 72,
-    height: 72,
-    borderRadius: 18,
-    backgroundColor: "#FAF7F2",
-    borderWidth: 1,
-    borderColor: "rgba(107,39,55,0.2)",
-    justifyContent: "center",
-    alignItems: "center",
-    overflow: "hidden",
-  },
-
-  smallPrimary: {
-    backgroundColor: "#6B2737",
-    borderRadius: 999,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    flexDirection: "row",
-    gap: 6,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  smallDanger: {
-    backgroundColor: "#dc2626",
-    borderRadius: 999,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    flexDirection: "row",
-    gap: 6,
-    justifyContent: "center",
-    alignItems: "center",
-  },
+  photoBox: { width: 72, height: 72, borderRadius: 18, backgroundColor: "#FAF7F2", borderWidth: 1, borderColor: "rgba(107,39,55,0.2)", justifyContent: "center", alignItems: "center", overflow: "hidden" },
+  smallPrimary: { backgroundColor: "#6B2737", borderRadius: 999, paddingVertical: 10, paddingHorizontal: 12, flexDirection: "row", gap: 6, justifyContent: "center", alignItems: "center" },
+  smallDanger: { backgroundColor: "#dc2626", borderRadius: 999, paddingVertical: 10, paddingHorizontal: 12, flexDirection: "row", gap: 6, justifyContent: "center", alignItems: "center" },
   smallPrimaryText: { color: "#fff", fontWeight: "900", fontSize: 12 },
-
-  leaveRequestsBtn: {
-    backgroundColor: "#D4AF6A",
-    borderRadius: 999,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    flexDirection: "row",
-    gap: 8,
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 8,
-  },
-
-  leaveRequestsBtnText: {
-    color: "#fff",
-    fontSize: 14,
-    fontWeight: "700",
-  },
-
-  requestsModalCard: {
-    backgroundColor: "#fff",
-    borderRadius: 30,
-    padding: 18,
-    maxHeight: "90%",
-  },
-
-  requestsModalTitle: {
-    fontSize: 18,
-    fontWeight: "800",
-    color: "#6B2737",
-    flex: 1,
-    paddingRight: 12,
-  },
-
-  closeBtn: {
-    padding: 4,
-    borderRadius: 10,
-  },
-
-  requestCard: {
-    backgroundColor: "#FAF7F2",
-    borderRadius: 22,
-    padding: 16,
-  },
-
-  requestHeader: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-  },
-
-  requestTitleRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginBottom: 8,
-    flexWrap: "wrap",
-  },
-
-  requestEmployeeName: {
-    color: "#3A3A3A",
-    fontSize: 16,
-    fontWeight: "800",
-  },
-
-  requestBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 999,
-  },
-
-  requestBadgeText: {
-    fontSize: 12,
-    fontWeight: "700",
-  },
-
-  requestSubject: {
-    color: "#3A3A3A",
-    fontSize: 14,
-    marginBottom: 10,
-  },
-
-  requestMetaRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 18,
-  },
-
-  requestMetaItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-  },
-
-  requestMetaText: {
-    color: "rgba(58,58,58,0.6)",
-    fontSize: 12,
-    fontWeight: "600",
-  },
-
-  requestActions: {
-    flexDirection: "row",
-    gap: 12,
-    marginTop: 14,
-    paddingTop: 14,
-    borderTopWidth: 1,
-    borderTopColor: "rgba(107,39,55,0.10)",
-  },
-
-  acceptBtn: {
-    flex: 1,
-    backgroundColor: "#09B43A",
-    borderRadius: 999,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    gap: 8,
-  },
-
-  acceptBtnText: {
-    color: "#fff",
-    fontWeight: "800",
-    fontSize: 14,
-  },
-
-  refuseBtn: {
-    flex: 1,
-    backgroundColor: "#F40000",
-    borderRadius: 999,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    gap: 8,
-  },
-
-  refuseBtnText: {
-    color: "#fff",
-    fontWeight: "800",
-    fontSize: 14,
-  },
+  leaveRequestsBtn: { backgroundColor: "#D4AF6A", borderRadius: 999, paddingVertical: 14, paddingHorizontal: 16, flexDirection: "row", gap: 8, justifyContent: "center", alignItems: "center", marginBottom: 8 },
+  leaveRequestsBtnText: { color: "#fff", fontSize: 14, fontWeight: "700" },
+  requestsModalCard: { backgroundColor: "#fff", borderRadius: 30, padding: 18, maxHeight: "90%" },
+  requestsModalTitle: { fontSize: 18, fontWeight: "800", color: "#6B2737", flex: 1, paddingRight: 12 },
+  closeBtn: { padding: 4, borderRadius: 10 },
+  requestCard: { backgroundColor: "#FAF7F2", borderRadius: 22, padding: 16 },
+  requestHeader: { flexDirection: "row", alignItems: "flex-start" },
+  requestTitleRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" },
+  requestEmployeeName: { color: "#3A3A3A", fontSize: 16, fontWeight: "800" },
+  requestBadge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 999 },
+  requestBadgeText: { fontSize: 12, fontWeight: "700" },
+  requestSubject: { color: "#3A3A3A", fontSize: 14, marginBottom: 10 },
+  requestMetaRow: { flexDirection: "row", alignItems: "center", gap: 18 },
+  requestMetaItem: { flexDirection: "row", alignItems: "center", gap: 6 },
+  requestMetaText: { color: "rgba(58,58,58,0.6)", fontSize: 12, fontWeight: "600" },
+  requestActions: { flexDirection: "row", gap: 12, marginTop: 14, paddingTop: 14, borderTopWidth: 1, borderTopColor: "rgba(107,39,55,0.10)" },
+  acceptBtn: { flex: 1, backgroundColor: "#09B43A", borderRadius: 999, paddingVertical: 12, paddingHorizontal: 14, flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 8 },
+  acceptBtnText: { color: "#fff", fontWeight: "800", fontSize: 14 },
+  refuseBtn: { flex: 1, backgroundColor: "#F40000", borderRadius: 999, paddingVertical: 12, paddingHorizontal: 14, flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 8 },
+  refuseBtnText: { color: "#fff", fontWeight: "800", fontSize: 14 },
 });

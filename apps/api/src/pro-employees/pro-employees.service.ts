@@ -14,15 +14,36 @@ import { Prisma } from '@prisma/client';
 export class ProEmployeesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private ensureSalon(user: any) {
-    if (!user?.salonId) {
+  // ✅ FIX IMPORTANT (async)
+  private async ensureSalon(user: any): Promise<string> {
+    if (user?.salonId) {
+      return user.salonId;
+    }
+
+    const userId = user?.userId ?? user?.sub;
+
+    if (!userId) {
+      throw new ForbiddenException('Utilisateur invalide');
+    }
+
+    const salon = await this.prisma.salon.findFirst({
+      where: { ownerId: userId },
+      select: { id: true },
+    });
+
+    if (!salon) {
       throw new ForbiddenException('Salon introuvable pour cet utilisateur');
     }
-    return user.salonId;
+
+    return salon.id;
   }
 
-  findAll(user: any) {
-    const salonId = this.ensureSalon(user);
+  // ========================
+  // EMPLOYEES CRUD
+  // ========================
+
+  async findAll(user: any) {
+    const salonId = await this.ensureSalon(user);
 
     return this.prisma.employee.findMany({
       where: { salonId },
@@ -31,30 +52,22 @@ export class ProEmployeesService {
   }
 
   async create(user: any, dto: CreateEmployeeDto) {
-    const salonId = this.ensureSalon(user);
+    const salonId = await this.ensureSalon(user);
 
     try {
       return await this.prisma.$transaction(async (tx) => {
         if (dto.email) {
-          const existingUserByEmail = await tx.user.findUnique({
+          const existing = await tx.user.findUnique({
             where: { email: dto.email },
-            select: { id: true },
           });
-
-          if (existingUserByEmail) {
-            throw new BadRequestException('Email déjà utilisé');
-          }
+          if (existing) throw new BadRequestException('Email déjà utilisé');
         }
 
         if (dto.phone) {
-          const existingUserByPhone = await tx.user.findUnique({
+          const existing = await tx.user.findUnique({
             where: { phone: dto.phone },
-            select: { id: true },
           });
-
-          if (existingUserByPhone) {
-            throw new BadRequestException('Téléphone déjà utilisé');
-          }
+          if (existing) throw new BadRequestException('Téléphone déjà utilisé');
         }
 
         const tempUser = await tx.user.create({
@@ -84,23 +97,18 @@ export class ProEmployeesService {
         });
       });
     } catch (error) {
-      if (error instanceof BadRequestException) {
-        throw error;
-      }
-
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&
         error.code === 'P2002'
       ) {
         throw new BadRequestException('Email ou téléphone déjà utilisé');
       }
-
       throw error;
     }
   }
 
   async update(user: any, id: string, dto: UpdateEmployeeDto) {
-    const salonId = this.ensureSalon(user);
+    const salonId = await this.ensureSalon(user);
 
     const employee = await this.prisma.employee.findFirst({
       where: { id, salonId },
@@ -117,7 +125,7 @@ export class ProEmployeesService {
   }
 
   async remove(user: any, id: string) {
-    const salonId = this.ensureSalon(user);
+    const salonId = await this.ensureSalon(user);
 
     const employee = await this.prisma.employee.findFirst({
       where: { id, salonId },
@@ -137,7 +145,7 @@ export class ProEmployeesService {
   }
 
   async markAbsent(user: any, id: string, dto: MarkAbsenceDto) {
-    const salonId = this.ensureSalon(user);
+    const salonId = await this.ensureSalon(user);
 
     const employee = await this.prisma.employee.findFirst({
       where: { id, salonId },
@@ -160,13 +168,13 @@ export class ProEmployeesService {
         startDate: new Date(dto.startDate),
         endDate: dto.endDate ? new Date(dto.endDate) : null,
         source: 'MANUAL',
-        createdById: user.sub,
+        createdById: user.userId ?? user.sub,
       },
     });
   }
 
   async markActive(user: any, id: string) {
-    const salonId = this.ensureSalon(user);
+    const salonId = await this.ensureSalon(user);
 
     const employee = await this.prisma.employee.findFirst({
       where: { id, salonId },
@@ -180,5 +188,99 @@ export class ProEmployeesService {
       where: { id },
       data: { status: 'ACTIVE' },
     });
+  }
+
+  // ========================
+  // LEAVE REQUESTS (NOUVEAU)
+  // ========================
+
+  private mapLeaveRequest(request: any) {
+    return {
+      id: request.id,
+      employeeId: request.employeeId,
+      employeeName: request.employee?.displayName ?? 'Employé',
+      subject: request.subject,
+      reason: request.reason ?? null,
+      startDate: request.startDate,
+      endDate: request.endDate ?? null,
+      requestDate: request.requestDate,
+      status: request.status,
+    };
+  }
+
+  async findLeaveRequests(user: any) {
+    const salonId = await this.ensureSalon(user);
+
+    const requests = await this.prisma.employeeLeaveRequest.findMany({
+      where: { salonId },
+      include: {
+        employee: {
+          select: {
+            id: true,
+            displayName: true,
+          },
+        },
+      },
+      orderBy: {
+        requestDate: 'desc',
+      },
+    });
+
+    return requests.map((r) => this.mapLeaveRequest(r));
+  }
+
+  async respondLeaveRequest(
+    user: any,
+    id: string,
+    status: 'ACCEPTED' | 'REFUSED',
+  ) {
+    const salonId = await this.ensureSalon(user);
+    const userId = user.userId ?? user.sub;
+
+    const request = await this.prisma.employeeLeaveRequest.findFirst({
+      where: { id, salonId },
+    });
+
+    if (!request) {
+      throw new NotFoundException('Demande introuvable');
+    }
+
+    const updated = await this.prisma.employeeLeaveRequest.update({
+      where: { id },
+      data: {
+        status,
+        reviewedById: userId,
+        reviewedAt: new Date(),
+      },
+      include: {
+        employee: {
+          select: {
+            id: true,
+            displayName: true,
+          },
+        },
+      },
+    });
+
+    if (status === 'ACCEPTED') {
+      await this.prisma.employee.update({
+        where: { id: request.employeeId },
+        data: { status: 'LEAVE' },
+      });
+
+      await this.prisma.employeeAbsence.create({
+        data: {
+          salonId,
+          employeeId: request.employeeId,
+          reason: request.reason ?? request.subject,
+          startDate: request.startDate,
+          endDate: request.endDate,
+          source: 'LEAVE_REQUEST',
+          createdById: userId,
+        },
+      });
+    }
+
+    return this.mapLeaveRequest(updated);
   }
 }

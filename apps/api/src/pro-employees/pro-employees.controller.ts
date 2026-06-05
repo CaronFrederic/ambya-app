@@ -21,6 +21,20 @@ export class ProEmployeesController {
   create(@CurrentUser() user: JwtUser, @Body() dto: CreateEmployeeDto) {
     return this.employeesService.create(user, dto);
   }
+  @Get('leave-requests')
+findLeaveRequests(@CurrentUser() user: JwtUser) {
+  return this.employeesService.findLeaveRequests(user);
+}
+
+@Patch('leave-requests/:id/accept')
+acceptLeaveRequest(@CurrentUser() user: JwtUser, @Param('id') id: string) {
+  return this.employeesService.respondLeaveRequest(user, id, 'ACCEPTED');
+}
+
+@Patch('leave-requests/:id/refuse')
+refuseLeaveRequest(@CurrentUser() user: JwtUser, @Param('id') id: string) {
+  return this.employeesService.respondLeaveRequest(user, id, 'REFUSED');
+}
 
   @Patch(':id')
   update(@CurrentUser() user: JwtUser, @Param('id') id: string, @Body() dto: UpdateEmployeeDto) {

@@ -1,22 +1,24 @@
 import {
+  Body,
   Controller,
   Get,
+  Param,
+  Patch,
+  Post,
   Query,
   Res,
   UseGuards,
-  Param,
-  Patch,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import type { JwtUser } from '../auth/decorators/current-user.decorator';
 import { AppointmentsService } from './appointments.service';
-import type { Response } from 'express';
 
 @Controller('pro/appointments')
 @UseGuards(JwtAuthGuard)
 export class ProAppointmentsController {
-  constructor(private readonly service: AppointmentsService) {}
+  constructor(private readonly service: AppointmentsService) {console.log('✅ ProAppointmentsController loaded');}
 
   @Get('calendar')
   getCalendar(@CurrentUser() user: JwtUser, @Query('date') date?: string) {
@@ -45,6 +47,20 @@ export class ProAppointmentsController {
   @Get('history/:id')
   getHistoryDetails(@CurrentUser() user: JwtUser, @Param('id') id: string) {
     return this.service.getProHistoryDetails(user, id);
+  }
+
+  @Post('blocked-slots')
+  createBlockedSlot(
+    @CurrentUser() user: JwtUser,
+    @Body()
+    body: {
+      date: string;
+      startTime: string;
+      endTime: string;
+      reason?: string;
+    },
+  ) {
+    return this.service.createProBlockedSlot(user, body);
   }
 
   @Patch(':id/confirm')

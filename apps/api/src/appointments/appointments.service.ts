@@ -1464,6 +1464,90 @@ export class AppointmentsService {
     await workbook.xlsx.write(res);
     res.end();
   }
+  async createProBlockedSlot(
+  user: { userId: string; role: UserRole },
+  dto: {
+    date: string;
+    startTime: string;
+    endTime: string;
+    reason?: string;
+  },
+) {
+  if (user.role !== UserRole.PROFESSIONAL && user.role !== UserRole.ADMIN) {
+    throw new ForbiddenException('Not allowed');
+  }
+
+  const salonIds = await this.getManagedSalonIds(user);
+  const salonId = salonIds[0];
+
+  if (!salonId) {
+    throw new NotFoundException('Salon not found');
+  }
+
+  if (!dto.date || !dto.startTime || !dto.endTime) {
+    throw new BadRequestException('Date, startTime and endTime are required');
+  }
+
+  const startAt = new Date(`${dto.date}T${dto.startTime}:00`);
+  const endAt = new Date(`${dto.date}T${dto.endTime}:00`);
+
+  if (
+    Number.isNaN(startAt.getTime()) ||
+    Number.isNaN(endAt.getTime()) ||
+    endAt <= startAt
+  ) {
+    throw new BadRequestException('Invalid blocked slot period');
+  }
+
+  const employees = await this.prisma.employee.findMany({
+    where: {
+      salonId,
+      isActive: true,
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  if (!employees.length) {
+    throw new BadRequestException('Aucun employé actif trouvé');
+  }
+
+  const service = await this.prisma.service.findFirst({
+    where: {
+      salonId,
+      isActive: true,
+    },
+    select: {
+      id: true,
+    },
+  });
+
+  if (!service) {
+    throw new BadRequestException('Aucun service actif trouvé');
+  }
+
+  const created = await this.prisma.employeeBlockedSlot.createMany({
+    data: employees.map((employee) => ({
+      salonId,
+      employeeId: employee.id,
+      serviceId: service.id,
+      clientName: 'Créneau bloqué',
+      clientPhone: 'N/A',
+      note: dto.reason?.trim() || null,
+      startAt,
+      endAt,
+      status: AppointmentStatus.CONFIRMED,
+      isPaid: false,
+    })),
+  });
+
+  return {
+    createdCount: created.count,
+  };
+}
+
+
 
   async confirmAppointment(
     user: { userId: string; role: UserRole },

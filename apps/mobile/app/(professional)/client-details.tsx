@@ -224,14 +224,14 @@ const loadClient = async (id?: string) => {
     }
   };
 
-  useEffect(() => {
+ useEffect(() => {
   initialLoad();
 }, []);
 
 useEffect(() => {
-  if (selectedClientId) {
-    loadClient(selectedClientId);
-  }
+  if (!selectedClientId || loading) return;
+
+  loadClient(selectedClientId);
 }, [selectedClientId]);
 
   const bookings = useMemo(() => mapHistory(client?.bookingHistory), [client]);
@@ -247,55 +247,69 @@ useEffect(() => {
   const clientName = client?.fullName || fallbackClientName;
 
   const handleToggleDeposit = async (nextValue: boolean) => {
-    if (!selectedClientId) return;
+  if (!selectedClientId) return;
 
-    try {
-      setUpdatingDeposit(true);
-      setDepositExempt(nextValue);
+  const previousValue = depositExempt;
 
-      const token = await getAccessToken();
-      const updated = await updateClientDepositExempt(token, selectedClientId, nextValue);
+  try {
+    setUpdatingDeposit(true);
+    setDepositExempt(nextValue);
 
-      setClient(updated);
-      setDepositExempt(updated.depositExempt);
-    } catch (error) {
-      console.error("Deposit update error:", error);
-      setDepositExempt((prev) => !prev);
-    } finally {
-      setUpdatingDeposit(false);
-    }
-  };
+    const token = await getAccessToken();
+    const updated = await updateClientDepositExempt(
+      token,
+      selectedClientId,
+      nextValue
+    );
 
-  const handleSaveNotes = async () => {
-    if (!selectedClientId) return;
+    setClient(updated);
+    setDepositExempt(updated.depositExempt);
+  } catch (error) {
+    console.error("Deposit update error:", error);
+    setDepositExempt(previousValue);
+  } finally {
+    setUpdatingDeposit(false);
+  }
+};
 
-    try {
-      setSavingNotes(true);
-      const token = await getAccessToken();
-      const updated = await updateClientNotes(token, selectedClientId, privateNotes);
-      setClient(updated);
-      setPrivateNotes(updated.notes ?? "");
-    } catch (error) {
-      console.error("Notes save error:", error);
-    } finally {
-      setSavingNotes(false);
-    }
-  };
+const handleSaveNotes = async () => {
+  if (!selectedClientId) return;
 
-  const handleBlockClient = async () => {
-    if (!selectedClientId) return;
+  try {
+    setSavingNotes(true);
 
-    try {
-      setBlockingClient(true);
-      const token = await getAccessToken();
-      const updated = await blockClient(token, selectedClientId);
-      setClient(updated);
-    } catch (error) {
-      console.error("Block client error:", error);
-    } finally {
-      setBlockingClient(false);
-    }
-  };
+    const token = await getAccessToken();
+    const updated = await updateClientNotes(
+      token,
+      selectedClientId,
+      privateNotes
+    );
+
+    setClient(updated);
+    setPrivateNotes(updated.notes ?? "");
+  } catch (error) {
+    console.error("Notes save error:", error);
+  } finally {
+    setSavingNotes(false);
+  }
+};
+
+const handleBlockClient = async () => {
+  if (!selectedClientId) return;
+
+  try {
+    setBlockingClient(true);
+
+    const token = await getAccessToken();
+    const updated = await blockClient(token, selectedClientId);
+
+    setClient(updated);
+  } catch (error) {
+    console.error("Block client error:", error);
+  } finally {
+    setBlockingClient(false);
+  }
+};
 
   return (
     <View style={styles.screen}>
@@ -327,7 +341,9 @@ useEffect(() => {
       style={styles.searchInput}
       returnKeyType="search"
       onSubmitEditing={async () => {
-        await loadClients();
+        setClient(null);
+  setSelectedClientId(undefined);
+  await loadClients();
       }}
     />
   </View>
@@ -342,10 +358,15 @@ useEffect(() => {
 
       return (
         <Pressable
-          key={item.id}
-          onPress={() => setSelectedClientId(item.id)}
-          style={[styles.clientChip, active && styles.clientChipActive]}
-        >
+  key={item.id}
+  onPress={() => {
+    setClient(null);
+    setPrivateNotes("");
+    setDepositExempt(false);
+    setSelectedClientId(item.id);
+  }}
+  style={[styles.clientChip, active && styles.clientChipActive]}
+>
           <View style={[styles.clientChipAvatar, active && styles.clientChipAvatarActive]}>
             <Text style={[styles.clientChipAvatarText, active && styles.clientChipAvatarTextActive]}>
               {item.fullName.slice(0, 1).toUpperCase()}

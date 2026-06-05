@@ -47,6 +47,17 @@ function diffPercent(real: number, forecast: number) {
   return Math.round(((real - forecast) / forecast) * 1000) / 10;
 }
 
+function getCurrentMonthDates() {
+  const now = new Date();
+  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0));
+
+  return {
+    startDate: start.toISOString().slice(0, 10),
+    endDate: end.toISOString().slice(0, 10),
+  };
+}
+
 export default function AccountingReports() {
   const [viewMode, setViewMode] = useState<ViewMode>("comparaison");
   const [periodType, setPeriodType] = useState<PeriodType>("Ce mois");
@@ -57,6 +68,10 @@ export default function AccountingReports() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [exporting, setExporting] = useState(false);
+
+  const canLoadReport =
+    periodType !== "Personnalisé" ||
+    (startDate.trim().length > 0 && endDate.trim().length > 0);
 
   const forecast = useMemo(() => {
     return {
@@ -87,12 +102,15 @@ export default function AccountingReports() {
   }, [report]);
 
   const loadReport = async () => {
+    if (!canLoadReport) {
+      return;
+    }
+
     const data = await getAccountingReport({
       reportType: "compte-resultat",
       periodType,
-      startDate:
-        periodType === "Personnalisé" ? startDate || undefined : undefined,
-      endDate: periodType === "Personnalisé" ? endDate || undefined : undefined,
+      startDate: periodType === "Personnalisé" ? startDate.trim() : undefined,
+      endDate: periodType === "Personnalisé" ? endDate.trim() : undefined,
     });
 
     setReport(data);
@@ -119,6 +137,10 @@ export default function AccountingReports() {
       await loadReport();
     } catch (error) {
       console.error("Accounting report refresh error:", error);
+      Alert.alert(
+        "Actualisation impossible",
+        error instanceof Error ? error.message : "Une erreur est survenue.",
+      );
     } finally {
       setRefreshing(false);
     }
@@ -129,14 +151,59 @@ export default function AccountingReports() {
   }, []);
 
   useEffect(() => {
-    if (!loading) {
+    if (!loading && canLoadReport) {
       loadReport().catch((error) => {
         console.error("Accounting report reload error:", error);
+        Alert.alert(
+          "Chargement impossible",
+          error instanceof Error ? error.message : "Une erreur est survenue.",
+        );
       });
     }
   }, [periodType]);
 
+  const handleChangePeriod = (period: PeriodType) => {
+    setPeriodType(period);
+
+    if (period === "Personnalisé" && (!startDate.trim() || !endDate.trim())) {
+      const dates = getCurrentMonthDates();
+      setStartDate(dates.startDate);
+      setEndDate(dates.endDate);
+    }
+  };
+
+  const handleApplyCustomPeriod = async () => {
+    if (!startDate.trim() || !endDate.trim()) {
+      Alert.alert(
+        "Période incomplète",
+        "Veuillez renseigner une date de début et une date de fin.",
+      );
+      return;
+    }
+
+    try {
+      setRefreshing(true);
+      await loadReport();
+    } catch (error) {
+      console.error("Accounting custom period error:", error);
+      Alert.alert(
+        "Chargement impossible",
+        error instanceof Error ? error.message : "Une erreur est survenue.",
+      );
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   const handleExportExcel = async () => {
+    if (periodType === "Personnalisé" && (!startDate.trim() || !endDate.trim())) {
+      Alert.alert(
+        "Période incomplète",
+        "Veuillez renseigner une date de début et une date de fin avant l’export.",
+      );
+      return;
+    }
+
     try {
       setExporting(true);
 
@@ -144,9 +211,8 @@ export default function AccountingReports() {
         reportType: "compte-resultat",
         periodType,
         startDate:
-          periodType === "Personnalisé" ? startDate || undefined : undefined,
-        endDate:
-          periodType === "Personnalisé" ? endDate || undefined : undefined,
+          periodType === "Personnalisé" ? startDate.trim() : undefined,
+        endDate: periodType === "Personnalisé" ? endDate.trim() : undefined,
       });
 
       await Linking.openURL(url);
@@ -216,7 +282,7 @@ export default function AccountingReports() {
               ).map((p) => (
                 <Pressable
                   key={p}
-                  onPress={() => setPeriodType(p)}
+                  onPress={() => handleChangePeriod(p)}
                   style={[
                     styles.periodOption,
                     periodType === p && styles.periodOptionActive,
@@ -235,20 +301,37 @@ export default function AccountingReports() {
             </View>
 
             {periodType === "Personnalisé" ? (
-              <View style={styles.dateRow}>
-                <TextInput
-                  value={startDate}
-                  onChangeText={setStartDate}
-                  placeholder="Début YYYY-MM-DD"
-                  style={styles.input}
-                />
-                <TextInput
-                  value={endDate}
-                  onChangeText={setEndDate}
-                  placeholder="Fin YYYY-MM-DD"
-                  style={styles.input}
-                />
-              </View>
+              <>
+                <View style={styles.dateRow}>
+                  <TextInput
+                    value={startDate}
+                    onChangeText={setStartDate}
+                    placeholder="Début YYYY-MM-DD"
+                    autoCapitalize="none"
+                    style={styles.input}
+                  />
+                  <TextInput
+                    value={endDate}
+                    onChangeText={setEndDate}
+                    placeholder="Fin YYYY-MM-DD"
+                    autoCapitalize="none"
+                    style={styles.input}
+                  />
+                </View>
+
+                <Pressable
+                  onPress={handleApplyCustomPeriod}
+                  disabled={!startDate.trim() || !endDate.trim()}
+                  style={[
+                    styles.applyPeriodBtn,
+                    (!startDate.trim() || !endDate.trim()) && { opacity: 0.5 },
+                  ]}
+                >
+                  <Text style={styles.applyPeriodBtnText}>
+                    Appliquer la période
+                  </Text>
+                </Pressable>
+              </>
             ) : null}
           </View>
 
@@ -329,8 +412,9 @@ function InfoBox() {
           <Text style={styles.bold}>• Réel :</Text> Montre vos résultats
           conformes aux normes SYSCOHADA.
         </Text>
-        <Text style={[styles.infoText, { fontWeight: "900" }]}>
-          💡 Utilisez ces outils pour anticiper vos besoins de trésorerie.
+        <Text style={styles.infoText}>
+          <Text style={styles.bold}>• Dépenses :</Text> Les charges affichées
+          proviennent des dépenses enregistrées dans la page Dépenses.
         </Text>
       </View>
     </View>
@@ -395,20 +479,7 @@ function ComparisonView({
 }) {
   const fallbackExpenses = real.expenses.length
     ? real.expenses
-    : [
-        {
-          category: "Achats de produits",
-          amount: Math.round(real.totalExpenses * 0.3),
-        },
-        {
-          category: "Salaires",
-          amount: Math.round(real.totalExpenses * 0.55),
-        },
-        {
-          category: "Autres charges",
-          amount: Math.round(real.totalExpenses * 0.15),
-        },
-      ];
+    : [{ category: "Aucune dépense enregistrée", amount: 0 }];
 
   const maxChartValue = Math.max(
     ...chartData.map((d) => Math.max(d.real, d.forecast)),
@@ -445,14 +516,11 @@ function ComparisonView({
         />
 
         <Text style={[styles.smallLabel, { marginTop: 16 }]}>
-          Classe 6 - Charges
+          Classe 6 - Dépenses issues de la page Dépenses
         </Text>
 
-        {(comparison?.expenses.length
-          ? comparison.expenses
-          : fallbackExpenses
-        )
-          .slice(0, 4)
+        {(comparison?.expenses.length ? comparison.expenses : fallbackExpenses)
+          .slice(0, 6)
           .map((expense, index) => (
             <ComparisonLine
               key={`${expense.category}-${index}`}
@@ -484,7 +552,7 @@ function ComparisonView({
 
       <View style={styles.card}>
         <Text style={styles.chartTitle}>
-          Évolution Réel vs Prévisionnel (6 derniers mois)
+          Évolution Réel vs Prévisionnel
         </Text>
 
         <View style={styles.chart}>
@@ -635,7 +703,7 @@ function ForecastView({
       <View style={styles.card}>
         <Text style={styles.sectionTitle}>Projections - 3 prochains mois</Text>
         <Text style={styles.smallLabel}>
-          Basé sur l'historique et les tendances actuelles
+          Basé sur l'historique des revenus et des dépenses enregistrées
         </Text>
 
         {safeMonths.map((month) => (
@@ -648,7 +716,7 @@ function ForecastView({
               color={COLORS.green}
             />
             <MoneyRow
-              label="Charges prévisionnelles"
+              label="Dépenses prévisionnelles"
               value={month.expenses}
               color={COLORS.red}
             />
@@ -677,18 +745,18 @@ function ForecastView({
             bg="#F0FDF4"
           />
           <KpiBox
+            label="Dépenses prévues"
+            value={formatFCFA(kpis?.quarterExpenses ?? 0)}
+            sub="Projection charges"
+            color="#DC2626"
+            bg="#FEF2F2"
+          />
+          <KpiBox
             label="Marge Prévue"
             value={`${kpis?.marginPercent ?? 0}%`}
             sub="Objectif: 40%"
             color="#1D4ED8"
             bg="#EFF6FF"
-          />
-          <KpiBox
-            label="Clients Prévus"
-            value={`${kpis?.expectedClients ?? 0}`}
-            sub="Projection activité"
-            color="#7E22CE"
-            bg="#FAF5FF"
           />
           <KpiBox
             label="Panier Moyen"
@@ -724,7 +792,7 @@ function RealView({
 }) {
   const expenses = real.expenses.length
     ? real.expenses
-    : [{ category: "Autres charges", amount: real.totalExpenses }];
+    : [{ category: "Aucune dépense enregistrée", amount: 0 }];
 
   const maxChartValue = Math.max(...chartData.map((d) => d.value), 1);
 
@@ -757,7 +825,7 @@ function RealView({
         </View>
 
         <Text style={[styles.smallLabel, { marginTop: 16 }]}>
-          Classe 6 - Charges
+          Classe 6 - Dépenses enregistrées
         </Text>
         <View style={[styles.statementBox, { backgroundColor: "#FEF2F2" }]}>
           {expenses.map((item, index) => (
@@ -770,7 +838,7 @@ function RealView({
           ))}
           <View style={styles.separatorLight} />
           <MoneyRow
-            label="Total Charges"
+            label="Total dépenses enregistrées"
             value={real.totalExpenses}
             color={COLORS.red}
             strong
@@ -978,6 +1046,18 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderWidth: 1,
     borderColor: "rgba(107,39,55,0.2)",
+  },
+
+  applyPeriodBtn: {
+    marginTop: 12,
+    backgroundColor: COLORS.primary,
+    borderRadius: 999,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  applyPeriodBtnText: {
+    color: "#FFF",
+    fontWeight: "900",
   },
 
   sectionTitle: {

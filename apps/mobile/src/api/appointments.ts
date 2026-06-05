@@ -356,3 +356,20 @@ export async function getAppointmentHistoryExportUrl(
     "L'export mobile direct est desactive pour securiser l'authentification. Merci d'utiliser l'interface prevue pour les exports.",
   );
 }
+export type CreateBlockedSlotPayload = {
+  date: string;
+  startTime: string;
+  endTime: string;
+  reason?: string;
+};
+
+export function createProBlockedSlot(
+  token: string,
+  payload: CreateBlockedSlotPayload,
+) {
+  return apiFetch<{ createdCount: number }>("/pro/appointments/blocked-slots", {
+    method: "POST",
+    token,
+    body: JSON.stringify(payload),
+  });
+}
