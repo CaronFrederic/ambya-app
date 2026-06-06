@@ -247,7 +247,11 @@ export class AuthService {
         ? dto.customType?.trim() || undefined
         : dto.establishmentType?.trim() || undefined;
 
-    const categories = dto.categories ?? [];
+    const categories = Array.isArray(dto.categories)
+  ? dto.categories
+      .map((category) => category.trim())
+      .filter(Boolean)
+  : [];
 
     const result = await this.prisma.$transaction(async (tx) => {
       const user = await tx.user.create({
@@ -646,9 +650,9 @@ export class AuthService {
 
     const normalized = category.trim().toLowerCase();
 
-    if (normalized === 'beaute' || normalized === 'beauté') return 'BEAUTE';
+    if (normalized === 'beaute' || normalized === 'beautï¿½') return 'BEAUTE';
     if (normalized === 'fitness') return 'FITNESS';
-    if (normalized === 'bienetre' || normalized === 'bien-être') {
+    if (normalized === 'bienetre' || normalized === 'bien-ï¿½tre') {
       return 'BIENETRE';
     }
     if (normalized === 'formation') return 'FORMATION';

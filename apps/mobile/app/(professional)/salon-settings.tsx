@@ -196,21 +196,21 @@ async function handleSaveSettings() {
 
     const payload = {
       name: name.trim(),
-      description: desc.trim(),
-      address: address.trim(),
-      phone: phone.trim(),
-      email: email.trim(),
+      description: desc.trim() || undefined,
+      address: address.trim() || undefined,
+      phone: phone.trim() || undefined,
+      email: email.trim() || undefined,
       categories: selectedCategories,
 
       coverImageUrl: profileImage,
       galleryImageUrls: galleryImages,
 
-      instagramHandle: instagramHandle.trim(),
+      instagramHandle: instagramHandle.trim() || undefined,
       showInstagramFeed,
-      tiktokHandle: tiktokHandle.trim(),
+      tiktokHandle: tiktokHandle.trim() || undefined,
       showTikTokFeed,
-      facebookUrl: facebookUrl.trim(),
-      websiteUrl: websiteUrl.trim(),
+      facebookUrl: facebookUrl.trim() || undefined,
+      websiteUrl: websiteUrl.trim() || undefined,
 
       scheduleType,
       standardSlots,

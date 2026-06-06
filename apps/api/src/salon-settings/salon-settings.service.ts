@@ -209,47 +209,47 @@ export class SalonSettingsService {
           })
 
     await this.prisma.$transaction(async (tx) => {
-      const updatedSalon = await tx.salon.update({
-        where: { id: salon.id },
-        data: {
-          name: dto.name,
-          description: dto.description ?? null,
-          address: dto.address ?? null,
-          phone: dto.phone ?? null,
-          email: dto.email ?? null,
+  await tx.salon.update({
+    where: { id: salon.id },
+    data: {
+      name: dto.name,
+      description: dto.description ?? null,
+      address: dto.address ?? null,
+      phone: dto.phone ?? null,
+      email: dto.email ?? null,
 
-          coverImageUrl: dto.coverImageUrl ?? null,
-          galleryImageUrls: dto.galleryImageUrls ?? [],
+      coverImageUrl: dto.coverImageUrl ?? null,
+      galleryImageUrls: dto.galleryImageUrls ?? [],
 
-          instagramHandle: dto.instagramHandle ?? null,
-          showInstagramFeed: dto.showInstagramFeed ?? false,
-          tiktokHandle: dto.tiktokHandle ?? null,
-          showTikTokFeed: dto.showTikTokFeed ?? false,
-          facebookUrl: dto.facebookUrl ?? null,
-          websiteUrl: dto.websiteUrl ?? null,
+      instagramHandle: dto.instagramHandle ?? null,
+      showInstagramFeed: dto.showInstagramFeed ?? false,
+      tiktokHandle: dto.tiktokHandle ?? null,
+      showTikTokFeed: dto.showTikTokFeed ?? false,
+      facebookUrl: dto.facebookUrl ?? null,
+      websiteUrl: dto.websiteUrl ?? null,
 
-          depositEnabled: dto.depositEnabled,
-          depositPercentage: dto.depositPercentage,
-          categories,
+      depositEnabled: dto.depositEnabled,
+      depositPercentage: dto.depositPercentage,
+      categories,
 
-          paymentSettings,
-        },
-      })
+      paymentSettings,
+    },
+  });
 
-      await tx.salonOpeningHour.deleteMany({
-        where: { salonId: salon.id },
-      })
+  await tx.salonOpeningHour.deleteMany({
+    where: { salonId: salon.id },
+  });
 
-      if (scheduleRows.length > 0) {
-        await tx.salonOpeningHour.createMany({
-          data: scheduleRows.map((row) => ({
-            salonId: salon.id,
-            ...row,
-          })),
-        })
-      }
+  if (scheduleRows.length > 0) {
+    await tx.salonOpeningHour.createMany({
+      data: scheduleRows.map((row) => ({
+        salonId: salon.id,
+        ...row,
+      })),
+    });
+  }
+});
 
-      return this.getSettings(user)
-    })
+return this.getSettings(user);
   }
 }

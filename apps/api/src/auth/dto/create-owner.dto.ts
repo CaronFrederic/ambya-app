@@ -122,9 +122,11 @@ export class CreateOwnerDto {
   @IsString()
   customType?: string;
 
-  @IsOptional()
-  @IsArray()
-  categories?: string[];
+ @IsOptional()
+@IsArray()
+@ArrayMinSize(1)
+@IsString({ each: true })
+categories?: string[];
 
   @IsOptional()
   @IsString()
