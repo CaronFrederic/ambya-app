@@ -86,7 +86,7 @@ reposaient deja sur `LeaveRequest`
 
 Decision appliquee :
 - aucun changement cassant de schema n a ete fait
-- `EmployeeLeaveRequest` reste present dans Prisma mais est a considerer **deprecated pour le scope Beta actuel**
+- `LeaveRequest` est l unique source de verite pour les demandes de conges Employee et leur validation Pro
 
 Limite restante :
 - la duplication de modele existe encore dans le schema Prisma
@@ -103,8 +103,7 @@ Decision appliquee :
 - `AdminService` a ete corrige pour normaliser correctement ce meme format
 
 Ce qui n est plus source active pour la Beta :
-- `SalonSchedule`
-- `Salon.openingHoursJson`
+- `SalonOpeningHour` est l unique source de verite pour les horaires salon
 
 Limite restante :
 - ces structures existent encore au schema, mais elles ne pilotent plus le flow retenu
@@ -190,8 +189,7 @@ Etat final des suites actuellement rejouees :
 
 ## 11. Limites restantes
 
-- `EmployeeLeaveRequest` reste dans le schema Prisma et devra etre nettoye plus tard
-- `SalonSchedule` et `openingHoursJson` restent presents au schema et devront etre retires ou migres proprement plus tard
+- les anciennes structures `EmployeeLeaveRequest`, `SalonSchedule` et `openingHoursJson` ont ete migrees puis retirees
 - `PaymentsService` garde encore de la logique dense et meriterait un decoupage ulterieur
 - `AdminService` reste volumineux meme apres reduction de surface sensible
 

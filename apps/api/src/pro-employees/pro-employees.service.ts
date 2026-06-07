@@ -195,24 +195,33 @@ export class ProEmployeesService {
   // ========================
 
   private mapLeaveRequest(request: any) {
+    const publicStatus =
+      request.status === 'APPROVED'
+        ? 'ACCEPTED'
+        : request.status === 'REJECTED'
+          ? 'REFUSED'
+          : request.status;
+
     return {
       id: request.id,
       employeeId: request.employeeId,
       employeeName: request.employee?.displayName ?? 'Employé',
-      subject: request.subject,
+      subject: request.subject ?? request.reason,
       reason: request.reason ?? null,
-      startDate: request.startDate,
-      endDate: request.endDate ?? null,
-      requestDate: request.requestDate,
-      status: request.status,
+      startDate: request.startAt,
+      endDate: request.endAt,
+      requestDate: request.createdAt,
+      status: publicStatus,
     };
   }
 
   async findLeaveRequests(user: any) {
     const salonId = await this.ensureSalon(user);
 
-    const requests = await this.prisma.employeeLeaveRequest.findMany({
-      where: { salonId },
+    const requests = await this.prisma.leaveRequest.findMany({
+      where: {
+        employee: { salonId },
+      },
       include: {
         employee: {
           select: {
@@ -222,7 +231,7 @@ export class ProEmployeesService {
         },
       },
       orderBy: {
-        requestDate: 'desc',
+        createdAt: 'desc',
       },
     });
 
@@ -237,18 +246,23 @@ export class ProEmployeesService {
     const salonId = await this.ensureSalon(user);
     const userId = user.userId ?? user.sub;
 
-    const request = await this.prisma.employeeLeaveRequest.findFirst({
-      where: { id, salonId },
+    const request = await this.prisma.leaveRequest.findFirst({
+      where: {
+        id,
+        employee: { salonId },
+      },
     });
 
     if (!request) {
       throw new NotFoundException('Demande introuvable');
     }
 
-    const updated = await this.prisma.employeeLeaveRequest.update({
+    const canonicalStatus = status === 'ACCEPTED' ? 'APPROVED' : 'REJECTED';
+
+    const updated = await this.prisma.leaveRequest.update({
       where: { id },
       data: {
-        status,
+        status: canonicalStatus,
         reviewedById: userId,
         reviewedAt: new Date(),
       },
@@ -262,7 +276,7 @@ export class ProEmployeesService {
       },
     });
 
-    if (status === 'ACCEPTED') {
+    if (canonicalStatus === 'APPROVED') {
       await this.prisma.employee.update({
         where: { id: request.employeeId },
         data: { status: 'LEAVE' },
@@ -272,9 +286,10 @@ export class ProEmployeesService {
         data: {
           salonId,
           employeeId: request.employeeId,
-          reason: request.reason ?? request.subject,
-          startDate: request.startDate,
-          endDate: request.endDate,
+          leaveRequestId: request.id,
+          reason: request.reason,
+          startDate: request.startAt,
+          endDate: request.endAt,
           source: 'LEAVE_REQUEST',
           createdById: userId,
         },

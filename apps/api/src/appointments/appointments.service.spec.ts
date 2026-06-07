@@ -23,20 +23,16 @@ describe('AppointmentsService', () => {
     ).not.toThrow()
   })
 
-  it('checks leave conflicts against the beta leaveRequest model first', async () => {
+  it('checks leave conflicts against the canonical leaveRequest model', async () => {
     const appointment = { findFirst: jest.fn().mockResolvedValue(null) }
     const employeeBlockedSlot = { findFirst: jest.fn().mockResolvedValue(null) }
-    const $queryRaw = jest.fn().mockResolvedValue([{ id: 'leave-1' }])
-    const leaveRequest = { findFirst: jest.fn() }
-    const employeeLeaveRequest = { findFirst: jest.fn() }
+    const leaveRequest = { findFirst: jest.fn().mockResolvedValue({ id: 'leave-1' }) }
 
     const result = await (service as any).hasEmployeeSchedulingConflict(
       {
         appointment,
         employeeBlockedSlot,
-        $queryRaw,
         leaveRequest,
-        employeeLeaveRequest,
       },
       'salon-1',
       'employee-1',
@@ -45,8 +41,14 @@ describe('AppointmentsService', () => {
     )
 
     expect(result).toBe(true)
-    expect($queryRaw).toHaveBeenCalledTimes(1)
-    expect(leaveRequest.findFirst).not.toHaveBeenCalled()
-    expect(employeeLeaveRequest.findFirst).not.toHaveBeenCalled()
+    expect(leaveRequest.findFirst).toHaveBeenCalledWith({
+      where: {
+        employeeId: 'employee-1',
+        status: 'APPROVED',
+        startAt: { lt: new Date('2026-05-21T10:30:00.000Z') },
+        endAt: { gt: new Date('2026-05-21T10:00:00.000Z') },
+      },
+      select: { id: true },
+    })
   })
 })

@@ -36,13 +36,13 @@ export async function seedTest(prisma: PrismaClient) {
   await prisma.clientProfile.deleteMany();
   await prisma.expense.deleteMany();
   await prisma.employeeAbsence.deleteMany();
-  await prisma.employeeLeaveRequest.deleteMany();
+  await prisma.leaveRequest.deleteMany();
   await prisma.employeeSchedule.deleteMany();
   await prisma.employee.deleteMany();
   await prisma.promotionService.deleteMany();
   await prisma.promotion.deleteMany();
   await prisma.service.deleteMany();
-  await prisma.salonSchedule.deleteMany();
+  await prisma.salonOpeningHour.deleteMany();
   await prisma.loyaltyConfig.deleteMany();
   await prisma.salonReview.deleteMany();
   await prisma.paymentMethod.deleteMany();
@@ -100,7 +100,7 @@ export async function seedTest(prisma: PrismaClient) {
 
   console.log("🕒 Creating salon schedules...");
 
-  const salonSchedules = [
+  const salonOpeningHours = [
     { dayOfWeek: 1, startTime: "09:00", endTime: "18:00", isOpen: true },
     { dayOfWeek: 2, startTime: "09:00", endTime: "18:00", isOpen: true },
     { dayOfWeek: 3, startTime: "09:00", endTime: "18:00", isOpen: true },
@@ -110,8 +110,8 @@ export async function seedTest(prisma: PrismaClient) {
     { dayOfWeek: 0, startTime: "09:00", endTime: "18:00", isOpen: false },
   ];
 
-  await prisma.salonSchedule.createMany({
-    data: salonSchedules.map((s) => ({
+  await prisma.salonOpeningHour.createMany({
+    data: salonOpeningHours.map((s) => ({
       salonId: salon.id,
       ...s,
     })),

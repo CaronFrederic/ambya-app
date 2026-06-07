@@ -26,11 +26,11 @@ type SeedClient = {
   await prisma.clientProfile.deleteMany();
   await prisma.expense.deleteMany();
   await prisma.employeeAbsence.deleteMany();
-  await prisma.employeeLeaveRequest.deleteMany();
+  await prisma.leaveRequest.deleteMany();
   await prisma.employeeSchedule.deleteMany();
   await prisma.employee.deleteMany();
   await prisma.service.deleteMany();
-  await prisma.salonSchedule.deleteMany();
+  await prisma.salonOpeningHour.deleteMany();
   await prisma.salon.deleteMany();
   await prisma.user.deleteMany();
 
@@ -59,7 +59,7 @@ type SeedClient = {
     },
   });
 
-  const scheduleData = [1, 2, 3, 4, 5, 6].map((dayOfWeek) => ({
+  const openingHoursData = [1, 2, 3, 4, 5, 6].map((dayOfWeek) => ({
     salonId: salon.id,
     dayOfWeek,
     startTime: "09:00",
@@ -67,8 +67,8 @@ type SeedClient = {
     isOpen: true,
   }));
 
-  await prisma.salonSchedule.createMany({ data: scheduleData });
-  await prisma.salonSchedule.create({
+  await prisma.salonOpeningHour.createMany({ data: openingHoursData });
+  await prisma.salonOpeningHour.create({
     data: {
       salonId: salon.id,
       dayOfWeek: 0,

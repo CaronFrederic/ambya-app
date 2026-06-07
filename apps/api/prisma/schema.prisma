@@ -70,9 +70,7 @@ enum EmployeeStatus {
 enum LeaveRequestStatus {
   PENDING
   APPROVED
-  ACCEPTED
   REJECTED
-  REFUSED
 }
 
 enum AbsenceSource {
@@ -184,12 +182,12 @@ model User {
 
   salonMemberships SalonClient[] @relation("SalonClientUser")
 
-  createdAppointments   Appointment[]          @relation("AppointmentCreatedBy")
-  createdExpenses       Expense[]              @relation("ExpenseCreatedBy")
-  reviewedLeaveRequests EmployeeLeaveRequest[] @relation("LeaveReviewedBy")
-  createdAbsences       EmployeeAbsence[]      @relation("AbsenceCreatedBy")
-  clientNotesCreated    ClientNote[]           @relation("ClientNoteCreatedBy")
-  clientNotesUpdated    ClientNote[]           @relation("ClientNoteUpdatedBy")
+  createdAppointments   Appointment[]     @relation("AppointmentCreatedBy")
+  createdExpenses       Expense[]         @relation("ExpenseCreatedBy")
+  reviewedLeaveRequests LeaveRequest[]    @relation("LeaveReviewedBy")
+  createdAbsences       EmployeeAbsence[] @relation("AbsenceCreatedBy")
+  clientNotesCreated    ClientNote[]      @relation("ClientNoteCreatedBy")
+  clientNotesUpdated    ClientNote[]      @relation("ClientNoteUpdatedBy")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -255,8 +253,7 @@ model Salon {
   depositEnabled    Boolean @default(false)
   depositPercentage Int     @default(30)
 
-  paymentSettings  Json?
-  openingHoursJson Json?
+  paymentSettings Json?
 
   isActive Boolean @default(true)
 
@@ -276,9 +273,7 @@ model Salon {
   promotions     Promotion[]
   salonClients   SalonClient[]
   clientNotes    ClientNote[]
-  leaveRequests  EmployeeLeaveRequest[]
   absences       EmployeeAbsence[]
-  salonSchedules SalonSchedule[]
   loyaltyConfig  LoyaltyConfig?
 
   createdAt DateTime @default(now())
@@ -314,8 +309,7 @@ model Employee {
   appointments        Appointment[]
   appointmentServices AppointmentService[]
   schedules           EmployeeSchedule[]
-  leaveRequests       EmployeeLeaveRequest[]
-  simpleLeaveRequests LeaveRequest[]
+  leaveRequests       LeaveRequest[]
   absences            EmployeeAbsence[]
   preferredByClients  SalonClientPreferredEmployee[]
   specialties         EmployeeSpecialtyAssignment[]
@@ -477,17 +471,22 @@ model LeaveRequest {
   employeeId String
   employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
-  startAt     DateTime
-  endAt       DateTime
-  reason      String
-  status      LeaveRequestStatus @default(PENDING)
-  reviewedAt  DateTime?
-  managerNote String?
+  startAt       DateTime
+  endAt         DateTime
+  subject       String?
+  reason        String
+  status        LeaveRequestStatus @default(PENDING)
+  reviewedById  String?
+  reviewedBy    User?              @relation("LeaveReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewedAt    DateTime?
+  managerNote   String?
+  linkedAbsence EmployeeAbsence?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([employeeId, createdAt])
+  @@index([reviewedById])
   @@index([status])
 }
 
@@ -741,36 +740,6 @@ model SalonClientPreferredEmployee {
   @@unique([salonClientId, employeeId])
 }
 
-model EmployeeLeaveRequest {
-  id String @id @default(cuid())
-
-  salonId String
-  salon   Salon  @relation(fields: [salonId], references: [id], onDelete: Cascade)
-
-  employeeId String
-  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-
-  subject     String
-  reason      String?
-  startDate   DateTime
-  endDate     DateTime?
-  requestDate DateTime  @default(now())
-
-  status LeaveRequestStatus @default(PENDING)
-
-  reviewedById String?
-  reviewedBy   User?     @relation("LeaveReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
-  reviewedAt   DateTime?
-
-  linkedAbsence EmployeeAbsence?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([salonId, status])
-  @@index([employeeId])
-}
-
 model EmployeeAbsence {
   id String @id @default(cuid())
 
@@ -780,8 +749,8 @@ model EmployeeAbsence {
   employeeId String
   employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
-  leaveRequestId String?               @unique
-  leaveRequest   EmployeeLeaveRequest? @relation(fields: [leaveRequestId], references: [id], onDelete: SetNull)
+  leaveRequestId String?       @unique
+  leaveRequest   LeaveRequest? @relation(fields: [leaveRequestId], references: [id], onDelete: SetNull)
 
   reason    String?
   startDate DateTime
@@ -811,23 +780,6 @@ model EmployeeSchedule {
   updatedAt DateTime @updatedAt
 
   @@index([employeeId, dayOfWeek])
-}
-
-model SalonSchedule {
-  id String @id @default(cuid())
-
-  salonId String
-  salon   Salon  @relation(fields: [salonId], references: [id], onDelete: Cascade)
-
-  dayOfWeek Int
-  startTime String
-  endTime   String
-  isOpen    Boolean @default(true)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([salonId, dayOfWeek])
 }
 
 model Expense {

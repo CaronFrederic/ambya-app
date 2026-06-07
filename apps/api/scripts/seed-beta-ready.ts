@@ -726,7 +726,15 @@ async function ensureSalon(ownerId: string) {
           instagram: 'https://instagram.com/ambya.beta',
           facebook: 'https://facebook.com/ambya.beta',
         },
-        openingHoursJson: buildDefaultOpeningHours(),
+        openingHours: {
+          deleteMany: {},
+          create: buildDefaultOpeningHours().map((item, index) => ({
+            dayOfWeek: [1, 2, 3, 4, 5, 6, 0][index],
+            isOpen: !item.closed,
+            startTime: item.open ?? '09:00',
+            endTime: item.close ?? '18:00',
+          })),
+        },
       },
     })
   }
@@ -753,7 +761,14 @@ async function ensureSalon(ownerId: string) {
         instagram: 'https://instagram.com/ambya.beta',
         facebook: 'https://facebook.com/ambya.beta',
       },
-      openingHoursJson: buildDefaultOpeningHours(),
+      openingHours: {
+        create: buildDefaultOpeningHours().map((item, index) => ({
+          dayOfWeek: [1, 2, 3, 4, 5, 6, 0][index],
+          isOpen: !item.closed,
+          startTime: item.open ?? '09:00',
+          endTime: item.close ?? '18:00',
+        })),
+      },
     },
   })
 }
@@ -769,6 +784,7 @@ function buildDefaultOpeningHours() {
     { day: 'Dimanche', open: null, close: null, closed: true },
   ]
 }
+
 
 async function ensureDiscoverySalons(ownerId: string) {
   const demoSalons = [
@@ -890,7 +906,15 @@ async function ensureDiscoverySalons(ownerId: string) {
               instagram: 'https://instagram.com/ambya.demo',
               facebook: 'https://facebook.com/ambya.demo',
             },
-            openingHoursJson: buildDefaultOpeningHours(),
+            openingHours: {
+              deleteMany: {},
+              create: buildDefaultOpeningHours().map((item, index) => ({
+                dayOfWeek: [1, 2, 3, 4, 5, 6, 0][index],
+                isOpen: !item.closed,
+                startTime: item.open ?? '08:00',
+                endTime: item.close ?? '18:00',
+              })),
+            },
           },
         })
       : await prisma.salon.create({
@@ -915,7 +939,7 @@ async function ensureDiscoverySalons(ownerId: string) {
             },
            openingHours: {
   create: buildDefaultOpeningHours().map((item, index) => ({
-    dayOfWeek: index + 1,
+    dayOfWeek: [1, 2, 3, 4, 5, 6, 0][index],
     isOpen: !item.closed,
     startTime: item.open ?? '08:00',
     endTime: item.close ?? '18:00',

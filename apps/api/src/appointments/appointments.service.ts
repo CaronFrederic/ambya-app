@@ -8,6 +8,7 @@ import { Response } from 'express';
 import ExcelJS from 'exceljs';
 import {
   AppointmentStatus,
+  LeaveRequestStatus,
   LoyaltyReason,
   LoyaltyTier,
   PaymentStatus,
@@ -1960,21 +1961,15 @@ export class AppointmentsService {
         })
       : null;
 
-    // Beta source of truth for employee leave requests.
-    // Use an explicit parameterized SQL read because the legacy
-    // EmployeeLeaveRequest model has very similar naming but different fields.
-    const leaveConflicts = await prisma.$queryRaw<Array<{ id: string }>>(
-      Prisma.sql`
-        SELECT "id"
-        FROM "LeaveRequest"
-        WHERE "employeeId" = ${employeeId}
-          AND "status" = 'APPROVED'
-          AND "startAt" < ${endAt}
-          AND "endAt" > ${startAt}
-        LIMIT 1
-      `,
-    );
-    const leaveConflict = leaveConflicts[0] ?? null;
+    const leaveConflict = await prisma.leaveRequest.findFirst({
+      where: {
+        employeeId,
+        status: LeaveRequestStatus.APPROVED,
+        startAt: { lt: endAt },
+        endAt: { gt: startAt },
+      },
+      select: { id: true },
+    });
 
     return Boolean(appointmentConflict || blockedSlotConflict || leaveConflict);
   }

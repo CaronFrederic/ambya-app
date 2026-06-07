@@ -60,7 +60,10 @@ describe('SalonSettingsService', () => {
     }
 
     const service = new SalonSettingsService(prisma as any)
-    jest.spyOn(service as any, 'getManagedSalon').mockResolvedValue({ id: 'salon-1' })
+    jest.spyOn(service as any, 'getManagedSalon').mockResolvedValue({
+      id: 'salon-1',
+      openingHours: [],
+    })
 
     await service.upsertSettings(
       { userId: 'pro-1', role: 'PROFESSIONAL' } as any,
