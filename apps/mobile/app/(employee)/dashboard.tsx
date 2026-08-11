@@ -20,6 +20,7 @@ import {
   useCreateEmployeeBlockedSlot,
   useEmployeeDashboard,
 } from '../../src/api/employee-portal'
+import { useNotificationSummary } from '../../src/api/notifications'
 import { useOfflineStatus } from '../../src/providers/OfflineProvider'
 import { requireOnlineAction } from '../../src/offline/guard'
 import {
@@ -32,6 +33,11 @@ import { colors, overlays } from '../../src/theme/colors'
 import { radius } from '../../src/theme/radius'
 import { spacing } from '../../src/theme/spacing'
 import { typography } from '../../src/theme/typography'
+import {
+  formatDateInTimeZone,
+  formatTimeInTimeZone,
+  zonedDateTimeToUtcIso,
+} from '../../src/utils/dateTime'
 
 type PickerType = 'date' | 'time' | 'service' | null
 
@@ -61,6 +67,7 @@ const quickActions = [
 
 export default function EmployeeDashboardScreen() {
   const dashboard = useEmployeeDashboard()
+  const notificationSummary = useNotificationSummary()
   const createBlockedSlot = useCreateEmployeeBlockedSlot()
   const { isOffline } = useOfflineStatus()
 
@@ -75,6 +82,7 @@ export default function EmployeeDashboardScreen() {
   const [errors, setErrors] = useState<Record<string, string>>({})
 
   const profile = dashboard.data?.profile
+  const salonTimeZone = profile?.salonTimeZone
   const services = dashboard.data?.services ?? []
   const todayItems = dashboard.data?.todayItems ?? []
   const selectedService = useMemo(
@@ -129,7 +137,7 @@ export default function EmployeeDashboardScreen() {
 
     try {
       await createBlockedSlot.mutateAsync({
-        startAt: toUtcIso(blockDate, blockTime),
+        startAt: toSalonSlotIso(blockDate, blockTime, salonTimeZone),
         serviceId: selectedService.id,
         clientName: clientName.trim(),
         clientPhone: phone.trim(),
@@ -184,7 +192,8 @@ export default function EmployeeDashboardScreen() {
             title={`Bonjour ${profile.firstName || 'Employe'}`}
             subtitle={`${profile.role} - ${profile.salon}`}
             actionIcon="notifications-outline"
-            onActionPress={() => {}}
+            actionBadgeCount={notificationSummary.data?.unreadCount ?? 0}
+            onActionPress={() => router.push('/notifications' as never)}
             topInset={spacing.md}
           />
 
@@ -224,7 +233,7 @@ export default function EmployeeDashboardScreen() {
 
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Rendez-vous du jour</Text>
-            <Text style={styles.sectionMeta}>{formatFullDate(new Date())}</Text>
+            <Text style={styles.sectionMeta}>{formatFullDate(new Date(), salonTimeZone)}</Text>
           </View>
 
           <View style={styles.list}>
@@ -249,7 +258,9 @@ export default function EmployeeDashboardScreen() {
                     </View>
 
                     <View style={styles.timePill}>
-                      <Text style={styles.timePillText}>{formatTime(appointment.startAt)}</Text>
+                      <Text style={styles.timePillText}>
+                        {formatTime(appointment.startAt, appointment.salonTimeZone ?? salonTimeZone)}
+                      </Text>
                     </View>
                   </View>
 
@@ -414,15 +425,12 @@ function SummaryStatCard({ label, value }: { label: string; value: string }) {
   )
 }
 
-function formatTime(value: string) {
-  return new Date(value).toLocaleTimeString('fr-FR', {
-    hour: '2-digit',
-    minute: '2-digit',
-  })
+function formatTime(value: string, timeZone?: string | null) {
+  return formatTimeInTimeZone(value, timeZone)
 }
 
-function formatFullDate(value: Date) {
-  return value.toLocaleDateString('fr-FR', {
+function formatFullDate(value: Date, timeZone?: string | null) {
+  return formatDateInTimeZone(value, timeZone, {
     weekday: 'long',
     day: '2-digit',
     month: 'short',
@@ -430,10 +438,14 @@ function formatFullDate(value: Date) {
   })
 }
 
-function toUtcIso(date: string, time: string) {
+function toSalonSlotIso(date: string, time: string, timeZone?: string | null) {
   const [day, month, year] = date.split('/').map(Number)
   const [hours, minutes] = time.split(':').map(Number)
-  return new Date(Date.UTC(year, month - 1, day, hours, minutes, 0)).toISOString()
+  const dateIso = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+  return (
+    zonedDateTimeToUtcIso(dateIso, time, timeZone) ??
+    new Date(Date.UTC(year, month - 1, day, hours, minutes, 0)).toISOString()
+  )
 }
 
 const styles = StyleSheet.create({
@@ -534,9 +546,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    flexWrap: 'wrap',
     gap: spacing.sm,
   },
   sectionTitle: {
+    flex: 1,
+    minWidth: 0,
+    flexShrink: 1,
     color: colors.brand,
     ...typography.h3,
     fontWeight: '800',
@@ -545,6 +561,7 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     ...typography.small,
     textTransform: 'capitalize',
+    flexShrink: 0,
   },
   list: {
     gap: spacing.md,
@@ -585,6 +602,7 @@ const styles = StyleSheet.create({
   appointmentTop: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexWrap: 'wrap',
     gap: spacing.sm,
   },
   avatar: {
@@ -597,22 +615,26 @@ const styles = StyleSheet.create({
   },
   appointmentInfo: {
     flex: 1,
+    minWidth: 0,
   },
   appointmentName: {
     color: colors.text,
     ...typography.medium,
     fontWeight: '700',
+    flexShrink: 1,
   },
   appointmentService: {
     marginTop: 2,
     color: colors.textMuted,
     ...typography.body,
+    flexShrink: 1,
   },
   timePill: {
     paddingHorizontal: spacing.sm,
     paddingVertical: 6,
     borderRadius: radius.full,
     backgroundColor: '#F7E8D4',
+    flexShrink: 0,
   },
   timePillText: {
     color: colors.brand,
@@ -628,6 +650,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
   },
   inline: {
     flexDirection: 'row',

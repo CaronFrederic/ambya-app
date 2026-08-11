@@ -13,6 +13,7 @@ import { colors, overlays } from '../../src/theme/colors'
 import { radius } from '../../src/theme/radius'
 import { spacing } from '../../src/theme/spacing'
 import { typography } from '../../src/theme/typography'
+import { formatDateInTimeZone, formatTimeInTimeZone } from '../../src/utils/dateTime'
 
 const tabOptions = [
   { key: 'all' as const, label: 'Tous' },
@@ -114,12 +115,16 @@ export default function EmployeeAppointmentsScreen() {
                   <View style={styles.metaRow}>
                     <View style={styles.metaItem}>
                       <Ionicons name="calendar-outline" size={14} color={colors.textMuted} />
-                      <Text style={styles.metaText}>{formatDate(appointment.startAt)}</Text>
+                      <Text style={styles.metaText}>
+                        {formatDate(appointment.startAt, appointment.salonTimeZone)}
+                      </Text>
                     </View>
 
                     <View style={styles.metaItem}>
                       <Ionicons name="time-outline" size={14} color={colors.textMuted} />
-                      <Text style={styles.metaText}>{formatTime(appointment.startAt)}</Text>
+                      <Text style={styles.metaText}>
+                        {formatTime(appointment.startAt, appointment.salonTimeZone)}
+                      </Text>
                     </View>
                   </View>
 
@@ -145,15 +150,12 @@ export default function EmployeeAppointmentsScreen() {
   )
 }
 
-function formatDate(value: string) {
-  return new Date(value).toLocaleDateString('fr-FR')
+function formatDate(value: string, timeZone?: string | null) {
+  return formatDateInTimeZone(value, timeZone)
 }
 
-function formatTime(value: string) {
-  return new Date(value).toLocaleTimeString('fr-FR', {
-    hour: '2-digit',
-    minute: '2-digit',
-  })
+function formatTime(value: string, timeZone?: string | null) {
+  return formatTimeInTimeZone(value, timeZone)
 }
 
 const styles = StyleSheet.create({

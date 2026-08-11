@@ -44,6 +44,7 @@ export default function Offers() {
                 key={`${offer.salonId}-${offer.serviceId}`}
                 title={offer.serviceName}
                 salonName={offer.salonName}
+                salonImageUrl={offer.salonCoverImageUrl ?? null}
                 discountPercent={offer.discountPercent}
                 highlightLabel={offer.highlightLabel}
                 price={offer.discountedPrice}
@@ -53,6 +54,8 @@ export default function Offers() {
                     pathname: "/(screens)/salon",
                     params: {
                       salonId: offer.salonId,
+                      initialTab: "services",
+                      serviceId: offer.serviceId,
                       offerServiceId: offer.serviceId,
                       offerPrice: String(offer.discountedPrice),
                     },

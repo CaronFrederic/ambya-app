@@ -150,6 +150,16 @@ enum MobileMoneyOperator {
   ORANGE
 }
 
+enum NotificationType {
+  APPOINTMENT_CREATED
+  APPOINTMENT_CONFIRMED
+  APPOINTMENT_UPDATED
+  APPOINTMENT_RESCHEDULED
+  APPOINTMENT_CANCELLED
+  APPOINTMENT_PAID
+  APPOINTMENT_EMPLOYEE_ASSIGNED
+}
+
 model User {
   id       String   @id @default(cuid())
   email    String?  @unique
@@ -179,6 +189,7 @@ model User {
   paymentMethods PaymentMethod[]
   loyaltyAccount LoyaltyAccount?
   paymentIntents PaymentIntent[]
+  notifications  Notification[]
 
   salonMemberships SalonClient[] @relation("SalonClientUser")
 
@@ -275,6 +286,7 @@ model Salon {
   clientNotes    ClientNote[]
   absences       EmployeeAbsence[]
   loyaltyConfig  LoyaltyConfig?
+  notifications  Notification[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -392,6 +404,7 @@ model Appointment {
 
   paymentIntents      PaymentIntent[]
   appointmentServices AppointmentService[]
+  notifications       Notification[]
 
   startAt DateTime
   endAt   DateTime
@@ -414,6 +427,35 @@ model Appointment {
   @@index([clientId, startAt])
   @@index([employeeId, startAt])
   @@index([status])
+}
+
+model Notification {
+  id String @id @default(cuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  salonId String?
+  salon   Salon?  @relation(fields: [salonId], references: [id], onDelete: Cascade)
+
+  appointmentId String?
+  appointment   Appointment? @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+
+  type    NotificationType
+  title   String
+  message String
+  targetRoute String?
+  metadata Json?
+
+  readAt    DateTime?
+  createdAt DateTime @default(now())
+
+  dedupeKey String @unique
+
+  @@index([userId, readAt, createdAt])
+  @@index([salonId, createdAt])
+  @@index([appointmentId])
+  @@index([type])
 }
 
 model AppointmentService {

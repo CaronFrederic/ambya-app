@@ -12,7 +12,8 @@ type Props = {
   name: string;
   city?: string | null;
   country?: string | null;
-  rating: number;
+  rating?: number | null;
+  reviewCount?: number | null;
   duration: string;
   distance?: string;
   showDistance?: boolean;
@@ -24,6 +25,7 @@ export function SalonListItem({
   city,
   country,
   rating,
+  reviewCount,
   duration,
   distance,
   showDistance,
@@ -52,10 +54,7 @@ export function SalonListItem({
             )}
           </View>
 
-          <View style={styles.metaRow}>
-            <Ionicons name="star" size={14} color={colors.premium} />
-            <Text style={styles.metaText}>{rating.toFixed(1)}</Text>
-          </View>
+          <RatingMeta rating={rating} reviewCount={reviewCount} />
 
           {city || country ? (
             <View style={styles.metaRow}>
@@ -83,6 +82,41 @@ export function SalonListItem({
 
       <Ionicons name="chevron-forward" size={18} color="rgba(107,39,55,0.40)" />
     </Pressable>
+  );
+}
+
+function RatingMeta({
+  rating,
+  reviewCount,
+}: {
+  rating?: number | null;
+  reviewCount?: number | null;
+}) {
+  const hasReview =
+    typeof reviewCount === "number" &&
+    reviewCount > 0 &&
+    typeof rating === "number" &&
+    Number.isFinite(rating) &&
+    rating > 0;
+
+  if (!hasReview) {
+    return (
+      <View style={styles.metaRow}>
+        <Text style={styles.newBadge}>Nouveau</Text>
+      </View>
+    );
+  }
+
+  const formattedRating = rating.toFixed(1).replace(".", ",");
+  const reviewLabel = reviewCount > 1 ? "avis" : "avis";
+
+  return (
+    <View style={styles.metaRow}>
+      <Ionicons name="star" size={14} color={colors.premium} />
+      <Text style={styles.metaText}>
+        {formattedRating} · {reviewCount} {reviewLabel}
+      </Text>
+    </View>
   );
 }
 
@@ -159,6 +193,12 @@ const styles = StyleSheet.create({
     color: colors.text,
     ...typography.small,
     fontWeight: "500",
+  },
+
+  newBadge: {
+    color: colors.brand,
+    ...typography.small,
+    fontWeight: "700",
   },
 
   durationText: {

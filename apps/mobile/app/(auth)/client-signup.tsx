@@ -25,7 +25,7 @@ import {
   getGabonNationalPhoneDigits,
   isValidGabonPhone,
 } from '../../src/constants/countries'
-import { registerClient, patchMeProfile, persistAuth } from '../../src/api/auth'
+import { registerClient, persistAuth } from '../../src/api/auth'
 import { useAuthRefresh } from '../../src/providers/AuthRefreshProvider'
 
 type StepKey =
@@ -349,19 +349,19 @@ export default function ClientSignup() {
 
   const canGoBack = stepIndex > 0
 
+  const validateRequiredAccountStep = () => {
+    if (!nickname.trim() || !gender || !ageRange || !city.trim()) return false
+    if (!hasEmail && !hasPhone) return false
+    if (hasEmail && !isEmail(email)) return false
+    if (hasPhone && !isValidGabonPhone(phone)) return false
+    if (!password || password.length < 6) return false
+    if (!confirmPassword || password !== confirmPassword) return false
+    return true
+  }
+
   const validateStep = () => {
     if (meta.key === 'general') {
-      if (!nickname.trim() || !gender || !ageRange || !city.trim()) return false
-      if (!hasEmail && !hasPhone) return false
-      if (hasEmail && !isEmail(email)) return false
-      if (hasPhone && !isValidGabonPhone(phone)) return false
-      if (!password || password.length < 6) return false
-      if (!confirmPassword || password !== confirmPassword) return false
-      return true
-    }
-
-    if (meta.key === 'important' && !allergies) {
-      return false
+      return validateRequiredAccountStep()
     }
 
     return true
@@ -379,7 +379,52 @@ export default function ClientSignup() {
     setStepIndex(Math.max(0, stepIndex - 1))
   }
 
+  const buildProfilePayload = () => ({
+    nickname: nickname.trim(),
+    gender,
+    ageRange,
+    city: city.trim(),
+    country,
+    allergies,
+    comments: comments.trim() || null,
+    questionnaire: {
+      hair: {
+        hairTypes,
+        hairTexture,
+        hairLength,
+        hairConcerns,
+      },
+      nails: {
+        nailTypes,
+        nailStates,
+        nailConcerns,
+      },
+      face: {
+        faceSkin,
+        faceConcerns,
+      },
+      body: {
+        bodySkin,
+        tensionZones,
+        wellbeingConcerns,
+        massageSensitiveZones,
+      },
+      fitness: {
+        activityLevel,
+        fitnessGoals,
+        fitnessConcerns,
+      },
+      practical: {
+        paymentPrefs,
+        notifPrefs,
+      },
+    },
+  })
+
   const onFinish = async () => {
+    setAttempted(true)
+    if (!validateRequiredAccountStep()) return
+
     try {
       setSubmitting(true)
 
@@ -387,53 +432,11 @@ export default function ClientSignup() {
         email: email.trim() || undefined,
         phone: phoneDigits || undefined,
         password,
+        confirmPassword,
+        profile: buildProfilePayload(),
       })
 
       await persistAuth(reg.accessToken, reg.user.role)
-
-      const payload = {
-        nickname: nickname.trim(),
-        gender,
-        ageRange,
-        city: city.trim(),
-        country,
-        allergies,
-        comments: comments.trim() || null,
-        questionnaire: {
-          hair: {
-            hairTypes,
-            hairTexture,
-            hairLength,
-            hairConcerns,
-          },
-          nails: {
-            nailTypes,
-            nailStates,
-            nailConcerns,
-          },
-          face: {
-            faceSkin,
-            faceConcerns,
-          },
-          body: {
-            bodySkin,
-            tensionZones,
-            wellbeingConcerns,
-            massageSensitiveZones,
-          },
-          fitness: {
-            activityLevel,
-            fitnessGoals,
-            fitnessConcerns,
-          },
-          practical: {
-            paymentPrefs,
-            notifPrefs,
-          },
-        },
-      }
-
-      await patchMeProfile(reg.accessToken, payload)
       await refreshAuth()
       router.replace('/(tabs)/home')
     } catch (error: any) {
@@ -777,9 +780,9 @@ export default function ClientSignup() {
               </View>
             </View>
 
-            <Text style={styles.confirmTitle}>Votre profil a bien été complété !</Text>
+            <Text style={styles.confirmTitle}>Votre compte est prêt !</Text>
             <Text style={styles.confirmText}>
-              Vos préférences nous aideront à personnaliser{'\n'}votre expérience AMBYA.
+              Les informations renseignées nous aideront à personnaliser{'\n'}votre expérience AMBYA.
             </Text>
           </View>
         )}
@@ -793,9 +796,19 @@ export default function ClientSignup() {
         )}
 
         {meta.key !== 'confirmation' ? (
-          <Pressable onPress={onNext} style={[styles.nextBtn, !canGoBack && { marginLeft: 0 }]}>
-            <Text style={styles.nextBtnText}>Suivant ›</Text>
-          </Pressable>
+          <View style={[styles.footerActions, !canGoBack && { flex: 1 }]}>
+            {meta.key === 'general' && (
+              <Pressable onPress={onFinish} style={styles.laterBtn} disabled={submitting}>
+                <Text style={styles.laterBtnText}>
+                  {submitting ? 'Création…' : 'Remplir plus tard'}
+                </Text>
+              </Pressable>
+            )}
+
+            <Pressable onPress={onNext} style={styles.nextBtn}>
+              <Text style={styles.nextBtnText}>Suivant ›</Text>
+            </Pressable>
+          </View>
         ) : (
           <Pressable onPress={onFinish} style={styles.finishBtn} disabled={submitting}>
             <Text style={styles.finishBtnText}>{submitting ? 'Création…' : 'Terminer ✓'}</Text>
@@ -1033,6 +1046,25 @@ const styles = StyleSheet.create({
   backBtnText: {
     color: colors.brand,
     fontWeight: '600',
+  },
+  footerActions: {
+    flexDirection: 'row',
+    gap: spacing.md,
+    flex: 1.4,
+  },
+  laterBtn: {
+    flex: 1,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: overlays.brand20,
+    borderRadius: 999,
+    paddingVertical: spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  laterBtnText: {
+    color: colors.brand,
+    fontWeight: '700',
   },
   nextBtn: {
     flex: 1.4,

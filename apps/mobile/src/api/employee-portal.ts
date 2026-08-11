@@ -30,11 +30,12 @@ export type EmployeeScheduleItem = {
   startAt: string
   endAt: string
   amount: number
+  salonTimeZone?: string | null
   note: string | null
 }
 
 export type EmployeeScheduleItemDetails = EmployeeScheduleItem & {
-  salon: { id: string; name: string }
+  salon: { id: string; name: string; timezone?: string | null }
   client: {
     id: string | null
     name: string
@@ -58,6 +59,7 @@ export type EmployeeDashboardResponse = {
     lastName: string
     role: string
     salon: string
+    salonTimeZone?: string | null
   }
   metrics: {
     todayCount: number
@@ -86,6 +88,7 @@ export type EmployeeAvailableSlotsResponse = {
     endAt: string
     service: EmployeePortalServiceItem
     amount: number
+    salonTimeZone?: string | null
     isClaimable: boolean
   }>
   total: number
@@ -114,6 +117,7 @@ export type EmployeeProfile = {
   phone: string | null
   role: string
   salon: string
+  salonTimeZone?: string | null
 }
 
 export type EmployeeProfileResponse = {

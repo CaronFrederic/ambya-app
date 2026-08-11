@@ -31,6 +31,7 @@ import { RequestContextModule } from './request-context/request-context.module';
 import { RequestContextMiddleware } from './request-context/request-context.middleware';
 import { AuditInterceptor } from './audit/audit.interceptor';
 import { AdminModule } from './admin/admin.module';
+import { NotificationsModule } from './notifications/notifications.module';
 
 @Module({
   imports: [
@@ -70,6 +71,7 @@ import { AdminModule } from './admin/admin.module';
     LoyaltyModule,
 
     AuditModule,
+    NotificationsModule,
     RequestContextModule,
     AdminModule,
   ],

@@ -120,11 +120,7 @@ export default function EmployeeProfileScreen() {
 
   return (
     <Screen noPadding keyboard style={styles.screen}>
-      <EmployeeHeader
-        title="Mon Profil"
-        canGoBack
-        onBackPress={() => router.push('./dashboard')}
-      />
+      <EmployeeHeader title="Mon Profil" canGoBack />
 
       <ScrollView
         showsVerticalScrollIndicator={false}

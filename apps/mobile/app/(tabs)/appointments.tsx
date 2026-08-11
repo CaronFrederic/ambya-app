@@ -13,6 +13,11 @@ import { Ionicons } from "@expo/vector-icons";
 import { useAppointments } from "../../src/api/appointments";
 import { Screen } from "../../src/components/Screen";
 import { FeedbackState } from "../../src/components/FeedbackState";
+import { goBackOrReplace } from "../../src/navigation/back";
+import {
+  formatDateInTimeZone,
+  formatTimeInTimeZone,
+} from "../../src/utils/dateTime";
 
 import { spacing } from "../../src/theme/spacing";
 import { colors, overlays } from "../../src/theme/colors";
@@ -34,6 +39,7 @@ type GroupedAppointment = {
   id: string;
   status: AppointmentStatus;
   startAt: string;
+  salonTimeZone?: string | null;
   salonName: string;
   services: string[];
   employeeNames: string[];
@@ -128,21 +134,16 @@ function formatCurrency(amount: number) {
   return `${amount.toLocaleString("fr-FR")} FCFA`;
 }
 
-function formatAppointmentDate(dateIso: string) {
-  return new Date(dateIso).toLocaleDateString("fr-FR", {
+function formatAppointmentDate(dateIso: string, timeZone?: string | null) {
+  return formatDateInTimeZone(dateIso, timeZone, {
     day: "numeric",
     month: "short",
     year: "numeric",
-    timeZone: "UTC",
   });
 }
 
-function formatAppointmentTime(dateIso: string) {
-  return new Date(dateIso).toLocaleTimeString("fr-FR", {
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZone: "UTC",
-  });
+function formatAppointmentTime(dateIso: string, timeZone?: string | null) {
+  return formatTimeInTimeZone(dateIso, timeZone);
 }
 
 export default function AppointmentsScreen() {
@@ -178,6 +179,7 @@ export default function AppointmentsScreen() {
           id: groupId,
           status,
           startAt: item.startAt,
+          salonTimeZone: item.salon.timezone,
           salonName: item.salon.name,
           services: [item.service.name],
           employeeNames: item.employee?.displayName
@@ -202,6 +204,7 @@ export default function AppointmentsScreen() {
         new Date(item.startAt).getTime() < new Date(existing.startAt).getTime()
       ) {
         existing.startAt = item.startAt;
+        existing.salonTimeZone = item.salon.timezone;
       }
       existing.totalAmount += item.service.price;
       if (existing.status !== "EXPIRED") {
@@ -225,7 +228,7 @@ export default function AppointmentsScreen() {
   return (
     <Screen noPadding style={styles.screen}>
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.backBtn}>
+        <Pressable onPress={() => goBackOrReplace("/(tabs)/home")} style={styles.backBtn}>
           <Ionicons
             name="arrow-back"
             size={22}
@@ -373,7 +376,7 @@ export default function AppointmentsScreen() {
                       color={colors.textMuted}
                     />
                     <Text style={styles.dateText}>
-                      {formatAppointmentDate(item.startAt)}
+                      {formatAppointmentDate(item.startAt, item.salonTimeZone)}
                     </Text>
                     <Ionicons
                       name="time-outline"
@@ -382,7 +385,7 @@ export default function AppointmentsScreen() {
                       style={{ marginLeft: spacing.sm }}
                     />
                     <Text style={styles.dateText}>
-                      {formatAppointmentTime(item.startAt)}
+                      {formatAppointmentTime(item.startAt, item.salonTimeZone)}
                     </Text>
                   </View>
 

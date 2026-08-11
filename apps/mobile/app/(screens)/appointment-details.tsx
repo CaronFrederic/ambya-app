@@ -26,13 +26,22 @@ import { radius } from "../../src/theme/radius";
 import { typography } from "../../src/theme/typography";
 import { useOfflineStatus } from "../../src/providers/OfflineProvider";
 import { requireOnlineAction } from "../../src/offline/guard";
+import { goBackOrReplace } from "../../src/navigation/back";
+import {
+  formatDateKeyInTimeZone,
+  formatTimeInTimeZone,
+  formatTimeKeyInTimeZone,
+  isPastDateInTimeZone,
+  isPastOrCurrentSlotInTimeZone,
+  zonedDateTimeToUtcIso,
+} from "../../src/utils/dateTime";
 
-function getNextDays(count: number, fromIso?: string) {
+function getNextDays(count: number, fromIso?: string, timeZone?: string | null) {
   const items: Array<{ label: string; iso: string }> = [];
-  const today = new Date();
-  today.setUTCHours(0, 0, 0, 0);
+  const todayIso = formatDateKeyInTimeZone(new Date(), timeZone);
+  const today = new Date(`${todayIso}T12:00:00.000Z`);
   const requestedAnchor = fromIso
-    ? new Date(`${fromIso}T00:00:00.000Z`)
+    ? new Date(`${fromIso}T12:00:00.000Z`)
     : today;
   const anchor =
     requestedAnchor.getTime() >= today.getTime() ? requestedAnchor : today;
@@ -55,15 +64,11 @@ function getNextDays(count: number, fromIso?: string) {
   return items;
 }
 
-function getTodayIso() {
-  const today = new Date();
-  today.setUTCHours(0, 0, 0, 0);
-  return today.toISOString().slice(0, 10);
-}
-
-function getFutureOrTodayIso(value?: string) {
-  if (!value) return getTodayIso();
-  return value >= getTodayIso() ? value : getTodayIso();
+function getFutureOrTodayIso(value?: string, timeZone?: string | null) {
+  if (!value) return formatDateKeyInTimeZone(new Date(), timeZone);
+  return isPastDateInTimeZone(value, timeZone)
+    ? formatDateKeyInTimeZone(new Date(), timeZone)
+    : value;
 }
 
 function formatEmployeeLabel(employee: {
@@ -79,19 +84,8 @@ function formatCurrency(amount: number) {
   return `${amount.toLocaleString("fr-FR")} FCFA`;
 }
 
-function extractUtcTime(dateIso: string) {
-  const date = new Date(dateIso);
-  return `${String(date.getUTCHours()).padStart(2, "0")}:${String(
-    date.getUTCMinutes(),
-  ).padStart(2, "0")}`;
-}
-
-function formatAppointmentTime(dateIso: string) {
-  return new Date(dateIso).toLocaleTimeString("fr-FR", {
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZone: "UTC",
-  });
+function formatAppointmentTime(dateIso: string, timeZone?: string | null) {
+  return formatTimeInTimeZone(dateIso, timeZone);
 }
 
 function getDisplayStatus(status: string, startAt: string) {
@@ -133,8 +127,13 @@ export default function AppointmentDetailsScreen() {
   const cancelGroup = useCancelAppointmentGroup();
 
   const firstItem = data?.items[0];
-  const initialDateIso = firstItem?.startAt.slice(0, 10);
-  const initialTime = firstItem ? extractUtcTime(firstItem.startAt) : undefined;
+  const salonTimeZone = data?.salon.timezone;
+  const initialDateIso = firstItem
+    ? formatDateKeyInTimeZone(firstItem.startAt, salonTimeZone)
+    : undefined;
+  const initialTime = firstItem
+    ? formatTimeKeyInTimeZone(firstItem.startAt, salonTimeZone)
+    : undefined;
   const sharedEmployeeId = useMemo(() => {
     const employeeIds = Array.from(
       new Set((data?.items ?? []).map((item) => item.employee?.id).filter(Boolean)),
@@ -161,14 +160,17 @@ export default function AppointmentDetailsScreen() {
 
   useEffect(() => {
     if (!initialDateIso) return;
-    const safeDateIso = getFutureOrTodayIso(initialDateIso);
+    const safeDateIso = getFutureOrTodayIso(initialDateIso, salonTimeZone);
     setSelectedDateIso(safeDateIso);
     setSelectedTime(safeDateIso === initialDateIso ? initialTime ?? null : null);
     setSelectedEmployeeId(sharedEmployeeId);
     setEmployeeSelectionTouched(false);
-  }, [initialDateIso, initialTime, sharedEmployeeId]);
+  }, [initialDateIso, initialTime, salonTimeZone, sharedEmployeeId]);
 
-  const days = useMemo(() => getNextDays(14, initialDateIso), [initialDateIso]);
+  const days = useMemo(
+    () => getNextDays(14, initialDateIso, salonTimeZone),
+    [initialDateIso, salonTimeZone],
+  );
   const serviceIds = useMemo(
     () => (data?.items ?? []).map((item) => item.service.id),
     [data?.items],
@@ -197,8 +199,12 @@ export default function AppointmentDetailsScreen() {
 
     return slots.filter((slot) => {
       if (!slot.available) return false;
-      const slotDate = new Date(`${selectedDateIso}T${slot.time}:00.000Z`);
-      return slotDate.getTime() > now.getTime();
+      return !isPastOrCurrentSlotInTimeZone(
+        selectedDateIso,
+        slot.time,
+        salonTimeZone,
+        now,
+      );
     });
   }, [availability.data?.slots, selectedDateIso]);
 
@@ -239,7 +245,7 @@ export default function AppointmentDetailsScreen() {
 
   const nextStartAt =
     selectedDateIso && selectedTime
-      ? `${selectedDateIso}T${selectedTime}:00.000Z`
+      ? zonedDateTimeToUtcIso(selectedDateIso, selectedTime, salonTimeZone)
       : undefined;
   const employeeChanged =
     employeeSelectionTouched &&
@@ -324,7 +330,7 @@ export default function AppointmentDetailsScreen() {
   return (
     <Screen noPadding style={styles.screen}>
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.backBtn}>
+        <Pressable onPress={() => goBackOrReplace("/(tabs)/appointments")} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={22} color={colors.brandForeground} />
         </Pressable>
         <Text style={styles.headerTitle}>Gérer le rendez-vous</Text>
@@ -375,7 +381,7 @@ export default function AppointmentDetailsScreen() {
                       </Text>
                     </View>
                     <Text style={styles.metaText}>
-                      {formatAppointmentTime(item.startAt)}
+                      {formatAppointmentTime(item.startAt, salonTimeZone)}
                     </Text>
                   </View>
                 ))}

@@ -12,6 +12,7 @@ import { OfflineProvider } from '../src/providers/OfflineProvider'
 
 const AUTH_TOKEN_KEY = 'accessToken'
 const ROLE_KEY = 'userRole'
+const PUBLIC_GROUPS = new Set(['salons'])
 
 type Role = 'CLIENT' | 'PROFESSIONAL' | 'EMPLOYEE' | 'ADMIN'
 
@@ -90,11 +91,11 @@ export default function RootLayout() {
   const allowedGroups = useMemo(() => {
     switch (role) {
       case 'CLIENT':
-        return new Set(['(auth)', '(tabs)', '(screens)'])
+        return new Set(['(auth)', '(tabs)', '(screens)', 'notifications'])
       case 'PROFESSIONAL':
-        return new Set(['(auth)', '(professional)'])
+        return new Set(['(auth)', '(professional)', 'notifications'])
       case 'EMPLOYEE':
-        return new Set(['(auth)', '(employee)'])
+        return new Set(['(auth)', '(employee)', 'notifications'])
       case 'ADMIN':
         return new Set(['(auth)', '(admin)'])
       default:
@@ -107,8 +108,9 @@ export default function RootLayout() {
 
     const group = segments[0]
     const inAuth = group === '(auth)'
+    const isPublicGroup = typeof group === 'string' && PUBLIC_GROUPS.has(group)
 
-    if (!isLoggedIn && !inAuth) {
+    if (!isLoggedIn && !inAuth && !isPublicGroup) {
       router.replace('/(auth)/login')
       return
     }
@@ -118,7 +120,7 @@ export default function RootLayout() {
       return
     }
 
-    if (isLoggedIn && group && !allowedGroups.has(group)) {
+    if (isLoggedIn && group && !allowedGroups.has(group) && !isPublicGroup) {
       router.replace(homeForRole(role) as never)
     }
   }, [allowedGroups, isLoggedIn, ready, role, router, segments])
@@ -139,6 +141,8 @@ export default function RootLayout() {
                   <Stack.Screen name="(professional)" />
                   <Stack.Screen name="(employee)" />
                   <Stack.Screen name="(admin)" />
+                  <Stack.Screen name="notifications" />
+                  <Stack.Screen name="salons" />
                 </Stack>
               </PaymentProvider>
             </ProfileProvider>

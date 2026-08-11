@@ -7,6 +7,7 @@ import { Screen } from "../../src/components/Screen";
 import { Button } from "../../src/components/Button";
 import { InfoHint } from "../../src/components/InfoHint";
 import { useBooking } from "../../src/providers/BookingProvider";
+import { goBackOrReplace } from "../../src/navigation/back";
 
 import { colors, overlays } from "../../src/theme/colors";
 import { spacing } from "../../src/theme/spacing";
@@ -50,7 +51,7 @@ export default function RecapScreen() {
             name="arrow-back"
             size={22}
             color="#fff"
-            onPress={() => router.back()}
+            onPress={() => goBackOrReplace("/(tabs)/home")}
           />
         </View>
         <Text style={styles.headerTitle}>Récapitulatif des prestations</Text>
@@ -130,7 +131,7 @@ export default function RecapScreen() {
         <Button
           title="Modifier les services"
           variant="outline"
-          onPress={() => router.back()}
+          onPress={() => goBackOrReplace("/(tabs)/home")}
           style={{ flex: 1 }}
         />
         <Button

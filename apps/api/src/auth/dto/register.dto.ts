@@ -51,6 +51,10 @@ export class RegisterDto {
   password!: string;
 
   @IsOptional()
+  @IsString()
+  confirmPassword?: string;
+
+  @IsOptional()
   @ValidateNested()
   @Type(() => ClientProfileDto)
   profile?: ClientProfileDto;

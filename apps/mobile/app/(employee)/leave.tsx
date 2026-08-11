@@ -503,16 +503,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    flexWrap: 'wrap',
     gap: spacing.sm,
   },
   cardTitleWrap: {
     flex: 1,
+    minWidth: 156,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
   },
   cardTitle: {
     flex: 1,
+    minWidth: 0,
+    flexShrink: 1,
     color: colors.text,
     ...typography.medium,
     fontWeight: '700',
@@ -521,6 +525,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     paddingVertical: 6,
     borderRadius: radius.full,
+    flexShrink: 0,
   },
   pendingPill: {
     backgroundColor: '#FCE7D1',
@@ -565,16 +570,19 @@ const styles = StyleSheet.create({
   },
   cardActions: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: spacing.sm,
     marginTop: spacing.md,
   },
   cardActionButton: {
     flex: 1,
+    minWidth: 128,
   },
   inlineHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    flexWrap: 'wrap',
     gap: spacing.sm,
     marginTop: spacing.sm,
   },
@@ -583,6 +591,8 @@ const styles = StyleSheet.create({
     ...typography.small,
     fontWeight: '700',
     flex: 1,
+    minWidth: 0,
+    flexShrink: 1,
   },
   previewBox: {
     borderRadius: radius.lg,

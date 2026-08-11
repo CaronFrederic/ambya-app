@@ -14,6 +14,7 @@ import { colors } from '../../src/theme/colors'
 import { radius } from '../../src/theme/radius'
 import { spacing } from '../../src/theme/spacing'
 import { typography } from '../../src/theme/typography'
+import { formatDateInTimeZone, formatTimeInTimeZone } from '../../src/utils/dateTime'
 
 export default function EmployeeAvailabilityScreen() {
   const availableSlots = useEmployeeAvailableSlots()
@@ -79,13 +80,13 @@ export default function EmployeeAvailabilityScreen() {
                 <View style={styles.metaRow}>
                   <View style={styles.metaItem}>
                     <Ionicons name="calendar-outline" size={14} color={colors.textMuted} />
-                    <Text style={styles.metaText}>{formatDate(slot.startAt)}</Text>
+                    <Text style={styles.metaText}>{formatDate(slot.startAt, slot.salonTimeZone)}</Text>
                   </View>
 
                   <View style={styles.metaItem}>
                     <Ionicons name="time-outline" size={14} color={colors.textMuted} />
                     <Text style={styles.metaText}>
-                      {formatTime(slot.startAt)} - {formatTime(slot.endAt)}
+                      {formatTime(slot.startAt, slot.salonTimeZone)} - {formatTime(slot.endAt, slot.salonTimeZone)}
                     </Text>
                   </View>
                 </View>
@@ -126,15 +127,12 @@ export default function EmployeeAvailabilityScreen() {
   )
 }
 
-function formatDate(value: string) {
-  return new Date(value).toLocaleDateString('fr-FR')
+function formatDate(value: string, timeZone?: string | null) {
+  return formatDateInTimeZone(value, timeZone)
 }
 
-function formatTime(value: string) {
-  return new Date(value).toLocaleTimeString('fr-FR', {
-    hour: '2-digit',
-    minute: '2-digit',
-  })
+function formatTime(value: string, timeZone?: string | null) {
+  return formatTimeInTimeZone(value, timeZone)
 }
 
 function formatAmount(value: number) {

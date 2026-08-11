@@ -19,6 +19,8 @@ import { useOfflineStatus } from "../../src/providers/OfflineProvider";
 import { createAppointmentsFromCart } from "../../src/api/appointments";
 import { createPaymentMethod } from "../../src/api/paymentMethods";
 import { requireOnlineAction } from "../../src/offline/guard";
+import { goBackOrReplace } from "../../src/navigation/back";
+import { zonedDateTimeToUtcIso } from "../../src/utils/dateTime";
 import { colors, overlays } from "../../src/theme/colors";
 import { spacing } from "../../src/theme/spacing";
 import { radius } from "../../src/theme/radius";
@@ -77,8 +79,12 @@ export default function CardPaymentDetailsScreen() {
 
   const startAtIso = useMemo(() => {
     if (!draft.selectedDateIso || !draft.time) return null;
-    return `${draft.selectedDateIso}T${draft.time}:00.000Z`;
-  }, [draft.selectedDateIso, draft.time]);
+    return zonedDateTimeToUtcIso(
+      draft.selectedDateIso,
+      draft.time,
+      draft.salonTimeZone,
+    );
+  }, [draft.salonTimeZone, draft.selectedDateIso, draft.time]);
 
   const effectiveEmployeeId = useMemo(() => {
     const raw = draft.selectedEmployeeId?.trim();
@@ -153,7 +159,7 @@ export default function CardPaymentDetailsScreen() {
       >
         <View style={styles.header}>
           <Pressable
-            onPress={() => router.back()}
+            onPress={() => goBackOrReplace("/(screens)/payment")}
             style={styles.backBtn}
             hitSlop={10}
           >

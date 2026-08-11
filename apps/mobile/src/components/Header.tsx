@@ -1,21 +1,23 @@
 import { View, Text, StyleSheet, Pressable } from 'react-native'
-import { router } from 'expo-router'
+import type { Href } from 'expo-router'
 import { colors } from '../theme/colors'
 import { spacing } from '../theme/spacing'
 import { typography } from '../theme/typography'
+import { goBackOrReplace } from '../navigation/back'
 
 type Props = {
   title: string
   subtitle?: string
   canGoBack?: boolean
+  fallbackHref?: Href
 }
 
-export function Header({ title, subtitle, canGoBack = true }: Props) {
+export function Header({ title, subtitle, canGoBack = true, fallbackHref = '/(tabs)/home' }: Props) {
   return (
     <View style={styles.wrap}>
       <View style={styles.bar}>
         {canGoBack ? (
-          <Pressable onPress={() => router.back()} style={styles.back}>
+          <Pressable onPress={() => goBackOrReplace(fallbackHref)} style={styles.back}>
             <Text style={styles.backText}>←</Text>
           </Pressable>
         ) : (

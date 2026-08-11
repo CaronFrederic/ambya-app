@@ -19,6 +19,7 @@ import {
   getDashboardSummary,
   type DashboardSummary,
 } from "../../src/api/dashboard";
+import { useNotificationSummary } from "../../src/api/notifications";
 import { createProBlockedSlot } from "../../src/api/appointments";
 
 const today = new Date().toLocaleDateString("fr-FR", {
@@ -404,6 +405,7 @@ function DashboardTileCard({ item }: { item: DashboardTile }) {
 }
 
 export default function ProDashboard() {
+  const notificationSummary = useNotificationSummary();
   const [summary, setSummary] = useState<DashboardSummary>(EMPTY_SUMMARY);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -499,11 +501,26 @@ export default function ProDashboard() {
       <View style={styles.header}>
         <View style={styles.headerTitleRow}>
           <Text style={styles.headerTitle}>Tableau de bord</Text>
-          <Ionicons
-            name="information-circle-outline"
-            size={18}
-            color="rgba(255,255,255,0.75)"
-          />
+          <Pressable
+            onPress={() => router.push("/notifications" as Href)}
+            style={styles.notificationButton}
+            hitSlop={10}
+          >
+            <Ionicons
+              name="notifications-outline"
+              size={18}
+              color="rgba(255,255,255,0.9)"
+            />
+            {(notificationSummary.data?.unreadCount ?? 0) > 0 ? (
+              <View style={styles.notificationBadge}>
+                <Text style={styles.notificationBadgeText}>
+                  {(notificationSummary.data?.unreadCount ?? 0) > 9
+                    ? "9+"
+                    : notificationSummary.data?.unreadCount}
+                </Text>
+              </View>
+            ) : null}
+          </Pressable>
         </View>
 
         <Text style={styles.headerDate}>
@@ -578,6 +595,7 @@ const styles = StyleSheet.create({
   headerTitleRow: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
     gap: 8,
   },
   headerTitle: {
@@ -590,6 +608,32 @@ const styles = StyleSheet.create({
     marginTop: 10,
     fontSize: 16,
     fontWeight: "700",
+  },
+  notificationButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.10)",
+    alignItems: "center",
+    justifyContent: "center",
+    position: "relative",
+  },
+  notificationBadge: {
+    position: "absolute",
+    top: -4,
+    right: -4,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 999,
+    backgroundColor: COLORS.red,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 4,
+  },
+  notificationBadgeText: {
+    color: COLORS.white,
+    fontSize: 10,
+    fontWeight: "900",
   },
 
   scrollContent: {

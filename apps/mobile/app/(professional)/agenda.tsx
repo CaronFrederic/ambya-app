@@ -10,7 +10,7 @@ import {
   RefreshControl,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import { router, type Href } from "expo-router";
+import { router, type Href, useLocalSearchParams } from "expo-router";
 import { ProHeader } from "./components/ProHeader";
 import {
   getCalendarAppointments,
@@ -105,10 +105,22 @@ function buildWeekDays() {
   return result;
 }
 
+function normalizeDateParam(value?: string | string[]) {
+  const candidate = Array.isArray(value) ? value[0] : value;
+  if (!candidate || !/^\d{4}-\d{2}-\d{2}$/.test(candidate)) return null;
+
+  const date = new Date(`${candidate}T00:00:00.000Z`);
+  return Number.isNaN(date.getTime()) ? null : candidate;
+}
+
 export default function AgendaScreen() {
+  const params = useLocalSearchParams<{ appointmentId?: string; date?: string }>();
+  const focusedAppointmentId =
+    typeof params.appointmentId === "string" ? params.appointmentId : null;
+  const routeDate = normalizeDateParam(params.date);
   const days = useMemo(() => buildWeekDays(), []);
   const [selectedDate, setSelectedDate] = useState<string>(
-    days[0]?.fullDate ?? new Date().toISOString().slice(0, 10)
+    routeDate ?? days[0]?.fullDate ?? new Date().toISOString().slice(0, 10)
   );
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
   const [appointments, setAppointments] = useState<Appointment[]>([]);
@@ -140,6 +152,13 @@ export default function AgendaScreen() {
 
   setAppointments(mapped);
   setPendingCount(data.filter((a) => a.status === "PENDING").length);
+  const focusedAppointment = focusedAppointmentId
+    ? mapped.find((item) => item.id === focusedAppointmentId)
+    : null;
+  if (focusedAppointment) {
+    setSelectedAppointment(focusedAppointment);
+  }
+  return mapped;
 };
 
   const initialLoad = async () => {

@@ -28,6 +28,7 @@ import { spacing } from '../../../src/theme/spacing'
 import { radius } from '../../../src/theme/radius'
 import { typography } from '../../../src/theme/typography'
 import { GABON_MOBILE_MONEY_PROVIDERS } from '../../../src/constants/countries'
+import { goBackOrReplace } from '../../../src/navigation/back'
 
 // -------------------------
 // Helpers
@@ -332,7 +333,7 @@ export default function PaymentMethodsScreen() {
     <Screen noPadding style={{ backgroundColor: colors.background }}>
       {/* Header */}
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.headerBack} hitSlop={10}>
+          <Pressable onPress={() => goBackOrReplace('/(tabs)/profile')} style={styles.headerBack} hitSlop={10}>
           <Ionicons name="arrow-back" size={22} color={colors.brandForeground} />
         </Pressable>
 

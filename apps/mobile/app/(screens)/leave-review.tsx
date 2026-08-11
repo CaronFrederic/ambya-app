@@ -17,6 +17,7 @@ import { radius } from '../../src/theme/radius'
 import { typography } from '../../src/theme/typography'
 import { useOfflineStatus } from '../../src/providers/OfflineProvider'
 import { requireOnlineAction } from '../../src/offline/guard'
+import { goBackOrReplace } from '../../src/navigation/back'
 
 export default function LeaveReviewScreen() {
   const params = useLocalSearchParams<{ groupId?: string }>()
@@ -59,7 +60,7 @@ export default function LeaveReviewScreen() {
   return (
     <Screen noPadding style={styles.screen}>
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.backBtn}>
+        <Pressable onPress={() => goBackOrReplace('/(tabs)/appointments')} style={styles.backBtn}>
           <Ionicons name="arrow-back" size={22} color={colors.brandForeground} />
         </Pressable>
         <Text style={styles.headerTitle}>Laisser un avis</Text>

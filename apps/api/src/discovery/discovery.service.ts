@@ -20,6 +20,22 @@ type Coordinates = {
   longitude: number;
 };
 
+type HomeSalonSummary = {
+  id: string;
+  name: string;
+  address: string | null;
+  city: string | null;
+  country: string | null;
+  rating: number;
+  reviewCount: number;
+  duration: string;
+  coordinates: Coordinates | null;
+  geoRank: number;
+  distanceKm: number | null;
+};
+
+const TOP_RATED_SALON_LIMIT = 6;
+
 @Injectable()
 export class DiscoveryService {
   constructor(private readonly prisma: PrismaService) {}
@@ -39,6 +55,7 @@ export class DiscoveryService {
         address: true,
         city: true,
         country: true,
+        coverImageUrl: true,
         latitude: true,
         longitude: true,
         services: {
@@ -51,12 +68,14 @@ export class DiscoveryService {
           where: { status: { in: ['COMPLETED', 'CONFIRMED'] } },
           select: { id: true },
         },
+        _count: {
+          select: { reviews: true },
+        },
         reviews: {
           select: { rating: true },
-          take: 50,
         },
       },
-      take: 40,
+      orderBy: { name: 'asc' },
     });
 
     const serviceCategories = await this.prisma.service.findMany({
@@ -77,14 +96,15 @@ export class DiscoveryService {
         )
       : salons;
 
-    const topRatedSalons = filteredByCategory
-      .map((salon) => ({
+    const rankedSalons = filteredByCategory
+      .map<HomeSalonSummary>((salon) => ({
         id: salon.id,
         name: salon.name,
         address: salon.address,
         city: salon.city,
         country: salon.country,
         rating: this.computeAverageRating(salon.reviews),
+        reviewCount: salon._count.reviews,
         duration: salon.services[0]
           ? `${salon.services[0].durationMin} min`
           : '30 min',
@@ -95,16 +115,15 @@ export class DiscoveryService {
           this.resolveSalonCoordinates(salon),
         ),
       }))
-      .sort((a, b) => {
-        if (query.nearMe === 'true' && a.distanceKm !== b.distanceKm) {
-          if (a.distanceKm === null) return 1;
-          if (b.distanceKm === null) return -1;
-          return a.distanceKm - b.distanceKm;
-        }
-        if (a.geoRank !== b.geoRank) return a.geoRank - b.geoRank;
-        return b.rating - a.rating;
-      })
-      .slice(0, 12);
+      .sort((a, b) => this.sortByDiscoveryContext(a, b, query.nearMe === 'true'));
+
+    const topRatedSalons = rankedSalons
+      .filter((salon) => this.hasRealRating(salon))
+      .sort((a, b) => this.sortByRating(a, b))
+      .slice(0, TOP_RATED_SALON_LIMIT);
+
+    const topRatedIds = new Set(topRatedSalons.map((salon) => salon.id));
+    const otherSalons = rankedSalons.filter((salon) => !topRatedIds.has(salon.id));
 
     const offers = filteredByCategory
       .filter((salon) => salon.services[0])
@@ -116,6 +135,10 @@ export class DiscoveryService {
           salonName: salon.name,
           serviceId: service.id,
           serviceName: service.name,
+          salonCoverImageUrl:
+            typeof salon.coverImageUrl === 'string' && salon.coverImageUrl.trim()
+              ? salon.coverImageUrl
+              : null,
           discountPercent: 0,
           highlightLabel: this.toCategoryFromEnum(service.category),
           originalPrice: service.price,
@@ -123,7 +146,7 @@ export class DiscoveryService {
         };
       });
 
-    const mapSalons = topRatedSalons
+    const mapSalons = rankedSalons
       .filter((salon) => salon.coordinates)
       .map((salon) => ({
         id: salon.id,
@@ -141,6 +164,9 @@ export class DiscoveryService {
       categories,
       offers,
       topRatedSalons: topRatedSalons.map(
+        ({ geoRank, coordinates, ...salon }) => salon,
+      ),
+      otherSalons: otherSalons.map(
         ({ geoRank, coordinates, ...salon }) => salon,
       ),
       mapSalons,
@@ -187,7 +213,9 @@ export class DiscoveryService {
         },
         reviews: {
           select: { rating: true },
-          take: 50,
+        },
+        _count: {
+          select: { reviews: true },
         },
         services: {
           where: { isActive: true },
@@ -214,6 +242,7 @@ export class DiscoveryService {
         city: salon.city,
         country: salon.country,
         rating: this.computeAverageRating(salon.reviews),
+        reviewCount: salon._count.reviews,
         geoRank: this.computeGeoRank(
           salon,
           query.preferredCity ?? query.city,
@@ -248,6 +277,7 @@ export class DiscoveryService {
         city: true,
         country: true,
         phone: true,
+        timezone: true,
         depositEnabled: true,
         depositPercentage: true,
         coverImageUrl: true,
@@ -344,6 +374,7 @@ export class DiscoveryService {
       city: salon.city,
       country: salon.country,
       phone: salon.phone,
+      timezone: salon.timezone,
       depositEnabled: salon.depositEnabled,
       depositPercentage: salon.depositPercentage,
       coverImageUrl:
@@ -379,6 +410,7 @@ export class DiscoveryService {
       where: { id: salonId, isActive: true },
       select: {
         id: true,
+        timezone: true,
         openingHours: true,
         employees: {
           where: { isActive: true },
@@ -414,9 +446,10 @@ export class DiscoveryService {
 
     const dailyHours = this.getOpeningHoursForDate(query.date, salon.openingHours);
     if (dailyHours?.closed) {
-      return {
-        date: query.date,
-        totalDurationMin,
+        return {
+          date: query.date,
+          timezone: salon.timezone,
+          totalDurationMin,
         slots: [],
         professionals: salon.employees.map((employee) => ({
           id: employee.id,
@@ -432,8 +465,9 @@ export class DiscoveryService {
 
     const openTime = dailyHours?.open ?? '08:00';
     const closeTime = dailyHours?.close ?? '18:00';
-    const dayStart = new Date(`${query.date}T${openTime}:00.000Z`);
-    const dayEnd = new Date(`${query.date}T${closeTime}:00.000Z`);
+    const timeZone = salon.timezone ?? 'Africa/Libreville';
+    const dayStart = this.zonedDateTimeToUtc(query.date, openTime, timeZone);
+    const dayEnd = this.zonedDateTimeToUtc(query.date, closeTime, timeZone);
 
     const [appointments, blockedSlots, leaveRequests] = await Promise.all([
       this.prisma.appointment.findMany({
@@ -475,7 +509,7 @@ export class DiscoveryService {
       }),
     ]);
 
-    const slots = this.generateSlots(dayStart, dayEnd, totalDurationMin).filter(
+    const slots = this.generateSlots(dayStart, dayEnd, totalDurationMin, timeZone).filter(
       (slot) => slot.start.getTime() > Date.now(),
     );
     const employeeAppointmentEvents = appointments.reduce<
@@ -547,13 +581,14 @@ export class DiscoveryService {
 
     return {
       date: query.date,
+      timezone: salon.timezone,
       totalDurationMin,
       slots: globalSlots,
       professionals,
     };
   }
 
-  private generateSlots(start: Date, end: Date, durationMin: number) {
+  private generateSlots(start: Date, end: Date, durationMin: number, timeZone?: string | null) {
     const slots: Array<{ time: string; start: Date; end: Date }> = [];
     const stepMs = 30 * 60_000;
 
@@ -564,11 +599,61 @@ export class DiscoveryService {
     ) {
       const slotStart = new Date(cursor);
       const slotEnd = new Date(cursor + durationMin * 60_000);
-      const time = `${String(slotStart.getUTCHours()).padStart(2, '0')}:${String(slotStart.getUTCMinutes()).padStart(2, '0')}`;
+      const time = slotStart.toLocaleTimeString('fr-FR', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hourCycle: 'h23',
+        timeZone: timeZone ?? 'Africa/Libreville',
+      });
       slots.push({ time, start: slotStart, end: slotEnd });
     }
 
     return slots;
+  }
+
+  private zonedDateTimeToUtc(dateIso: string, time: string, timeZone: string) {
+    const [year, month, day] = dateIso.split('-').map(Number);
+    const [hour, minute] = time.split(':').map(Number);
+    let guess = new Date(Date.UTC(year, month - 1, day, hour, minute, 0));
+
+    for (let i = 0; i < 3; i++) {
+      const parts = this.getZonedParts(guess, timeZone);
+      const asIfUtc = Date.UTC(
+        parts.year,
+        parts.month - 1,
+        parts.day,
+        parts.hour,
+        parts.minute,
+        0,
+      );
+      const wantedUtc = Date.UTC(year, month - 1, day, hour, minute, 0);
+      const diff = asIfUtc - wantedUtc;
+      if (diff === 0) return guess;
+      guess = new Date(guess.getTime() - diff);
+    }
+
+    return guess;
+  }
+
+  private getZonedParts(date: Date, timeZone: string) {
+    const parts = new Intl.DateTimeFormat('fr-FR', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    }).formatToParts(date);
+    const value = (type: string) =>
+      Number(parts.find((part) => part.type === type)?.value ?? 0);
+    return {
+      year: value('year'),
+      month: value('month'),
+      day: value('day'),
+      hour: value('hour'),
+      minute: value('minute'),
+    };
   }
 
   private overlaps(aStart: Date, aEnd: Date, bStart: Date, bEnd: Date) {
@@ -845,6 +930,35 @@ export class DiscoveryService {
     return Number(
       (reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length).toFixed(1),
     );
+  }
+
+  private hasRealRating(salon: { rating: number | null; reviewCount: number }) {
+    return (
+      salon.reviewCount > 0 &&
+      typeof salon.rating === 'number' &&
+      Number.isFinite(salon.rating) &&
+      salon.rating > 0
+    );
+  }
+
+  private sortByRating(a: HomeSalonSummary, b: HomeSalonSummary) {
+    if (a.rating !== b.rating) return b.rating - a.rating;
+    if (a.reviewCount !== b.reviewCount) return b.reviewCount - a.reviewCount;
+    return a.name.localeCompare(b.name, 'fr');
+  }
+
+  private sortByDiscoveryContext(
+    a: HomeSalonSummary,
+    b: HomeSalonSummary,
+    nearMe: boolean,
+  ) {
+    if (nearMe && a.distanceKm !== b.distanceKm) {
+      if (a.distanceKm === null) return 1;
+      if (b.distanceKm === null) return -1;
+      return a.distanceKm - b.distanceKm;
+    }
+    if (a.geoRank !== b.geoRank) return a.geoRank - b.geoRank;
+    return a.name.localeCompare(b.name, 'fr');
   }
 
   private toCategoryFromEnum(category: ServiceCategory) {

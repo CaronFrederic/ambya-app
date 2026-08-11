@@ -21,6 +21,8 @@ import { spacing } from '../../src/theme/spacing'
 import { typography } from '../../src/theme/typography'
 import { useOfflineStatus } from '../../src/providers/OfflineProvider'
 import { requireOnlineAction } from '../../src/offline/guard'
+import { goBackOrReplace } from '../../src/navigation/back'
+import { formatDateInTimeZone, formatTimeInTimeZone } from '../../src/utils/dateTime'
 
 export default function EmployeeAppointmentDetailScreen() {
   const params = useLocalSearchParams<{ id?: string; kind?: string }>()
@@ -73,6 +75,7 @@ export default function EmployeeAppointmentDetailScreen() {
   }
 
   const appointment = detail.data.item
+  const salonTimeZone = appointment.salon?.timezone ?? appointment.salonTimeZone
   const isPastAppointment = new Date(appointment.startAt).getTime() <= Date.now()
 
   const handleConfirm = async () => {
@@ -126,7 +129,7 @@ export default function EmployeeAppointmentDetailScreen() {
             try {
               await cancelMutation.mutateAsync({ kind, id })
               Alert.alert('Rendez-vous annulé', 'Le rendez-vous a bien été annulé.')
-              router.back()
+              goBackOrReplace('/(employee)/appointments')
             } catch (error: any) {
               Alert.alert('Action impossible', error?.message ?? 'Erreur inconnue')
             }
@@ -202,8 +205,11 @@ export default function EmployeeAppointmentDetailScreen() {
           </View>
 
           <View style={styles.metaRow}>
-            <MetaInfo icon="calendar-outline" label={formatDate(appointment.startAt)} />
-            <MetaInfo icon="time-outline" label={`${formatTime(appointment.startAt)} - ${formatTime(appointment.endAt)}`} />
+            <MetaInfo icon="calendar-outline" label={formatDate(appointment.startAt, salonTimeZone)} />
+            <MetaInfo
+              icon="time-outline"
+              label={`${formatTime(appointment.startAt, salonTimeZone)} - ${formatTime(appointment.endAt, salonTimeZone)}`}
+            />
             <MetaInfo icon="wallet-outline" label={formatAmount(appointment.amount)} />
           </View>
 
@@ -319,15 +325,12 @@ function MetaInfo({
   )
 }
 
-function formatDate(value: string) {
-  return new Date(value).toLocaleDateString('fr-FR')
+function formatDate(value: string, timeZone?: string | null) {
+  return formatDateInTimeZone(value, timeZone)
 }
 
-function formatTime(value: string) {
-  return new Date(value).toLocaleTimeString('fr-FR', {
-    hour: '2-digit',
-    minute: '2-digit',
-  })
+function formatTime(value: string, timeZone?: string | null) {
+  return formatTimeInTimeZone(value, timeZone)
 }
 
 function formatAmount(value: number) {

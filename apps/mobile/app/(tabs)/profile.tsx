@@ -16,6 +16,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { Screen } from '../../src/components/Screen'
 import { Button } from '../../src/components/Button'
 import { InfoHint } from '../../src/components/InfoHint'
+import { goBackOrReplace } from '../../src/navigation/back'
 
 import { colors, overlays } from '../../src/theme/colors'
 import { spacing } from '../../src/theme/spacing'
@@ -23,6 +24,7 @@ import { radius } from '../../src/theme/radius'
 import { typography } from '../../src/theme/typography'
 import { useAuthRefresh } from '../../src/providers/AuthRefreshProvider'
 import { useMeSummary } from '../../src/api/me'
+import { getClientProfileCompletion } from '../../src/onboarding/clientProfileCompletion'
 
 import {
   MAP_GENDER,
@@ -103,6 +105,10 @@ export default function ProfileScreen() {
 
   // questionnaire JSON
   const q = (profile?.questionnaire ?? {}) as any
+  const profileCompletion = useMemo(
+    () => getClientProfileCompletion(profile),
+    [profile],
+  )
 
   async function handleLogout() {
     await SecureStore.deleteItemAsync('accessToken')
@@ -300,7 +306,7 @@ export default function ProfileScreen() {
       {/* HEADER */}
       <View style={styles.header}>
         <View style={styles.headerTopRow}>
-        <Pressable onPress={() => router.back()} style={styles.headerBack} hitSlop={10}>
+        <Pressable onPress={() => goBackOrReplace('/(tabs)/home')} style={styles.headerBack} hitSlop={10}>
           <Ionicons name="arrow-back" size={22} color={colors.brandForeground} />
         </Pressable>
           <View style={styles.headerBackSpacer} />
@@ -392,6 +398,26 @@ export default function ProfileScreen() {
         {tab === 'settings' && (
           <View style={{ gap: spacing.md }}>
             <View style={styles.settingsCard}>
+              {!profileCompletion.isComplete && profileCompletion.firstIncomplete ? (
+                <>
+                  <SettingsRow
+                    title="Compléter mon profil"
+                    subtitle={`${profileCompletion.percentage}% complété · ${profileCompletion.firstIncomplete.title}`}
+                    onPress={() =>
+                      router.push({
+                        pathname: '/(screens)/edit-section',
+                        params: {
+                          section: profileCompletion.firstIncomplete?.key,
+                          title: profileCompletion.firstIncomplete?.title,
+                        },
+                      })
+                    }
+                  />
+
+                  <View style={styles.rowDivider} />
+                </>
+              ) : null}
+
               <SettingsRow
                 title="Historique des réservations"
                 subtitle="Accédez à vos rendez-vous"
@@ -412,6 +438,14 @@ export default function ProfileScreen() {
                 title="Notifications"
                 subtitle="Push, email, SMS"
                 onPress={() => router.push('/(screens)/profile/notifications')}
+              />
+
+              <View style={styles.rowDivider} />
+
+              <SettingsRow
+                title="Modifier mon mot de passe"
+                subtitle="Securisez l'acces a votre compte"
+                onPress={() => router.push('/(screens)/profile/change-password' as never)}
               />
             </View>
 
@@ -664,20 +698,30 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    flexWrap: 'wrap',
     gap: spacing.md,
     zIndex: 5,
     elevation: 5,
   },
   sectionTitleWrap: {
     flex: 1,
+    minWidth: 156,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
     zIndex: 6,
     elevation: 6,
   },
-  sectionTitle: { color: colors.text, ...typography.h3, fontWeight: '700', flex: 1 },
-  sectionRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  sectionTitle: {
+    color: colors.text,
+    ...typography.h3,
+    fontWeight: '700',
+    flex: 1,
+    minWidth: 0,
+    flexShrink: 1,
+    lineHeight: 32,
+  },
+  sectionRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexShrink: 0 },
 
   editPill: {
     flexDirection: 'row',
@@ -687,6 +731,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: 10,
     borderRadius: radius.full,
+    flexShrink: 0,
   },
   editPillText: { color: colors.brand, ...typography.small, fontWeight: '800' },
 

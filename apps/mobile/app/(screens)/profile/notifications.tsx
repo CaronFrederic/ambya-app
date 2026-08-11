@@ -14,6 +14,7 @@ import { typography } from '../../../src/theme/typography'
 import { useMeSummary, useUpdateMeProfile, MeSummary } from '../../../src/api/me'
 import { useOfflineStatus } from '../../../src/providers/OfflineProvider'
 import { requireOnlineAction } from '../../../src/offline/guard'
+import { goBackOrReplace } from '../../../src/navigation/back'
 
 type NotifValue = 'push' | 'email' | 'sms'
 
@@ -90,7 +91,7 @@ export default function NotificationsScreen() {
     <Screen noPadding style={styles.screen}>
       <View style={styles.header}>
         <View style={styles.headerTopRow}>
-          <Pressable onPress={() => router.back()} style={styles.headerBack} hitSlop={10}>
+            <Pressable onPress={() => goBackOrReplace('/(tabs)/profile')} style={styles.headerBack} hitSlop={10}>
             <Ionicons name="arrow-back" size={22} color="#fff" />
           </Pressable>
         </View>

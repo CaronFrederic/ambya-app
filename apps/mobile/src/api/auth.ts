@@ -52,6 +52,17 @@ type RegisterDto = {
   email?: string;
   phone?: string;
   password: string;
+  confirmPassword?: string;
+  profile?: {
+    nickname: string;
+    gender: string | null;
+    ageRange: string | null;
+    city: string;
+    country: string;
+    allergies?: string | null;
+    comments?: string | null;
+    questionnaire?: Record<string, unknown>;
+  };
 };
 
 type RegisterResponse = {
@@ -60,6 +71,17 @@ type RegisterResponse = {
     id: string;
     role: "CLIENT" | "PROFESSIONAL" | "EMPLOYEE" | "ADMIN" | "SALON_MANAGER";
   };
+};
+
+export type ChangePasswordPayload = {
+  currentPassword: string;
+  newPassword: string;
+  confirmPassword: string;
+};
+
+export type ChangePasswordResponse = {
+  success: boolean;
+  message: string;
 };
 
 async function readApiError(res: Response, fallback: string) {
@@ -125,6 +147,14 @@ export function resendOtp() {
   return apiFetch<ResendOtpResponse>("/auth/resend-otp", {
     method: "POST",
   });
+}
+
+export async function changePassword(payload: ChangePasswordPayload) {
+  const res = await api.patch<ChangePasswordResponse>(
+    "/auth/change-password",
+    payload,
+  );
+  return res.data;
 }
 
 export async function registerClient(

@@ -24,6 +24,8 @@ import {
   DEFAULT_COUNTRY_NAME,
   getEnabledCountries,
 } from "../../src/constants/countries";
+import { getClientProfileCompletion } from "../../src/onboarding/clientProfileCompletion";
+import { shouldShowClientProfileReminder } from "../../src/onboarding/clientProfileReminder";
 import { colors, overlays } from "../../src/theme/colors";
 import { radius } from "../../src/theme/radius";
 import { spacing } from "../../src/theme/spacing";
@@ -42,9 +44,14 @@ export default function Home() {
   const [currentLocationLabel, setCurrentLocationLabel] = useState<
     string | null
   >(null);
+  const [profileReminderVisible, setProfileReminderVisible] = useState(false);
 
   const { data: countriesData } = useCountries();
   const { data: me } = useMeSummary(true);
+  const profileCompletion = useMemo(
+    () => getClientProfileCompletion(me?.profile),
+    [me?.profile],
+  );
 
   useEffect(() => {
     const loadCountry = async () => {
@@ -56,6 +63,32 @@ export default function Home() {
 
     void loadCountry();
   }, [countriesData]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const checkReminder = async () => {
+      const stage = await shouldShowClientProfileReminder({
+        userId: me?.user?.id,
+        createdAt: me?.user?.createdAt,
+        isComplete: profileCompletion.isComplete,
+      });
+
+      if (mounted && stage) {
+        setProfileReminderVisible(true);
+      }
+    };
+
+    void checkReminder();
+
+    return () => {
+      mounted = false;
+    };
+  }, [
+    me?.user?.createdAt,
+    me?.user?.id,
+    profileCompletion.isComplete,
+  ]);
 
   const location = useMemo(
     () => ({
@@ -77,6 +110,7 @@ export default function Home() {
   const categories = data?.categories ?? [];
   const offers = data?.offers ?? [];
   const topRated = data?.topRatedSalons ?? [];
+  const otherSalons = data?.otherSalons ?? [];
   const mapSalons = data?.mapSalons ?? [];
 
   const displayedLocation =
@@ -238,6 +272,44 @@ export default function Home() {
           </ScrollView>
         </View>
 
+        {profileReminderVisible && profileCompletion.firstIncomplete ? (
+          <View style={styles.profileReminder}>
+            <View style={styles.profileReminderTextWrap}>
+              <Text style={styles.profileReminderTitle}>
+                Profil à compléter
+              </Text>
+              <Text style={styles.profileReminderText}>
+                Votre profil est complété à {profileCompletion.percentage}%. Vous pouvez reprendre par{' '}
+                {profileCompletion.firstIncomplete.title.toLowerCase()}.
+              </Text>
+            </View>
+
+            <View style={styles.profileReminderActions}>
+              <Pressable
+                onPress={() => setProfileReminderVisible(false)}
+                style={styles.profileReminderGhost}
+              >
+                <Text style={styles.profileReminderGhostText}>Plus tard</Text>
+              </Pressable>
+
+              <Pressable
+                onPress={() =>
+                  router.push({
+                    pathname: "/(screens)/edit-section",
+                    params: {
+                      section: profileCompletion.firstIncomplete?.key,
+                      title: profileCompletion.firstIncomplete?.title,
+                    },
+                  })
+                }
+                style={styles.profileReminderCta}
+              >
+                <Text style={styles.profileReminderCtaText}>Compléter</Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : null}
+
         <View style={styles.body}>
           <SectionTitle title="Selections du moment" />
           {isLoading ? (
@@ -254,6 +326,7 @@ export default function Home() {
                   badgeLabel={offer.highlightLabel ?? "Selection"}
                   service={offer.serviceName}
                   salon={offer.salonName}
+                  salonImageUrl={offer.salonCoverImageUrl ?? null}
                   width={190}
                   onPress={() =>
                     router.push({
@@ -313,26 +386,57 @@ export default function Home() {
             </View>
           ) : null}
 
-          <SectionTitle title="Les mieux notes" />
-          <View style={styles.list}>
-            {topRated.map((salon) => (
-              <SalonListItem
-                key={salon.id}
-                name={salon.name}
-                city={salon.city}
-                country={salon.country}
-                rating={salon.rating}
-                duration={salon.duration}
-                distance={
-                  typeof salon.distanceKm === "number"
-                    ? `${salon.distanceKm.toFixed(1)} km`
-                    : undefined
-                }
-                showDistance={nearMeEnabled}
-                onPress={() => openSalon(salon.id)}
-              />
-            ))}
-          </View>
+          {topRated.length ? (
+            <>
+              <SectionTitle title="Les mieux notés" />
+              <View style={styles.list}>
+                {topRated.map((salon) => (
+                  <SalonListItem
+                    key={salon.id}
+                    name={salon.name}
+                    city={salon.city}
+                    country={salon.country}
+                    rating={salon.rating}
+                    reviewCount={salon.reviewCount}
+                    duration={salon.duration}
+                    distance={
+                      typeof salon.distanceKm === "number"
+                        ? `${salon.distanceKm.toFixed(1)} km`
+                        : undefined
+                    }
+                    showDistance={nearMeEnabled}
+                    onPress={() => openSalon(salon.id)}
+                  />
+                ))}
+              </View>
+            </>
+          ) : null}
+
+          {otherSalons.length ? (
+            <>
+              <SectionTitle title="Tous les salons" />
+              <View style={styles.list}>
+                {otherSalons.map((salon) => (
+                  <SalonListItem
+                    key={salon.id}
+                    name={salon.name}
+                    city={salon.city}
+                    country={salon.country}
+                    rating={salon.rating}
+                    reviewCount={salon.reviewCount}
+                    duration={salon.duration}
+                    distance={
+                      typeof salon.distanceKm === "number"
+                        ? `${salon.distanceKm.toFixed(1)} km`
+                        : undefined
+                    }
+                    showDistance={nearMeEnabled}
+                    onPress={() => openSalon(salon.id)}
+                  />
+                ))}
+              </View>
+            </>
+          ) : null}
         </View>
       </ScrollView>
     </Screen>
@@ -432,6 +536,59 @@ const styles = StyleSheet.create({
   chipTextOff: { color: colors.brand },
   chipTextOn: { color: colors.brandForeground },
   body: { paddingHorizontal: spacing.lg, gap: spacing.md, paddingTop: spacing.sm },
+  profileReminder: {
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.md,
+    borderRadius: radius.xl,
+    backgroundColor: colors.card,
+    borderWidth: 1,
+    borderColor: overlays.brand20,
+    padding: spacing.md,
+    gap: spacing.md,
+  },
+  profileReminderTextWrap: {
+    gap: spacing.xs,
+  },
+  profileReminderTitle: {
+    color: colors.brand,
+    ...typography.small,
+    fontWeight: "800",
+  },
+  profileReminderText: {
+    color: colors.textMuted,
+    ...typography.small,
+    lineHeight: 20,
+  },
+  profileReminderActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+  },
+  profileReminderGhost: {
+    minHeight: 38,
+    borderRadius: radius.full,
+    paddingHorizontal: spacing.md,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: overlays.brand20,
+  },
+  profileReminderGhostText: {
+    color: colors.brand,
+    fontWeight: "700",
+  },
+  profileReminderCta: {
+    minHeight: 38,
+    borderRadius: radius.full,
+    paddingHorizontal: spacing.md,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.brand,
+  },
+  profileReminderCtaText: {
+    color: colors.brandForeground,
+    fontWeight: "800",
+  },
   offersRow: { gap: spacing.md, paddingRight: spacing.lg },
   list: { gap: spacing.md },
   loading: { color: colors.textMuted, ...typography.small },

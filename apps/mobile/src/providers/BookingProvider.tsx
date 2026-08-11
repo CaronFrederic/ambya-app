@@ -13,6 +13,7 @@ export type BookingDraft = {
   cart: CartItem[];
   salonId?: string;
   salonName?: string;
+  salonTimeZone?: string | null;
 
   // schedule
   date?: { day: string; date: number }; // simple pour coller à la maquette

@@ -7,6 +7,7 @@ export type HomePayload = {
   offers: Array<{
     salonId: string;
     salonName: string;
+    salonCoverImageUrl?: string | null;
     serviceId: string;
     serviceName: string;
     discountPercent: number;
@@ -20,6 +21,17 @@ export type HomePayload = {
     city: string | null;
     country: string | null;
     rating: number;
+    reviewCount: number;
+    duration: string;
+    distanceKm?: number | null;
+  }>;
+  otherSalons: Array<{
+    id: string;
+    name: string;
+    city: string | null;
+    country: string | null;
+    rating: number;
+    reviewCount: number;
     duration: string;
     distanceKm?: number | null;
   }>;
@@ -29,6 +41,7 @@ export type HomePayload = {
     city: string | null;
     country: string | null;
     rating: number;
+    reviewCount?: number;
     duration: string;
     distanceKm?: number | null;
     latitude: number;
@@ -43,6 +56,7 @@ export type SearchPayload = {
     city: string | null;
     country: string | null;
     rating: number;
+    reviewCount?: number;
     highlights: Array<{
       id: string;
       name: string;
@@ -56,6 +70,7 @@ export type SearchPayload = {
 export type SalonDetailsPayload = {
   id: string;
   name: string;
+  timezone?: string | null;
   description?: string | null;
   address?: string | null;
   city?: string | null;
@@ -108,6 +123,7 @@ export type SalonDetailsPayload = {
 
 export type SalonAvailabilityPayload = {
   date: string;
+  timezone?: string | null;
   totalDurationMin: number;
   slots: Array<{ time: string; available: boolean }>;
   professionals: Array<{

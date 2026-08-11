@@ -23,6 +23,7 @@ import {
   usePaymentMethods,
 } from "../../src/api/paymentMethods";
 import { requireOnlineAction } from "../../src/offline/guard";
+import { goBackOrReplace } from "../../src/navigation/back";
 import {
   buildGabonPhoneHint,
   formatGabonPhone,
@@ -30,6 +31,7 @@ import {
   getGabonNationalPhoneDigits,
   isValidGabonPhone,
 } from "../../src/constants/countries";
+import { zonedDateTimeToUtcIso } from "../../src/utils/dateTime";
 
 import { colors, overlays } from "../../src/theme/colors";
 import { spacing } from "../../src/theme/spacing";
@@ -107,8 +109,12 @@ export default function PaymentScreen() {
 
   const startAtIso = useMemo(() => {
     if (!draft.selectedDateIso || !draft.time) return null;
-    return `${draft.selectedDateIso}T${draft.time}:00.000Z`;
-  }, [draft.selectedDateIso, draft.time]);
+    return zonedDateTimeToUtcIso(
+      draft.selectedDateIso,
+      draft.time,
+      draft.salonTimeZone,
+    );
+  }, [draft.salonTimeZone, draft.selectedDateIso, draft.time]);
 
   const effectiveEmployeeId = useMemo(() => {
     const raw = draft.selectedEmployeeId?.trim();
@@ -220,7 +226,7 @@ export default function PaymentScreen() {
             name="arrow-back"
             size={22}
             color="#fff"
-            onPress={() => router.back()}
+            onPress={() => goBackOrReplace("/(screens)/recap")}
           />
         </View>
         <Text style={styles.headerTitle}>Mode de paiement</Text>

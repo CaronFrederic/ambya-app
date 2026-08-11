@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native'
+import { AppState, View, Text, StyleSheet, ScrollView, Pressable } from 'react-native'
 import { router } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 
@@ -8,23 +8,32 @@ import { Button } from '../../src/components/Button'
 import { FeedbackState } from '../../src/components/FeedbackState'
 import { useBooking } from '../../src/providers/BookingProvider'
 import { useSalonAvailability } from '../../src/api/discovery'
+import { goBackOrReplace } from '../../src/navigation/back'
 
 import { colors, overlays } from '../../src/theme/colors'
 import { spacing } from '../../src/theme/spacing'
 import { radius } from '../../src/theme/radius'
 import { typography } from '../../src/theme/typography'
+import {
+  getBookableSlots,
+  getNextSlotInvalidationDelayMs,
+  isPastLocalDate,
+  toDateIsoInTimeZone,
+} from '../../src/booking/slotSelection'
 
-function getNextDays(count: number) {
+function getNextDays(count: number, now = new Date(), timeZone?: string | null) {
   const items: Array<{ label: string; iso: string }> = []
-  const now = new Date()
+  const anchorIso = toDateIsoInTimeZone(now, timeZone)
+  const anchor = new Date(`${anchorIso}T12:00:00.000Z`)
   for (let i = 0; i < count; i++) {
-    const d = new Date(now)
-    d.setDate(now.getDate() + i)
+    const d = new Date(anchor)
+    d.setUTCDate(anchor.getUTCDate() + i)
     const iso = d.toISOString().slice(0, 10)
     const label = d.toLocaleDateString('fr-FR', {
       weekday: 'short',
       day: '2-digit',
       month: '2-digit',
+      timeZone: 'UTC',
     })
     items.push({ label, iso })
   }
@@ -40,17 +49,16 @@ function formatProfessionalLabel(professional: {
     : professional.displayName
 }
 
-function isPastSlot(dateIso: string, time: string) {
-  const slotDate = new Date(`${dateIso}T${time}:00.000Z`)
-  return slotDate.getTime() <= Date.now()
-}
-
 export default function ScheduleScreen() {
   const { draft, patch } = useBooking()
+  const [now, setNow] = useState(() => new Date())
+  const salonTimeZone = draft.salonTimeZone
 
-  const days = useMemo(() => getNextDays(7), [])
+  const days = useMemo(() => getNextDays(7, now, salonTimeZone), [now, salonTimeZone])
   const [selectedDateIso, setSelectedDateIso] = useState<string>(
-    draft.selectedDateIso ?? days[0].iso,
+    draft.selectedDateIso && !isPastLocalDate(draft.selectedDateIso, now, salonTimeZone)
+      ? draft.selectedDateIso
+      : days[0].iso,
   )
   const [selectedTime, setSelectedTime] = useState<string | null>(draft.time ?? null)
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(
@@ -67,9 +75,9 @@ export default function ScheduleScreen() {
   const timeSlots = data?.slots ?? []
   const professionals = data?.professionals ?? []
 
-  const upcomingSlots = useMemo(
-    () => timeSlots.filter((slot) => !isPastSlot(selectedDateIso, slot.time)),
-    [selectedDateIso, timeSlots],
+  const bookableSlots = useMemo(
+    () => getBookableSlots(timeSlots, selectedDateIso, now, salonTimeZone),
+    [now, salonTimeZone, selectedDateIso, timeSlots],
   )
 
   const filteredProfessionals = useMemo(() => {
@@ -89,7 +97,14 @@ export default function ScheduleScreen() {
   )
 
   useEffect(() => {
-    if (selectedTime && !upcomingSlots.some((slot) => slot.time === selectedTime)) {
+    if (isPastLocalDate(selectedDateIso, now, salonTimeZone)) {
+      setSelectedDateIso(days[0].iso)
+      setSelectedTime(null)
+      setSelectedEmployeeId(null)
+      return
+    }
+
+    if (selectedTime && !bookableSlots.some((slot) => slot.time === selectedTime)) {
       setSelectedTime(null)
       setSelectedEmployeeId(null)
       return
@@ -101,9 +116,49 @@ export default function ScheduleScreen() {
     ) {
       setSelectedEmployeeId(null)
     }
-  }, [filteredProfessionals, selectedEmployeeId, selectedTime, upcomingSlots])
+  }, [
+    bookableSlots,
+    days,
+    filteredProfessionals,
+    now,
+    selectedDateIso,
+    selectedEmployeeId,
+    selectedTime,
+    salonTimeZone,
+  ])
 
-  const canContinue = !!selectedDateIso && !!selectedTime
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        setNow(new Date())
+        void refetch()
+      }
+    })
+
+    return () => subscription.remove()
+  }, [refetch])
+
+  useEffect(() => {
+    const delay = getNextSlotInvalidationDelayMs(
+      timeSlots,
+      selectedDateIso,
+      now,
+      salonTimeZone,
+    )
+    if (!delay) return
+
+    const timeoutId = setTimeout(() => {
+      setNow(new Date())
+      void refetch()
+    }, delay)
+
+    return () => clearTimeout(timeoutId)
+  }, [now, refetch, selectedDateIso, salonTimeZone, timeSlots])
+
+  const canContinue =
+    !!selectedDateIso &&
+    !!selectedTime &&
+    bookableSlots.some((slot) => slot.time === selectedTime)
 
   const onContinue = () => {
     const day = days.find((d) => d.iso === selectedDateIso)
@@ -125,7 +180,7 @@ export default function ScheduleScreen() {
     <Screen noPadding style={styles.screen}>
       <View style={styles.header}>
         <View style={styles.headerRow}>
-          <Ionicons name="arrow-back" size={22} color="#fff" onPress={() => router.back()} />
+            <Ionicons name="arrow-back" size={22} color="#fff" onPress={() => goBackOrReplace('/(screens)/recap')} />
         </View>
         <Text style={styles.headerTitle}>Choisir un creneau</Text>
       </View>
@@ -169,24 +224,23 @@ export default function ScheduleScreen() {
             actionLabel="Reessayer"
             onAction={() => void refetch()}
           />
-        ) : upcomingSlots.length === 0 ? (
+        ) : bookableSlots.length === 0 ? (
           <FeedbackState
             icon="calendar-clear-outline"
-            title="Aucun creneau disponible"
+            title="Aucun creneau disponible pour cette date."
             description="Essayez une autre date pour continuer votre reservation."
           />
         ) : (
           <View style={styles.grid}>
-            {upcomingSlots.map((slot) => {
+            {bookableSlots.map((slot) => {
               const active = selectedTime === slot.time
               return (
                 <Pressable
                   key={slot.time}
-                  onPress={() => slot.available && setSelectedTime(slot.time)}
+                  onPress={() => setSelectedTime(slot.time)}
                   style={[
                     styles.timePill,
                     active ? styles.pillActive : styles.pillIdle,
-                    !slot.available && styles.disabledPill,
                   ]}
                 >
                   <Text style={[styles.timeText, active && styles.pillTextActive]}>
@@ -278,7 +332,6 @@ const styles = StyleSheet.create({
     borderColor: colors.brand,
   },
   pillTextActive: { color: colors.brandForeground },
-  disabledPill: { opacity: 0.35 },
   datePill: {
     paddingHorizontal: 18,
     paddingVertical: 12,

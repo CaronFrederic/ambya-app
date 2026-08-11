@@ -1,5 +1,5 @@
 // app/(screens)/edit-section.tsx
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import {
   View,
   Text,
@@ -10,7 +10,7 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native'
-import { router, useLocalSearchParams } from 'expo-router'
+import { useLocalSearchParams } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import * as SecureStore from 'expo-secure-store'
 import { useQueryClient } from '@tanstack/react-query'
@@ -20,6 +20,7 @@ import { Button } from '../../src/components/Button'
 import { fetchMeSummary, useMeSummary } from '../../src/api/me'
 import { useOfflineStatus } from '../../src/providers/OfflineProvider'
 import { requireOnlineAction } from '../../src/offline/guard'
+import { goBackOrReplace } from '../../src/navigation/back'
 
 import { colors, overlays } from '../../src/theme/colors'
 import { spacing } from '../../src/theme/spacing'
@@ -237,8 +238,10 @@ export default function EditSectionScreen() {
   }, [user?.email, user?.phone])
 
   const canSave = !!token && !saving
+  const savingRef = useRef(false)
 
   async function onSave() {
+    if (savingRef.current) return
     if (!requireOnlineAction('mettre a jour votre profil')) return
     if (!token) return
 
@@ -326,6 +329,7 @@ export default function EditSectionScreen() {
     }
 
     try {
+      savingRef.current = true
       setSaving(true)
       await patchMeProfile(token, payload)
 
@@ -334,11 +338,13 @@ export default function EditSectionScreen() {
       await qc.invalidateQueries({ queryKey: ['me', 'summary'] })
       await refetch()
 
-      Alert.alert('OK', 'Modifications enregistrées.')
-      router.back()
+      Alert.alert('', 'Vos informations ont été mises à jour avec succès.', [
+        { text: 'OK', onPress: () => goBackOrReplace('/(tabs)/profile') },
+      ])
     } catch (e: any) {
       Alert.alert('Erreur', e?.message ?? 'Impossible de sauvegarder.')
     } finally {
+      savingRef.current = false
       setSaving(false)
     }
   }
@@ -346,7 +352,7 @@ export default function EditSectionScreen() {
   return (
     <Screen noPadding style={{ backgroundColor: colors.background }}>
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.headerBack} hitSlop={10}>
+        <Pressable onPress={() => goBackOrReplace('/(tabs)/profile')} style={styles.headerBack} hitSlop={10}>
           <Ionicons name="arrow-back" size={22} color={colors.brandForeground} />
         </Pressable>
         <Text style={styles.headerTitle}>{screenTitle}</Text>

@@ -1,4 +1,4 @@
-﻿import React, { useMemo, useState } from "react";
+﻿import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   Pressable,
   Image,
   Linking,
+  Share,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -18,6 +19,8 @@ import { radius } from "../../src/theme/radius";
 import { typography } from "../../src/theme/typography";
 import { useBooking } from "../../src/providers/BookingProvider";
 import { useSalonDetails } from "../../src/api/discovery";
+import { goBackOrReplace } from "../../src/navigation/back";
+import { buildSalonShareMessage } from "../../src/utils/salonShare";
 
 type TabKey = "about" | "services" | "reviews";
 type CartItem = {
@@ -32,6 +35,10 @@ function formatFCFA(v: number) {
   return `${v.toLocaleString("fr-FR")} FCFA`;
 }
 
+function getRouteParam(value?: string | string[]) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
 function formatEmployeeLabel(employee: {
   displayName: string;
   primarySpecialtyLabel?: string | null;
@@ -43,22 +50,40 @@ function formatEmployeeLabel(employee: {
 
 export default function SalonDetailScreen() {
   const params = useLocalSearchParams<{
-    salonId?: string;
-    offerServiceId?: string;
-    offerPrice?: string;
+    salonId?: string | string[];
+    initialTab?: string | string[];
+    serviceId?: string | string[];
+    offerServiceId?: string | string[];
+    offerPrice?: string | string[];
   }>();
-  const salonId = params.salonId;
-  const offerServiceId = params.offerServiceId;
-  const offerPrice = params.offerPrice ? Number(params.offerPrice) : undefined;
+  const salonId = getRouteParam(params.salonId);
+  const initialTab = getRouteParam(params.initialTab);
+  const targetServiceId =
+    getRouteParam(params.serviceId) ?? getRouteParam(params.offerServiceId);
+  const offerPriceParam = getRouteParam(params.offerPrice);
+  const offerPrice = offerPriceParam ? Number(offerPriceParam) : undefined;
+  const shouldOpenServices = initialTab === "services" || Boolean(targetServiceId);
   const { data, isLoading } = useSalonDetails(salonId);
+  const scrollRef = useRef<ScrollView>(null);
+  const serviceLayoutsRef = useRef<Record<string, number>>({});
+  const hasScrolledToTargetRef = useRef(false);
+  const sharingRef = useRef(false);
 
-  const [activeTab, setActiveTab] = useState<TabKey>("about");
+  const [activeTab, setActiveTab] = useState<TabKey>(
+    shouldOpenServices ? "services" : "about",
+  );
   const [expandedCategories, setExpandedCategories] = useState<string[]>([]);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [cart, setCart] = useState<CartItem[]>([]);
   const { setCart: setBookingCart, patch } = useBooking();
 
   const servicesByCategory = data?.servicesByCategory ?? {};
+  const targetCategory = useMemo(() => {
+    if (!targetServiceId) return undefined;
+    return Object.entries(servicesByCategory).find(([, services]) =>
+      services.some((service) => service.id === targetServiceId),
+    )?.[0];
+  }, [servicesByCategory, targetServiceId]);
   const gallery = data?.galleryImageUrls ?? [];
   const currentImage = gallery[activeImageIndex] ?? data?.coverImageUrl;
   const addressLine = [data?.address, data?.city, data?.country]
@@ -79,6 +104,28 @@ export default function SalonDetailScreen() {
     void Linking.openURL(url);
   };
 
+  const shareSalon = async () => {
+    if (sharingRef.current) return;
+
+    const shareContent = buildSalonShareMessage({
+      salonId: data?.id ?? salonId,
+      salonName: data?.name,
+    });
+
+    if (!shareContent) return;
+
+    try {
+      sharingRef.current = true;
+      await Share.share({
+        message: shareContent.message,
+        url: shareContent.url,
+        title: data?.name ?? 'Salon Ambya',
+      });
+    } finally {
+      sharingRef.current = false;
+    }
+  };
+
   const moveImage = (delta: number) => {
     if (!gallery.length) return;
     setActiveImageIndex(
@@ -88,10 +135,10 @@ export default function SalonDetailScreen() {
 
   const getEffectivePrice = (serviceId: string, originalPrice: number) => {
     if (
-      offerServiceId &&
+      targetServiceId &&
       offerPrice &&
       offerPrice > 0 &&
-      serviceId === offerServiceId
+      serviceId === targetServiceId
     ) {
       return offerPrice;
     }
@@ -153,9 +200,46 @@ export default function SalonDetailScreen() {
     );
   };
 
+  useEffect(() => {
+    if (!shouldOpenServices) return;
+    setActiveTab("services");
+  }, [shouldOpenServices]);
+
+  useEffect(() => {
+    if (!targetCategory) return;
+    setExpandedCategories((current) =>
+      current.includes(targetCategory) ? current : [...current, targetCategory],
+    );
+  }, [targetCategory]);
+
+  const scrollToTargetService = () => {
+    if (
+      !targetServiceId ||
+      activeTab !== "services" ||
+      hasScrolledToTargetRef.current
+    ) {
+      return;
+    }
+
+    const targetY = serviceLayoutsRef.current[targetServiceId];
+    if (typeof targetY !== "number") return;
+
+    hasScrolledToTargetRef.current = true;
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollTo({
+        y: Math.max(targetY - spacing.lg, 0),
+        animated: true,
+      });
+    });
+  };
+
   return (
     <Screen noPadding style={styles.screen}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView
+        ref={scrollRef}
+        contentContainerStyle={styles.content}
+        onContentSizeChange={scrollToTargetService}
+      >
         {currentImage ? (
           <View style={styles.heroWrap}>
             <Image source={{ uri: currentImage }} style={styles.heroImage} />
@@ -175,7 +259,7 @@ export default function SalonDetailScreen() {
 
             <Pressable
               style={[styles.iconCircle, styles.backBtn]}
-              onPress={() => router.back()}
+              onPress={() => goBackOrReplace("/(tabs)/home")}
             >
               <Ionicons name="arrow-back" size={18} color={colors.brand} />
             </Pressable>
@@ -298,6 +382,22 @@ export default function SalonDetailScreen() {
               <Text style={styles.metaText}>{addressLine}</Text>
             </View>
           ) : null}
+
+          {data?.id || salonId ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Partager le salon ${data?.name ?? ''}`.trim()}
+              onPress={shareSalon}
+              style={styles.shareSalonButton}
+            >
+              <Ionicons
+                name="share-social-outline"
+                size={18}
+                color={colors.brand}
+              />
+              <Text style={styles.shareSalonText}>Partager le salon</Text>
+            </Pressable>
+          ) : null}
         </View>
 
         <View style={styles.tabsRow}>
@@ -419,16 +519,28 @@ export default function SalonDetailScreen() {
                       {services.map((service) => {
                         const qty =
                           cart.find((x) => x.id === service.id)?.quantity ?? 0;
+                        const isTargetedService = targetServiceId === service.id;
                         return (
-                          <View key={service.id} style={styles.serviceRow}>
-                            <View style={{ flex: 1 }}>
+                          <View
+                            key={service.id}
+                            onLayout={(event) => {
+                              serviceLayoutsRef.current[service.id] =
+                                event.nativeEvent.layout.y;
+                              if (isTargetedService) scrollToTargetService();
+                            }}
+                            style={[
+                              styles.serviceRow,
+                              isTargetedService ? styles.serviceRowTargeted : undefined,
+                            ]}
+                          >
+                            <View style={styles.serviceInfo}>
                               <Text style={styles.serviceName}>
                                 {service.name}
                               </Text>
                               <Text style={styles.serviceMeta}>
                                 Duree: {service.durationMin} min
                               </Text>
-                              {offerServiceId === service.id && offerPrice ? (
+                              {targetServiceId === service.id && offerPrice ? (
                                 <View style={styles.offerPriceRow}>
                                   <Text style={styles.servicePriceOld}>
                                     {formatFCFA(service.price)}
@@ -500,6 +612,7 @@ export default function SalonDetailScreen() {
               patch({
                 salonId: data?.id,
                 salonName: data?.name,
+                salonTimeZone: data?.timezone,
                 depositEnabled: data?.depositEnabled ?? false,
                 depositPercentage: data?.depositPercentage ?? 30,
               });
@@ -598,6 +711,25 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: spacing.xs,
   },
+  shareSalonButton: {
+    minHeight: 44,
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    borderRadius: radius.full,
+    borderWidth: 1,
+    borderColor: overlays.brand20,
+    backgroundColor: colors.card,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  shareSalonText: {
+    color: colors.brand,
+    ...typography.small,
+    fontWeight: "800",
+  },
   metaText: { color: colors.textMuted },
   tabsRow: {
     flexDirection: "row",
@@ -675,16 +807,34 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    gap: spacing.sm,
   },
-  accordionTitle: { color: colors.text, fontWeight: "700" },
+  accordionTitle: {
+    color: colors.text,
+    fontWeight: "700",
+    flex: 1,
+    minWidth: 0,
+    flexShrink: 1,
+  },
   serviceRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    flexWrap: "wrap",
     gap: spacing.md,
     marginTop: spacing.md,
   },
-  serviceName: { color: colors.text, fontWeight: "600" },
+  serviceRowTargeted: {
+    backgroundColor: overlays.premium20,
+    borderRadius: radius.lg,
+    padding: spacing.sm,
+    marginHorizontal: -spacing.sm,
+  },
+  serviceInfo: {
+    flex: 1,
+    minWidth: 0,
+  },
+  serviceName: { color: colors.text, fontWeight: "600", flexShrink: 1 },
   serviceMeta: { color: colors.textMuted, fontSize: 12 },
   offerPriceRow: {
     flexDirection: "row",
@@ -698,7 +848,7 @@ const styles = StyleSheet.create({
     ...typography.small,
   },
   servicePrice: { color: colors.brand, fontWeight: "700", marginTop: 4 },
-  qtyWrap: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  qtyWrap: { flexDirection: "row", alignItems: "center", gap: spacing.sm, flexShrink: 0 },
   qtyBtnGhost: {
     width: 28,
     height: 28,

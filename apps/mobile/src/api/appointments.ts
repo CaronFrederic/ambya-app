@@ -10,7 +10,7 @@ export type AppointmentListResponse = {
     startAt: string;
     endAt: string;
     note?: string | null;
-    salon: { id: string; name: string };
+    salon: { id: string; name: string; timezone?: string | null };
     service: {
       id: string;
       name: string;
@@ -38,7 +38,7 @@ export type AppointmentListResponse = {
 
 export type AppointmentGroupDetails = {
   groupId: string;
-  salon: { id: string; name: string };
+  salon: { id: string; name: string; timezone?: string | null };
   canManage: boolean;
   cancellationPolicy: {
     source: string;

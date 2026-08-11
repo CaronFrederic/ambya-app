@@ -88,6 +88,7 @@ export default function Search() {
             city={item.city}
             country={item.country}
             rating={item.rating}
+            reviewCount={item.reviewCount}
             duration={
               item.highlights[0]?.durationMin
                 ? `${item.highlights[0].durationMin} min`

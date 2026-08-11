@@ -20,13 +20,17 @@ import {
   employeeCanPerformCategory,
   getEmployeeSpecialtyLabels,
 } from '../common/employee-specialties'
+import { NotificationsService } from '../notifications/notifications.service'
 
 type ScheduleKind = 'appointment' | 'blocked_slot'
 type InsightSectionKey = 'hair' | 'nails' | 'face' | 'body' | 'fitness'
 
 @Injectable()
 export class EmployeePortalService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications?: NotificationsService,
+  ) {}
 
   async getDashboard(user: JwtUser) {
     const employee = await this.getEmployeeContext(user)
@@ -104,17 +108,20 @@ export class EmployeePortalService {
       employeeCanPerformCategory(employee.specialties, service.category),
     )
 
+    const salonTimeZone = employee.salon.timezone
     const items = [
-      ...appointments.map((item) => this.mapAppointmentSummary(item)),
-      ...blockedSlots.map((item) => this.mapBlockedSlotSummary(item)),
+      ...appointments.map((item) => this.mapAppointmentSummary(item, salonTimeZone)),
+      ...blockedSlots.map((item) => this.mapBlockedSlotSummary(item, salonTimeZone)),
     ].sort((left, right) => left.startAt.localeCompare(right.startAt))
 
     const now = new Date()
-    const todayKey = now.toISOString().slice(0, 10)
+    const todayKey = this.formatDateKey(now, salonTimeZone)
     const weekEnd = new Date(now)
     weekEnd.setUTCDate(now.getUTCDate() + 7)
 
-    const todayItems = items.filter((item) => item.startAt.slice(0, 10) === todayKey)
+    const todayItems = items.filter(
+      (item) => this.formatDateKey(item.startAt, salonTimeZone) === todayKey,
+    )
     const weekItems = items.filter((item) => {
       const at = new Date(item.startAt)
       return at >= now && at <= weekEnd
@@ -126,6 +133,7 @@ export class EmployeePortalService {
         lastName: employee.lastName ?? this.extractNameParts(employee.displayName).lastName,
         role: this.getEmployeeRoleLabel(employee.specialties),
         salon: employee.salon.name,
+        salonTimeZone,
       },
       metrics: {
         todayCount: todayItems.length,
@@ -205,9 +213,10 @@ export class EmployeePortalService {
     ])
 
     const status = query.status ?? 'all'
+    const salonTimeZone = employee.salon.timezone
     const items = [
-      ...appointments.map((item) => this.mapAppointmentSummary(item)),
-      ...blockedSlots.map((item) => this.mapBlockedSlotSummary(item)),
+      ...appointments.map((item) => this.mapAppointmentSummary(item, salonTimeZone)),
+      ...blockedSlots.map((item) => this.mapBlockedSlotSummary(item, salonTimeZone)),
     ]
       .filter((item) => this.matchesEmployeeTab(item.status, status))
       .sort((left, right) => {
@@ -234,7 +243,7 @@ export class EmployeePortalService {
           employeeId: employee.id,
         },
         include: {
-          salon: { select: { id: true, name: true } },
+          salon: { select: { id: true, name: true, timezone: true } },
           service: {
             select: {
               id: true,
@@ -285,7 +294,7 @@ export class EmployeePortalService {
         employeeId: employee.id,
       },
       include: {
-        salon: { select: { id: true, name: true } },
+        salon: { select: { id: true, name: true, timezone: true } },
         service: {
           select: {
             id: true,
@@ -313,7 +322,7 @@ export class EmployeePortalService {
         where: { id, employeeId: employee.id },
       })
       if (!blockedSlot) throw new NotFoundException('Schedule item not found')
-      return { item: this.mapBlockedSlotSummary(blockedSlot) }
+      return { item: this.mapBlockedSlotSummary(blockedSlot, employee.salon.timezone) }
     }
 
     const appointment = await this.prisma.appointment.findFirst({
@@ -407,7 +416,12 @@ export class EmployeePortalService {
       },
     })
 
-    return { item: this.mapAppointmentSummary(updated) }
+    await this.notifyAppointmentEvent(appointment.id, 'confirmed')
+    if (appointment.employeeId !== employee.id) {
+      await this.notifyAppointmentEvent(appointment.id, 'employeeAssigned')
+    }
+
+    return { item: this.mapAppointmentSummary(updated, employee.salon.timezone) }
   }
 
   async completeScheduleItem(user: JwtUser, kind: string, id: string) {
@@ -452,7 +466,7 @@ export class EmployeePortalService {
           },
         },
       })
-      return { item: this.mapBlockedSlotSummary(updated) }
+      return { item: this.mapBlockedSlotSummary(updated, employee.salon.timezone) }
     }
 
     const appointment = await this.prisma.appointment.findFirst({
@@ -518,7 +532,7 @@ export class EmployeePortalService {
         },
       },
     })
-    return { item: this.mapAppointmentSummary(updated) }
+    return { item: this.mapAppointmentSummary(updated, employee.salon.timezone) }
   }
 
   async payScheduleItem(user: JwtUser, kind: string, id: string) {
@@ -542,7 +556,7 @@ export class EmployeePortalService {
       })
       if (!blockedSlot) throw new NotFoundException('Schedule item not found')
       if (blockedSlot.isPaid) {
-        return { item: this.mapBlockedSlotSummary(blockedSlot) }
+        return { item: this.mapBlockedSlotSummary(blockedSlot, employee.salon.timezone) }
       }
 
       const updated = await this.prisma.employeeBlockedSlot.update({
@@ -560,7 +574,7 @@ export class EmployeePortalService {
           },
         },
       })
-      return { item: this.mapBlockedSlotSummary(updated) }
+      return { item: this.mapBlockedSlotSummary(updated, employee.salon.timezone) }
     }
 
     const appointment = await this.prisma.appointment.findFirst({
@@ -685,7 +699,12 @@ export class EmployeePortalService {
     })
     if (!refreshed) throw new NotFoundException('Schedule item not found')
 
-    return { item: this.mapAppointmentSummary(refreshed) }
+    await this.notifyAppointmentEvent(appointment.id, 'paid')
+    if (appointment.status === AppointmentStatus.PENDING) {
+      await this.notifyAppointmentEvent(appointment.id, 'confirmed')
+    }
+
+    return { item: this.mapAppointmentSummary(refreshed, employee.salon.timezone) }
   }
 
   async cancelScheduleItem(user: JwtUser, kind: string, id: string) {
@@ -732,7 +751,7 @@ export class EmployeePortalService {
         },
       })
 
-      return { item: this.mapBlockedSlotSummary(cancelled) }
+      return { item: this.mapBlockedSlotSummary(cancelled, employee.salon.timezone) }
     }
 
     const appointment = await this.prisma.appointment.findFirst({
@@ -824,7 +843,8 @@ export class EmployeePortalService {
     })
 
     if (!cancelled) throw new NotFoundException('Schedule item not found')
-    return { item: this.mapAppointmentSummary(cancelled) }
+    await this.notifyAppointmentEvent(appointment.id, 'cancelled')
+    return { item: this.mapAppointmentSummary(cancelled, employee.salon.timezone) }
   }
 
   async listAvailableSlots(user: JwtUser) {
@@ -876,6 +896,7 @@ export class EmployeePortalService {
         price: number
       }
       amount: number
+      salonTimeZone: string | null
       isClaimable: boolean
     }> = []
     for (const appointment of compatibleAppointments) {
@@ -895,6 +916,7 @@ export class EmployeePortalService {
         endAt: appointment.endAt.toISOString(),
         service: appointment.service,
         amount: appointment.service.price,
+        salonTimeZone: employee.salon.timezone,
         isClaimable: !hasConflict,
       })
     }
@@ -981,7 +1003,10 @@ export class EmployeePortalService {
       },
     })
 
-    return { item: this.mapAppointmentSummary(updated) }
+    await this.notifyAppointmentEvent(appointment.id, 'employeeAssigned')
+    await this.notifyAppointmentEvent(appointment.id, 'confirmed')
+
+    return { item: this.mapAppointmentSummary(updated, employee.salon.timezone) }
   }
 
   async createBlockedSlot(user: JwtUser, dto: CreateBlockedSlotDto) {
@@ -1038,7 +1063,7 @@ export class EmployeePortalService {
       },
     })
 
-    return { item: this.mapBlockedSlotSummary(blockedSlot) }
+    return { item: this.mapBlockedSlotSummary(blockedSlot, employee.salon.timezone) }
   }
 
   async listLeaveRequests(user: JwtUser) {
@@ -1158,6 +1183,7 @@ export class EmployeePortalService {
           select: {
             id: true,
             name: true,
+            timezone: true,
           },
         },
         specialties: {
@@ -1177,6 +1203,7 @@ export class EmployeePortalService {
         phone: employee.user.phone,
         role: this.getEmployeeRoleLabel(employee.specialties),
         salon: employee.salon.name,
+        salonTimeZone: employee.salon.timezone,
       },
     }
   }
@@ -1187,7 +1214,7 @@ export class EmployeePortalService {
       include: {
         user: true,
         salon: {
-          select: { name: true },
+          select: { name: true, timezone: true },
         },
         specialties: {
           select: { specialty: true },
@@ -1252,7 +1279,7 @@ export class EmployeePortalService {
             },
           },
           salon: {
-            select: { name: true },
+            select: { name: true, timezone: true },
           },
           specialties: {
             select: { specialty: true },
@@ -1270,6 +1297,7 @@ export class EmployeePortalService {
         phone: updated.user.phone,
         role: this.getEmployeeRoleLabel(updated.specialties),
         salon: updated.salon.name,
+        salonTimeZone: updated.salon.timezone,
       },
     }
   }
@@ -1286,6 +1314,7 @@ export class EmployeePortalService {
           select: {
             id: true,
             name: true,
+            timezone: true,
           },
         },
         specialties: {
@@ -1382,12 +1411,24 @@ export class EmployeePortalService {
     return status !== AppointmentStatus.COMPLETED
   }
 
+  private formatDateKey(value: Date | string, timeZone?: string | null) {
+    const date = value instanceof Date ? value : new Date(value)
+    const parts = new Intl.DateTimeFormat('fr-FR', {
+      timeZone: timeZone ?? 'Africa/Libreville',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(date)
+    const part = (type: string) => parts.find((item) => item.type === type)?.value ?? ''
+    return `${part('year')}-${part('month')}-${part('day')}`
+  }
+
   private getEmployeeRoleLabel(specialties: Array<{ specialty: any }>) {
     const labels = getEmployeeSpecialtyLabels(specialties)
     return labels.length ? labels.join(', ') : 'Employe'
   }
 
-  private mapAppointmentSummary(appointment: any) {
+  private mapAppointmentSummary(appointment: any, salonTimeZone?: string | null) {
     const paymentIntent = appointment.paymentIntents?.[0] ?? null
     return {
       kind: 'appointment',
@@ -1401,11 +1442,12 @@ export class EmployeePortalService {
       startAt: appointment.startAt.toISOString(),
       endAt: appointment.endAt.toISOString(),
       amount: appointment.service.price,
+      salonTimeZone: appointment.salon?.timezone ?? salonTimeZone ?? null,
       note: this.sanitizeAppointmentNote(appointment.note),
     }
   }
 
-  private mapBlockedSlotSummary(blockedSlot: any) {
+  private mapBlockedSlotSummary(blockedSlot: any, salonTimeZone?: string | null) {
     return {
       kind: 'blocked_slot',
       id: blockedSlot.id,
@@ -1420,6 +1462,7 @@ export class EmployeePortalService {
       startAt: blockedSlot.startAt.toISOString(),
       endAt: blockedSlot.endAt.toISOString(),
       amount: blockedSlot.service.price,
+      salonTimeZone: blockedSlot.salon?.timezone ?? salonTimeZone ?? null,
       note: blockedSlot.note ?? null,
     }
   }
@@ -1427,7 +1470,7 @@ export class EmployeePortalService {
   private mapAppointmentDetail(appointment: any) {
     const paymentIntent = appointment.paymentIntents?.[0] ?? null
     return {
-      ...this.mapAppointmentSummary(appointment),
+      ...this.mapAppointmentSummary(appointment, appointment.salon?.timezone),
       salon: appointment.salon,
       client: {
         id: appointment.client.id,
@@ -1456,7 +1499,7 @@ export class EmployeePortalService {
 
   private mapBlockedSlotDetail(blockedSlot: any) {
     return {
-      ...this.mapBlockedSlotSummary(blockedSlot),
+      ...this.mapBlockedSlotSummary(blockedSlot, blockedSlot.salon?.timezone),
       salon: blockedSlot.salon,
       client: {
         id: null,
@@ -1796,6 +1839,29 @@ export class EmployeePortalService {
     return {
       firstName: parts[0] ?? '',
       lastName: parts.slice(1).join(' '),
+    }
+  }
+
+  private async notifyAppointmentEvent(
+    appointmentId: string,
+    event: 'confirmed' | 'employeeAssigned' | 'cancelled' | 'paid',
+  ) {
+    if (!this.notifications) return
+
+    try {
+      if (event === 'confirmed') {
+        await this.notifications.notifyAppointmentConfirmed({ appointmentId })
+      } else if (event === 'employeeAssigned') {
+        await this.notifications.notifyAppointmentEmployeeAssigned({
+          appointmentId,
+        })
+      } else if (event === 'cancelled') {
+        await this.notifications.notifyAppointmentCancelled({ appointmentId })
+      } else if (event === 'paid') {
+        await this.notifications.notifyAppointmentPaid({ appointmentId })
+      }
+    } catch (error) {
+      console.error(`Employee ${event} notification failed:`, error)
     }
   }
 }

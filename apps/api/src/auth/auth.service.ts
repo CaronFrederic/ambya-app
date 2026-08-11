@@ -12,6 +12,7 @@ import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { CreateOwnerDto } from './dto/create-owner.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 
 type AppLoginMethod = 'PHONE' | 'EMAIL';
 type AppSalonPayoutMethod = 'MOBILE_MONEY' | 'BANK';
@@ -36,6 +37,10 @@ export class AuthService {
       throw new BadRequestException(
         'Vous devez fournir au moins un email ou un telephone',
       );
+    }
+
+    if (dto.confirmPassword !== undefined && dto.confirmPassword !== dto.password) {
+      throw new BadRequestException('Les mots de passe ne correspondent pas');
     }
 
     if (email) {
@@ -504,6 +509,55 @@ export class AuthService {
         clientProfile: true,
       },
     });
+  }
+
+  async changePassword(userId: string, dto: ChangePasswordDto) {
+    if (dto.newPassword !== dto.confirmPassword) {
+      throw new BadRequestException('Les mots de passe ne correspondent pas');
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        password: true,
+        isActive: true,
+      },
+    });
+
+    if (!user || !user.password || !user.isActive) {
+      throw new UnauthorizedException('Session invalide');
+    }
+
+    const isCurrentPasswordValid = await bcrypt.compare(
+      dto.currentPassword,
+      user.password,
+    );
+
+    if (!isCurrentPasswordValid) {
+      throw new BadRequestException('Mot de passe actuel incorrect');
+    }
+
+    const isSamePassword = await bcrypt.compare(dto.newPassword, user.password);
+
+    if (isSamePassword) {
+      throw new BadRequestException(
+        'Le nouveau mot de passe doit etre different du mot de passe actuel',
+      );
+    }
+
+    const hashedPassword = await bcrypt.hash(dto.newPassword, 10);
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { password: hashedPassword },
+      select: { id: true },
+    });
+
+    return {
+      success: true,
+      message: 'Votre mot de passe a ete modifie',
+    };
   }
 
   async verifyOtp(userId: string, dto: VerifyOtpDto) {

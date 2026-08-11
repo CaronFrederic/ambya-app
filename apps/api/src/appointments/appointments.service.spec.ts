@@ -23,6 +23,39 @@ describe('AppointmentsService', () => {
     ).not.toThrow()
   })
 
+  it('does not notify anyone when cart reservation validation fails', async () => {
+    const notifications = { notifyAppointmentCreated: jest.fn() }
+    service = new AppointmentsService({} as any, notifications as any)
+
+    await expect(
+      service.createFromCart(
+        { userId: 'client-1', role: 'CLIENT' as any },
+        {
+          salonId: 'salon-1',
+          startAt: 'not-a-date',
+          items: [{ serviceId: 'service-1', quantity: 1 }],
+        } as any,
+      ),
+    ).rejects.toThrow('Invalid startAt')
+
+    expect(notifications.notifyAppointmentCreated).not.toHaveBeenCalled()
+  })
+
+  it('keeps a created appointment successful even if notification creation fails', async () => {
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+    const notifications = {
+      notifyAppointmentCreated: jest.fn().mockRejectedValue(new Error('notification down')),
+    }
+    service = new AppointmentsService({} as any, notifications as any)
+
+    await expect(
+      (service as any).notifyAppointmentCreated('appointment-1'),
+    ).resolves.toBeUndefined()
+
+    expect(errorSpy).toHaveBeenCalled()
+    errorSpy.mockRestore()
+  })
+
   it('checks leave conflicts against the canonical leaveRequest model', async () => {
     const appointment = { findFirst: jest.fn().mockResolvedValue(null) }
     const employeeBlockedSlot = { findFirst: jest.fn().mockResolvedValue(null) }

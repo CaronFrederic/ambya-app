@@ -1,11 +1,15 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common'
 import { AppointmentStatus, LoyaltyReason, LoyaltyTier, PaymentStatus, UserRole } from '@prisma/client'
 import { PrismaService } from '../prisma/prisma.service'
+import { NotificationsService } from '../notifications/notifications.service'
 import { CreatePaymentIntentDto } from './dto/create-payment-intent.dto'
 import { UpdateIntentStatusDto } from './dto/update-intent-status.dto'
 @Injectable()
 export class PaymentsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications?: NotificationsService,
+  ) {}
 
   // règle bêta simple : commission fixe en %
   private readonly platformFeePct = 10 // 10%
@@ -133,7 +137,7 @@ export class PaymentsService {
       throw new BadRequestException(`Invalid transition: ${from} -> ${to}`)
     }
 
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       // reload full intent inside tx (needs appointmentId + amounts)
       const full = await tx.paymentIntent.findUnique({
         where: { id },
@@ -147,6 +151,11 @@ export class PaymentsService {
           payableAmount: true,
           discountAmount: true,
           appliedDiscountTier: true,
+          appointment: {
+            select: {
+              status: true,
+            },
+          },
           salon: {
             select: {
               ownerId: true,
@@ -278,8 +287,23 @@ export class PaymentsService {
         })
       }
 
-      return updatedIntent
+      return {
+        updatedIntent,
+        appointmentId: full.appointmentId,
+        confirmedByPayment:
+          dto.status === PaymentStatus.SUCCEEDED &&
+          full.appointment?.status === AppointmentStatus.PENDING,
+      }
     })
+
+    if (dto.status === PaymentStatus.SUCCEEDED && result.appointmentId) {
+      await this.notifyAppointmentEvent(result.appointmentId, 'paid')
+      if (result.confirmedByPayment) {
+        await this.notifyAppointmentEvent(result.appointmentId, 'confirmed')
+      }
+    }
+
+    return result.updatedIntent
   }
 
    private inferMethodFromProvider(provider?: string | null): 'mobile-money' | 'card' | 'cash' {
@@ -506,6 +530,21 @@ export class PaymentsService {
     throw new ForbiddenException('Not allowed')
   }
 
-  
+  private async notifyAppointmentEvent(
+    appointmentId: string,
+    event: 'paid' | 'confirmed',
+  ) {
+    if (!this.notifications) return
+
+    try {
+      if (event === 'paid') {
+        await this.notifications.notifyAppointmentPaid({ appointmentId })
+      } else {
+        await this.notifications.notifyAppointmentConfirmed({ appointmentId })
+      }
+    } catch (error) {
+      console.error(`Payment ${event} notification failed:`, error)
+    }
+  }
 
 }

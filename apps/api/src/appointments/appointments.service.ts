@@ -30,6 +30,7 @@ import {
   getEmployeeSpecialtyLabels,
   getPrimaryEmployeeSpecialtyLabel,
 } from '../common/employee-specialties'
+import { NotificationsService } from '../notifications/notifications.service';
 
 const CLIENT_CANCELLATION_NOTICE_HOURS = 24;
 
@@ -38,7 +39,10 @@ type ServiceCategoryInput = ServiceCategory | string | null;
 
 @Injectable()
 export class AppointmentsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications?: NotificationsService,
+  ) {}
 
   async listForUser(
     user: { userId: string; role: UserRole },
@@ -79,7 +83,7 @@ export class AppointmentsService {
         skip: q.skip ?? 0,
         take: q.take ?? 20,
         include: {
-          salon: { select: { id: true, name: true } },
+          salon: { select: { id: true, name: true, timezone: true } },
           service: {
             select: {
               id: true,
@@ -210,7 +214,7 @@ export class AppointmentsService {
             status: AppointmentStatus.PENDING,
           },
           include: {
-            salon: { select: { id: true, name: true } },
+            salon: { select: { id: true, name: true, timezone: true } },
             service: {
               select: {
                 id: true,
@@ -255,6 +259,8 @@ export class AppointmentsService {
         return { appointment, paymentIntent };
       },
     );
+
+    await this.notifyAppointmentCreated(appointment.id);
 
     return { appointment, paymentIntent };
   }
@@ -397,7 +403,7 @@ export class AppointmentsService {
             status: AppointmentStatus.PENDING,
           },
           include: {
-            salon: { select: { id: true, name: true } },
+            salon: { select: { id: true, name: true, timezone: true } },
             service: {
               select: {
                 id: true,
@@ -454,6 +460,8 @@ export class AppointmentsService {
 
       return created;
     });
+
+    await this.notifyAppointmentsCreated(appointments.map((appointment) => appointment.id));
 
     return {
       bookingGroupId,
@@ -513,7 +521,7 @@ export class AppointmentsService {
         where: { id: appointmentId },
         data: { employeeId: null },
         include: {
-          salon: { select: { id: true, name: true } },
+          salon: { select: { id: true, name: true, timezone: true } },
           service: {
             select: {
               id: true,
@@ -570,11 +578,11 @@ export class AppointmentsService {
       dto.employeeId,
     );
 
-    return this.prisma.appointment.update({
+    const updated = await this.prisma.appointment.update({
       where: { id: appointmentId },
       data: { employeeId: dto.employeeId },
       include: {
-        salon: { select: { id: true, name: true } },
+        salon: { select: { id: true, name: true, timezone: true } },
         service: {
           select: {
             id: true,
@@ -607,6 +615,13 @@ export class AppointmentsService {
         },
       },
     });
+
+    if (appt.employeeId !== dto.employeeId) {
+      await this.notifyAppointmentEvent(appointmentId, 'employeeAssigned');
+      await this.notifyAppointmentEvent(appointmentId, 'updated');
+    }
+
+    return updated;
   }
 
   async groupDetails(
@@ -654,7 +669,7 @@ export class AppointmentsService {
     groupId: string,
     dto: UpdateAppointmentGroupDto,
   ) {
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       const appointments = await this.getManagedAppointments(user, groupId, tx);
       const primary = appointments[0];
 
@@ -738,6 +753,15 @@ export class AppointmentsService {
       }
 
       const refreshed = await this.getManagedAppointments(user, groupId, tx);
+      const employeeAssignedIds = refreshed
+        .filter((appointment, index) => {
+          const previous = appointments[index];
+          return (
+            appointment.employeeId &&
+            appointment.employeeId !== previous?.employeeId
+          );
+        })
+        .map((appointment) => appointment.id);
 
       return {
         groupId,
@@ -752,8 +776,27 @@ export class AppointmentsService {
           employee: appointment.employee,
           paymentIntent: appointment.paymentIntents[0] ?? null,
         })),
+        notification: {
+          appointmentIds: refreshed.map((appointment) => appointment.id),
+          employeeAssignedIds,
+          type: timeChanged
+            ? ('rescheduled' as const)
+            : ('updated' as const),
+        },
       };
     });
+
+    for (const appointmentId of result.notification.appointmentIds) {
+      await this.notifyAppointmentEvent(appointmentId, result.notification.type);
+    }
+
+    for (const appointmentId of result.notification.employeeAssignedIds) {
+      await this.notifyAppointmentEvent(appointmentId, 'employeeAssigned');
+    }
+
+    const { notification, ...response } = result;
+    void notification;
+    return response;
   }
 
   async cancelGroup(
@@ -761,7 +804,7 @@ export class AppointmentsService {
     groupId: string,
     dto: { reason?: string },
   ) {
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       const appointments = await this.getManagedAppointments(user, groupId, tx);
 
       const cancellable = appointments.filter((appointment) =>
@@ -810,8 +853,17 @@ export class AppointmentsService {
         cancelledCount: cancellable.length,
         refundedAppointmentIds,
         cancellationPolicy: policy,
+        cancelledAppointmentIds: cancellable.map((appointment) => appointment.id),
       };
     });
+
+    for (const appointmentId of result.cancelledAppointmentIds) {
+      await this.notifyAppointmentEvent(appointmentId, 'cancelled');
+    }
+
+    const { cancelledAppointmentIds, ...response } = result;
+    void cancelledAppointmentIds;
+    return response;
   }
 
   async createGroupReview(
@@ -859,7 +911,7 @@ export class AppointmentsService {
     appointmentId: string,
     dto: { reason?: string },
   ) {
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       const appt = await tx.appointment.findUnique({
         where: { id: appointmentId },
         select: {
@@ -933,6 +985,9 @@ export class AppointmentsService {
 
       return { appointment: cancelled };
     });
+
+    await this.notifyAppointmentEvent(appointmentId, 'cancelled');
+    return result;
   }
 
   async getProCalendar(
@@ -1580,10 +1635,13 @@ export class AppointmentsService {
       throw new BadRequestException('Only pending appointments can be confirmed');
     }
 
-    return this.prisma.appointment.update({
+    const updated = await this.prisma.appointment.update({
       where: { id: appointmentId },
       data: { status: AppointmentStatus.CONFIRMED },
     });
+
+    await this.notifyAppointmentEvent(appointmentId, 'confirmed');
+    return updated;
   }
 
   async rejectAppointment(
@@ -1616,10 +1674,13 @@ export class AppointmentsService {
       throw new BadRequestException('Only pending appointments can be rejected');
     }
 
-    return this.prisma.appointment.update({
+    const updated = await this.prisma.appointment.update({
       where: { id: appointmentId },
       data: { status: AppointmentStatus.CANCELLED },
     });
+
+    await this.notifyAppointmentEvent(appointmentId, 'cancelled');
+    return updated;
   }
 
   private async getManagedAppointments(
@@ -1633,7 +1694,7 @@ export class AppointmentsService {
       }),
       orderBy: { startAt: 'asc' },
       include: {
-        salon: { select: { id: true, name: true } },
+        salon: { select: { id: true, name: true, timezone: true } },
         service: {
           select: {
             id: true,
@@ -1680,7 +1741,7 @@ export class AppointmentsService {
       }),
       orderBy: { startAt: 'asc' },
       include: {
-        salon: { select: { id: true, name: true } },
+        salon: { select: { id: true, name: true, timezone: true } },
         service: {
           select: {
             id: true,
@@ -2106,5 +2167,51 @@ private canEmployeePerformServiceCategory(
     }
 
     throw new ForbiddenException('Not allowed');
+  }
+
+  private async notifyAppointmentCreated(appointmentId: string) {
+    await this.notifyAppointmentEvent(appointmentId, 'created');
+  }
+
+  private async notifyAppointmentsCreated(appointmentIds: string[]) {
+    for (const appointmentId of appointmentIds) {
+      await this.notifyAppointmentCreated(appointmentId);
+    }
+  }
+
+  private async notifyAppointmentEvent(
+    appointmentId: string,
+    event:
+      | 'created'
+      | 'confirmed'
+      | 'employeeAssigned'
+      | 'updated'
+      | 'rescheduled'
+      | 'cancelled'
+      | 'paid',
+  ) {
+    if (!this.notifications) return;
+
+    try {
+      if (event === 'created') {
+        await this.notifications.notifyAppointmentCreated({ appointmentId });
+      } else if (event === 'confirmed') {
+        await this.notifications.notifyAppointmentConfirmed({ appointmentId });
+      } else if (event === 'employeeAssigned') {
+        await this.notifications.notifyAppointmentEmployeeAssigned({
+          appointmentId,
+        });
+      } else if (event === 'updated') {
+        await this.notifications.notifyAppointmentUpdated({ appointmentId });
+      } else if (event === 'rescheduled') {
+        await this.notifications.notifyAppointmentRescheduled({ appointmentId });
+      } else if (event === 'cancelled') {
+        await this.notifications.notifyAppointmentCancelled({ appointmentId });
+      } else if (event === 'paid') {
+        await this.notifications.notifyAppointmentPaid({ appointmentId });
+      }
+    } catch (error) {
+      console.error(`Appointment ${event} notification failed:`, error);
+    }
   }
 }

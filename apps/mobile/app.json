@@ -17,6 +17,9 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.ambya.app",
       "buildNumber": "1.0.0",
+      "associatedDomains": [
+        "applinks:ambya.app"
+      ],
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
@@ -28,6 +31,23 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#6B2737"
       },
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "ambya.app",
+              "pathPrefix": "/salons"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ],
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
     },
