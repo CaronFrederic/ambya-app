@@ -344,11 +344,12 @@ model Service {
   salonId String
   salon   Salon  @relation(fields: [salonId], references: [id], onDelete: Cascade)
 
-  name        String
-  description String?
-  category    ServiceCategory @default(OTHER)
-  price       Int
-  durationMin Int
+  name           String
+  description    String?
+  category       ServiceCategory @default(OTHER)
+  customCategory String?
+  price          Int
+  durationMin    Int
 
   isActive  Boolean       @default(true)
   status    ServiceStatus @default(ACTIVE)

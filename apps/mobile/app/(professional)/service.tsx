@@ -41,6 +41,8 @@ type Service = {
   id: string;
   name: string;
   category: ServiceCategory;
+  customCategory: string;
+  displayCategory: string;
   price: number;
   duration: number;
   description: string;
@@ -62,31 +64,86 @@ const COLORS = {
   success: "#16a34a",
 };
 
+const SERVICE_CATEGORIES: ServiceCategory[] = [
+  "Coiffure",
+  "Barbier",
+  "Massage",
+  "Manucure",
+  "Pédicure",
+  "Maquillage",
+  "Autre",
+];
 
-
-function normalizeCategory(value?: string | null): ServiceCategory {
-  const allowed: ServiceCategory[] = [
-    "Coiffure",
-    "Barbier",
-    "Massage",
-    "Manucure",
-    "Pédicure",
-    "Maquillage",
-    "Autre",
-  ];
-
-  if (value && allowed.includes(value as ServiceCategory)) {
-    return value as ServiceCategory;
+function apiCategoryToUiCategory(
+  category?: string | null,
+  customCategory?: string | null
+): ServiceCategory {
+  if (customCategory?.trim()) {
+    return "Autre";
   }
 
-  return "Autre";
+  switch ((category ?? "").trim().toUpperCase()) {
+    case "HAIR":
+    case "COIFFURE":
+    case "SALON-COIFFURE":
+      return "Coiffure";
+
+    case "BARBER":
+    case "BARBIER":
+      return "Barbier";
+
+    case "BODY":
+    case "MASSAGE":
+    case "SPA":
+    case "BIENETRE":
+      return "Massage";
+
+    case "NAILS":
+    case "MANUCURE":
+    case "ONGLERIE":
+      return "Manucure";
+
+    case "PEDICURE":
+    case "PÉDICURE":
+      return "Pédicure";
+
+    case "FACE":
+    case "MAKEUP":
+    case "MAQUILLAGE":
+    case "BEAUTE":
+    case "INSTITUT-BEAUTE":
+      return "Maquillage";
+
+    default:
+      return "Autre";
+  }
+}
+
+function getDisplayCategory(service: ApiService): string {
+  if (service.customCategory?.trim()) {
+    return service.customCategory.trim();
+  }
+
+  const uiCategory = apiCategoryToUiCategory(
+    service.category,
+    service.customCategory
+  );
+
+  return uiCategory;
 }
 
 function mapApiServiceToUi(service: ApiService): Service {
+  const category = apiCategoryToUiCategory(
+    service.category,
+    service.customCategory
+  );
+
   return {
     id: service.id,
     name: service.name,
-    category: normalizeCategory(service.category),
+    category,
+    customCategory: service.customCategory?.trim() ?? "",
+    displayCategory: getDisplayCategory(service),
     price: service.price,
     duration: service.durationMin,
     description: service.description ?? "",
@@ -111,6 +168,7 @@ export default function ServicesScreen() {
   const [form, setForm] = useState<{
     name: string;
     category: ServiceCategory;
+    customCategory: string;
     price: string;
     duration: string;
     description: string;
@@ -119,6 +177,7 @@ export default function ServicesScreen() {
   }>({
     name: "",
     category: "Coiffure",
+    customCategory: "",
     price: "",
     duration: "",
     description: "",
@@ -142,6 +201,7 @@ export default function ServicesScreen() {
     setForm({
       name: "",
       category: "Coiffure",
+      customCategory: "",
       price: "",
       duration: "",
       description: "",
@@ -151,8 +211,12 @@ export default function ServicesScreen() {
     setEditingId(null);
   };
 
+  const closeModal = () => {
+    setShowModal(false);
+    resetForm();
+  };
+
   const loadServices = async () => {
-   
     const data = await getServices();
     setServices(data.map(mapApiServiceToUi));
   };
@@ -173,7 +237,9 @@ export default function ServicesScreen() {
       setRefreshing(true);
       await loadServices();
     } catch (error) {
-      toast(error instanceof Error ? error.message : "Erreur de rafraîchissement.");
+      toast(
+        error instanceof Error ? error.message : "Erreur de rafraîchissement."
+      );
     } finally {
       setRefreshing(false);
     }
@@ -193,6 +259,8 @@ export default function ServicesScreen() {
     setForm({
       name: service.name,
       category: service.category,
+      customCategory:
+        service.category === "Autre" ? service.customCategory : "",
       price: String(service.price),
       duration: String(service.duration),
       description: service.description,
@@ -211,6 +279,11 @@ export default function ServicesScreen() {
       return;
     }
 
+    if (form.category === "Autre" && !form.customCategory.trim()) {
+      toast("Veuillez préciser la catégorie.");
+      return;
+    }
+
     if (!price || price <= 0) {
       toast("Le prix doit être supérieur à 0.");
       return;
@@ -221,18 +294,21 @@ export default function ServicesScreen() {
       return;
     }
 
+    const payload = {
+      name: form.name.trim(),
+      category: form.category,
+      customCategory:
+        form.category === "Autre" ? form.customCategory.trim() : undefined,
+      price,
+      durationMin: duration,
+      description: form.description.trim(),
+    };
+
     try {
       setSubmitting(true);
-      
 
       if (editingId) {
-        await updateService( editingId, {
-          name: form.name.trim(),
-          category: form.category,
-          price,
-          durationMin: duration,
-          description: form.description.trim(),
-        });
+        await updateService(editingId, payload);
 
         if (form.isActive) {
           await activateService(editingId);
@@ -242,13 +318,7 @@ export default function ServicesScreen() {
 
         toast("Service modifié ✅");
       } else {
-        const created = await createService( {
-          name: form.name.trim(),
-          category: form.category,
-          price,
-          durationMin: duration,
-          description: form.description.trim(),
-        });
+        const created = await createService(payload);
 
         if (!form.isActive) {
           await deactivateService(created.id);
@@ -258,10 +328,13 @@ export default function ServicesScreen() {
       }
 
       await loadServices();
-      setShowModal(false);
-      resetForm();
+      closeModal();
     } catch (error) {
-      toast(error instanceof Error ? error.message : "Erreur lors de l'enregistrement.");
+      toast(
+        error instanceof Error
+          ? error.message
+          : "Erreur lors de l'enregistrement."
+      );
     } finally {
       setSubmitting(false);
     }
@@ -271,18 +344,22 @@ export default function ServicesScreen() {
     if (!deleteId) return;
 
     try {
-      
-      await deleteService( deleteId);
+      await deleteService(deleteId);
       await loadServices();
       setDeleteId(null);
       toast("Service supprimé 🗑️");
     } catch (error) {
-      toast(error instanceof Error ? error.message : "Erreur lors de la suppression.");
+      toast(
+        error instanceof Error
+          ? error.message
+          : "Erreur lors de la suppression."
+      );
     }
   };
 
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
     if (status !== "granted") {
       toast("Permission galerie refusée.");
       return;
@@ -296,16 +373,17 @@ export default function ServicesScreen() {
     });
 
     if (!result.canceled) {
-      setForm((p) => ({ ...p, imageUri: result.assets[0]?.uri ?? null }));
+      setForm((p) => ({
+        ...p,
+        imageUri: result.assets[0]?.uri ?? null,
+      }));
     }
   };
 
   const toggleServiceStatus = async (id: string, isActive: boolean) => {
     try {
-      
-
       if (isActive) {
-        await deactivateService( id);
+        await deactivateService(id);
         toast("Service désactivé");
       } else {
         await activateService(id);
@@ -314,9 +392,20 @@ export default function ServicesScreen() {
 
       await loadServices();
     } catch (error) {
-      toast(error instanceof Error ? error.message : "Erreur lors du changement de statut.");
+      toast(
+        error instanceof Error
+          ? error.message
+          : "Erreur lors du changement de statut."
+      );
     }
   };
+
+  const isSaveDisabled =
+    submitting ||
+    !form.name.trim() ||
+    !Number(form.price || 0) ||
+    !Number(form.duration || 0) ||
+    (form.category === "Autre" && !form.customCategory.trim());
 
   return (
     <View style={styles.container}>
@@ -364,7 +453,10 @@ export default function ServicesScreen() {
                 <View style={{ flexDirection: "row", gap: 12 }}>
                   <View style={styles.imageBox}>
                     {service.imageUri ? (
-                      <Image source={{ uri: service.imageUri }} style={styles.image} />
+                      <Image
+                        source={{ uri: service.imageUri }}
+                        style={styles.image}
+                      />
                     ) : (
                       <Ionicons
                         name="image-outline"
@@ -377,14 +469,18 @@ export default function ServicesScreen() {
                   <View style={{ flex: 1 }}>
                     <View style={styles.topRow}>
                       <View style={styles.categoryPill}>
-                        <Text style={styles.categoryPillText}>{service.category}</Text>
+                        <Text style={styles.categoryPillText}>
+                          {service.displayCategory}
+                        </Text>
                       </View>
 
                       <View
                         style={[
                           styles.statusPill,
                           {
-                            backgroundColor: service.isActive ? "#dcfce7" : "#f3f4f6",
+                            backgroundColor: service.isActive
+                              ? "#dcfce7"
+                              : "#f3f4f6",
                           },
                         ]}
                       >
@@ -404,14 +500,18 @@ export default function ServicesScreen() {
                     </View>
 
                     <Text style={styles.serviceName}>{service.name}</Text>
-                    <Text style={styles.serviceDesc}>{service.description}</Text>
+                    <Text style={styles.serviceDesc}>
+                      {service.description}
+                    </Text>
 
                     <View style={styles.metaRow}>
                       <Text style={styles.metaText}>
                         {service.price.toLocaleString()} FCFA
                       </Text>
                       <Text style={styles.metaDot}>•</Text>
-                      <Text style={styles.metaText}>{service.duration} min</Text>
+                      <Text style={styles.metaText}>
+                        {service.duration} min
+                      </Text>
                     </View>
                   </View>
                 </View>
@@ -419,7 +519,9 @@ export default function ServicesScreen() {
                 <View style={styles.cardActions}>
                   <Pressable
                     style={styles.actionBtn}
-                    onPress={() => toggleServiceStatus(service.id, service.isActive)}
+                    onPress={() =>
+                      toggleServiceStatus(service.id, service.isActive)
+                    }
                   >
                     <Ionicons
                       name={
@@ -435,7 +537,10 @@ export default function ServicesScreen() {
                     </Text>
                   </Pressable>
 
-                  <Pressable style={styles.actionBtn} onPress={() => openEdit(service)}>
+                  <Pressable
+                    style={styles.actionBtn}
+                    onPress={() => openEdit(service)}
+                  >
                     <Ionicons
                       name="create-outline"
                       size={16}
@@ -453,7 +558,12 @@ export default function ServicesScreen() {
                       size={16}
                       color={COLORS.danger}
                     />
-                    <Text style={[styles.actionText, { color: COLORS.danger }]}>
+                    <Text
+                      style={[
+                        styles.actionText,
+                        { color: COLORS.danger },
+                      ]}
+                    >
                       Supprimer
                     </Text>
                   </Pressable>
@@ -479,7 +589,7 @@ export default function ServicesScreen() {
         visible={showModal}
         transparent
         animationType="slide"
-        onRequestClose={() => setShowModal(false)}
+        onRequestClose={closeModal}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
@@ -487,41 +597,53 @@ export default function ServicesScreen() {
               <Text style={styles.modalTitle}>
                 {editingId ? "Modifier un service" : "Ajouter un service"}
               </Text>
-              <Pressable onPress={() => setShowModal(false)} hitSlop={12}>
+
+              <Pressable onPress={closeModal} hitSlop={12}>
                 <Ionicons name="close" size={22} color={COLORS.text} />
               </Pressable>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false}>
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
               <Text style={styles.label}>Nom du service *</Text>
               <TextInput
                 value={form.name}
-                onChangeText={(v) => setForm((p) => ({ ...p, name: v }))}
+                onChangeText={(v) =>
+                  setForm((p) => ({ ...p, name: v }))
+                }
                 placeholder="Ex: Tresses collées"
                 style={styles.input}
               />
 
               <Text style={styles.label}>Catégorie</Text>
               <View style={styles.rowWrap}>
-                {(
-                  [
-                    "Coiffure",
-                    "Barbier",
-                    "Massage",
-                    "Manucure",
-                    "Pédicure",
-                    "Maquillage",
-                    "Autre",
-                  ] as const
-                ).map((cat) => {
+                {SERVICE_CATEGORIES.map((cat) => {
                   const active = form.category === cat;
+
                   return (
                     <Pressable
                       key={cat}
-                      onPress={() => setForm((p) => ({ ...p, category: cat }))}
-                      style={[styles.chip, active && styles.chipActive]}
+                      onPress={() =>
+                        setForm((p) => ({
+                          ...p,
+                          category: cat,
+                          customCategory:
+                            cat === "Autre" ? p.customCategory : "",
+                        }))
+                      }
+                      style={[
+                        styles.chip,
+                        active && styles.chipActive,
+                      ]}
                     >
-                      <Text style={[styles.chipText, active && styles.chipTextActive]}>
+                      <Text
+                        style={[
+                          styles.chipText,
+                          active && styles.chipTextActive,
+                        ]}
+                      >
                         {cat}
                       </Text>
                     </Pressable>
@@ -529,10 +651,34 @@ export default function ServicesScreen() {
                 })}
               </View>
 
+              {form.category === "Autre" && (
+                <View style={styles.customCategoryWrap}>
+                  <Text style={styles.customCategoryLabel}>
+                    Précisez la catégorie *
+                  </Text>
+
+                  <TextInput
+                    value={form.customCategory}
+                    onChangeText={(v) =>
+                      setForm((p) => ({
+                        ...p,
+                        customCategory: v,
+                      }))
+                    }
+                    placeholder="Ex: Tatouage, Épilation, Soins du visage..."
+                    style={styles.input}
+                    autoCapitalize="sentences"
+                    returnKeyType="done"
+                  />
+                </View>
+              )}
+
               <Text style={styles.label}>Prix (FCFA) *</Text>
               <TextInput
                 value={form.price}
-                onChangeText={(v) => setForm((p) => ({ ...p, price: v }))}
+                onChangeText={(v) =>
+                  setForm((p) => ({ ...p, price: v }))
+                }
                 placeholder="15000"
                 keyboardType="numeric"
                 style={styles.input}
@@ -541,7 +687,9 @@ export default function ServicesScreen() {
               <Text style={styles.label}>Durée (minutes) *</Text>
               <TextInput
                 value={form.duration}
-                onChangeText={(v) => setForm((p) => ({ ...p, duration: v }))}
+                onChangeText={(v) =>
+                  setForm((p) => ({ ...p, duration: v }))
+                }
                 placeholder="60"
                 keyboardType="numeric"
                 style={styles.input}
@@ -550,32 +698,75 @@ export default function ServicesScreen() {
               <Text style={styles.label}>Description</Text>
               <TextInput
                 value={form.description}
-                onChangeText={(v) => setForm((p) => ({ ...p, description: v }))}
+                onChangeText={(v) =>
+                  setForm((p) => ({
+                    ...p,
+                    description: v,
+                  }))
+                }
                 placeholder="Décris brièvement la prestation..."
                 multiline
-                style={[styles.input, { height: 96, textAlignVertical: "top" }]}
+                style={[
+                  styles.input,
+                  {
+                    height: 96,
+                    textAlignVertical: "top",
+                  },
+                ]}
               />
 
               <View style={styles.sectionSep} />
 
-              <Text style={styles.label}>Photo du service (optionnel)</Text>
+              <Text style={styles.label}>
+                Photo du service (optionnel)
+              </Text>
+
               {!!form.imageUri ? (
                 <View style={styles.imagePreviewWrap}>
-                  <Image source={{ uri: form.imageUri }} style={styles.imagePreview} />
-                  <View style={{ flexDirection: "row", gap: 10, marginTop: 10 }}>
+                  <Image
+                    source={{ uri: form.imageUri }}
+                    style={styles.imagePreview}
+                  />
+
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      gap: 10,
+                      marginTop: 10,
+                    }}
+                  >
                     <Pressable
                       onPress={pickImage}
-                      style={[styles.secondaryBtn, { flex: 1 }]}
+                      style={[
+                        styles.secondaryBtn,
+                        { flex: 1 },
+                      ]}
                     >
-                      <Ionicons name="image-outline" size={16} color={COLORS.text} />
+                      <Ionicons
+                        name="image-outline"
+                        size={16}
+                        color={COLORS.text}
+                      />
                       <Text style={styles.secondaryText}>Changer</Text>
                     </Pressable>
 
                     <Pressable
-                      onPress={() => setForm((p) => ({ ...p, imageUri: null }))}
-                      style={[styles.dangerBtn, { flex: 1 }]}
+                      onPress={() =>
+                        setForm((p) => ({
+                          ...p,
+                          imageUri: null,
+                        }))
+                      }
+                      style={[
+                        styles.dangerBtn,
+                        { flex: 1 },
+                      ]}
                     >
-                      <Ionicons name="trash-outline" size={16} color="#fff" />
+                      <Ionicons
+                        name="trash-outline"
+                        size={16}
+                        color="#fff"
+                      />
                       <Text style={styles.dangerText}>Retirer</Text>
                     </Pressable>
                   </View>
@@ -597,16 +788,33 @@ export default function ServicesScreen() {
 
                 <Switch
                   value={form.isActive}
-                  onValueChange={(v) => setForm((p) => ({ ...p, isActive: v }))}
-                  trackColor={{ false: "#d1d5db", true: "#D4AF6A" }}
+                  onValueChange={(v) =>
+                    setForm((p) => ({
+                      ...p,
+                      isActive: v,
+                    }))
+                  }
+                  trackColor={{
+                    false: "#d1d5db",
+                    true: "#D4AF6A",
+                  }}
                   thumbColor="#fff"
                 />
               </View>
 
-              <View style={{ flexDirection: "row", gap: 10, marginTop: 14 }}>
+              <View
+                style={{
+                  flexDirection: "row",
+                  gap: 10,
+                  marginTop: 14,
+                }}
+              >
                 <Pressable
-                  onPress={() => setShowModal(false)}
-                  style={[styles.secondaryBtn, { flex: 1 }]}
+                  onPress={closeModal}
+                  style={[
+                    styles.secondaryBtn,
+                    { flex: 1 },
+                  ]}
                 >
                   <Text style={styles.secondaryText}>Annuler</Text>
                 </Pressable>
@@ -615,18 +823,15 @@ export default function ServicesScreen() {
                   onPress={saveService}
                   style={[
                     styles.primaryBtn,
-                    { flex: 1, paddingVertical: 12 },
-                    submitting && { opacity: 0.6 },
-                    (!form.name.trim() ||
-                      !Number(form.price || 0) ||
-                      !Number(form.duration || 0)) && { opacity: 0.55 },
+                    {
+                      flex: 1,
+                      paddingVertical: 12,
+                    },
+                    isSaveDisabled && {
+                      opacity: 0.55,
+                    },
                   ]}
-                  disabled={
-                    submitting ||
-                    !form.name.trim() ||
-                    !Number(form.price || 0) ||
-                    !Number(form.duration || 0)
-                  }
+                  disabled={isSaveDisabled}
                 >
                   {submitting ? (
                     <ActivityIndicator size="small" color="#fff" />
@@ -652,23 +857,41 @@ export default function ServicesScreen() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.confirmCard}>
-            <View style={[styles.confirmIcon, { backgroundColor: "#fee2e2" }]}>
-              <Ionicons name="warning-outline" size={20} color={COLORS.danger} />
+            <View
+              style={[
+                styles.confirmIcon,
+                { backgroundColor: "#fee2e2" },
+              ]}
+            >
+              <Ionicons
+                name="warning-outline"
+                size={20}
+                color={COLORS.danger}
+              />
             </View>
+
             <Text style={styles.confirmTitle}>Supprimer ce service ?</Text>
-            <Text style={styles.confirmText}>Cette action est irréversible.</Text>
+            <Text style={styles.confirmText}>
+              Cette action est irréversible.
+            </Text>
 
             <View style={{ flexDirection: "row", gap: 10 }}>
               <Pressable
                 onPress={() => setDeleteId(null)}
-                style={[styles.secondaryBtn, { flex: 1 }]}
+                style={[
+                  styles.secondaryBtn,
+                  { flex: 1 },
+                ]}
               >
                 <Text style={styles.secondaryText}>Annuler</Text>
               </Pressable>
 
               <Pressable
                 onPress={confirmDelete}
-                style={[styles.dangerBtn, { flex: 1 }]}
+                style={[
+                  styles.dangerBtn,
+                  { flex: 1 },
+                ]}
               >
                 <Text style={styles.dangerText}>Supprimer</Text>
               </Pressable>
@@ -681,7 +904,10 @@ export default function ServicesScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.bg },
+  container: {
+    flex: 1,
+    backgroundColor: COLORS.bg,
+  },
 
   loaderWrap: {
     flex: 1,
@@ -694,9 +920,16 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
 
-  content: { padding: 18, paddingBottom: 28, gap: 12 },
+  content: {
+    padding: 18,
+    paddingBottom: 28,
+    gap: 12,
+  },
 
-  statsRow: { flexDirection: "row", gap: 10 },
+  statsRow: {
+    flexDirection: "row",
+    gap: 10,
+  },
   statCard: {
     flex: 1,
     backgroundColor: COLORS.white,
@@ -707,8 +940,16 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 8,
   },
-  statValue: { fontSize: 22, fontWeight: "900", color: COLORS.brand },
-  statLabel: { marginTop: 6, color: COLORS.muted, fontSize: 12 },
+  statValue: {
+    fontSize: 22,
+    fontWeight: "900",
+    color: COLORS.brand,
+  },
+  statLabel: {
+    marginTop: 6,
+    color: COLORS.muted,
+    fontSize: 12,
+  },
 
   primaryBtn: {
     backgroundColor: COLORS.brand,
@@ -719,7 +960,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 8,
   },
-  primaryBtnText: { color: "#fff", fontWeight: "800" },
+  primaryBtnText: {
+    color: "#fff",
+    fontWeight: "800",
+  },
 
   card: {
     backgroundColor: COLORS.white,
@@ -741,7 +985,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     overflow: "hidden",
   },
-  image: { width: "100%", height: "100%" },
+  image: {
+    width: "100%",
+    height: "100%",
+  },
 
   topRow: {
     flexDirection: "row",
@@ -834,7 +1081,10 @@ const styles = StyleSheet.create({
     gap: 8,
     alignItems: "center",
   },
-  toastText: { color: "#fff", fontWeight: "600" },
+  toastText: {
+    color: "#fff",
+    fontWeight: "600",
+  },
 
   modalOverlay: {
     flex: 1,
@@ -904,6 +1154,17 @@ const styles = StyleSheet.create({
     color: COLORS.brand,
   },
 
+  customCategoryWrap: {
+    marginTop: 4,
+  },
+  customCategoryLabel: {
+    color: COLORS.text,
+    fontWeight: "700",
+    marginTop: 8,
+    marginBottom: 6,
+    fontSize: 13,
+  },
+
   sectionSep: {
     height: 1,
     backgroundColor: "rgba(107,39,55,0.12)",
@@ -922,7 +1183,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 8,
   },
-  uploadText: { color: "#fff", fontWeight: "800" },
+  uploadText: {
+    color: "#fff",
+    fontWeight: "800",
+  },
 
   imagePreviewWrap: {
     backgroundColor: COLORS.bg,

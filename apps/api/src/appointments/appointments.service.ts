@@ -7,6 +7,7 @@ import {
 import { Response } from 'express';
 import ExcelJS from 'exceljs';
 import {
+  AppointmentSource,
   AppointmentStatus,
   LeaveRequestStatus,
   LoyaltyReason,
@@ -25,6 +26,7 @@ import { AssignEmployeeDto } from './dto/assign-employee.dto';
 import { CreateAppointmentsFromCartDto } from './dto/create-appointments-from-cart.dto';
 import { UpdateAppointmentGroupDto } from './dto/update-appointment-group.dto';
 import { CreateReviewDto } from './dto/create-review.dto';
+import { CreateProManualAppointmentDto } from './dto/create-pro-manual-appointment.dto';
 import {
   employeeCanPerformCategory,
   getEmployeeSpecialtyLabels,
@@ -935,6 +937,337 @@ export class AppointmentsService {
     });
   }
 
+  async getProPendingCount(
+    user: { userId: string; role: UserRole },
+  ) {
+    if (user.role !== UserRole.PROFESSIONAL && user.role !== UserRole.ADMIN) {
+      throw new ForbiddenException('Not allowed');
+    }
+
+    const salonIds = await this.getManagedSalonIds(user);
+
+    if (!salonIds.length) {
+      return { count: 0 };
+    }
+
+    // Les demandes antérieures à la date du jour ne doivent plus être
+    // comptabilisées dans les demandes à traiter.
+    // On conserve toute la journée en cours : un rendez-vous prévu plus tôt
+    // aujourd'hui reste donc visible jusqu'au changement de date.
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const count = await this.prisma.appointment.count({
+      where: {
+        salonId: { in: salonIds },
+        status: AppointmentStatus.PENDING,
+        startAt: {
+          gte: today,
+        },
+      },
+    });
+
+    return { count };
+  }
+
+  async getProManualAppointmentOptions(
+    user: { userId: string; role: UserRole },
+  ) {
+    if (user.role !== UserRole.PROFESSIONAL && user.role !== UserRole.ADMIN) {
+      throw new ForbiddenException('Not allowed');
+    }
+
+    const salonIds = await this.getManagedSalonIds(user);
+    const salonId = salonIds[0];
+
+    if (!salonId) {
+      return {
+        clients: [],
+        services: [],
+        employees: [],
+      };
+    }
+
+    const [salonClients, services, employees] = await Promise.all([
+      this.prisma.salonClient.findMany({
+        where: { salonId },
+        include: {
+          client: {
+            select: {
+              id: true,
+              phone: true,
+              email: true,
+              clientProfile: {
+                select: { nickname: true },
+              },
+            },
+          },
+        },
+        orderBy: { updatedAt: 'desc' },
+        take: 100,
+      }),
+      this.prisma.service.findMany({
+        where: {
+          salonId,
+          isActive: true,
+          deletedAt: null,
+        },
+        select: {
+          id: true,
+          name: true,
+          durationMin: true,
+          price: true,
+          category: true,
+        },
+        orderBy: { name: 'asc' },
+      }),
+      this.prisma.employee.findMany({
+        where: {
+          salonId,
+          isActive: true,
+        },
+        select: {
+          id: true,
+          displayName: true,
+          status: true,
+          isActive: true,
+        },
+        orderBy: { displayName: 'asc' },
+      }),
+    ]);
+
+    return {
+      clients: salonClients.map((salonClient) => ({
+        salonClientId: salonClient.id,
+        clientId: salonClient.client.id,
+        name:
+          salonClient.client.clientProfile?.nickname ||
+          salonClient.client.email ||
+          salonClient.client.phone ||
+          'Client sans nom',
+        phone: salonClient.client.phone ?? null,
+        email: salonClient.client.email ?? null,
+        blocked: salonClient.isBlocked,
+      })),
+      services,
+      employees,
+    };
+  }
+
+  async createProManualAppointment(
+    user: { userId: string; role: UserRole },
+    dto: CreateProManualAppointmentDto,
+  ) {
+    if (user.role !== UserRole.PROFESSIONAL && user.role !== UserRole.ADMIN) {
+      throw new ForbiddenException('Not allowed');
+    }
+
+    const salonIds = await this.getManagedSalonIds(user);
+    const salonId = salonIds[0];
+
+    if (!salonId) {
+      throw new NotFoundException('Salon not found');
+    }
+
+    const startAt = new Date(dto.startAt);
+
+    if (Number.isNaN(startAt.getTime())) {
+      throw new BadRequestException('Invalid startAt');
+    }
+
+    this.assertStartInFuture(startAt);
+
+    const service = await this.prisma.service.findFirst({
+      where: {
+        id: dto.serviceId,
+        salonId,
+        isActive: true,
+        deletedAt: null,
+      },
+      select: {
+        id: true,
+        name: true,
+        durationMin: true,
+        price: true,
+        category: true,
+      },
+    });
+
+    if (!service) {
+      throw new BadRequestException('Service not found for this salon');
+    }
+
+    const endAt = new Date(
+      startAt.getTime() + service.durationMin * 60_000,
+    );
+
+    const employeeId = await this.resolveEmployeeForSlot(
+      this.prisma,
+      salonId,
+      startAt,
+      endAt,
+      [],
+      service.category,
+      dto.employeeId ?? null,
+    );
+
+    let clientId: string;
+
+    if (dto.salonClientId) {
+      const salonClient = await this.prisma.salonClient.findFirst({
+        where: {
+          id: dto.salonClientId,
+          salonId,
+        },
+        select: {
+          clientId: true,
+          isBlocked: true,
+        },
+      });
+
+      if (!salonClient) {
+        throw new BadRequestException('Client not found for this salon');
+      }
+
+      if (salonClient.isBlocked) {
+        throw new BadRequestException('Ce client est bloqué');
+      }
+
+      clientId = salonClient.clientId;
+    } else {
+      const clientName = dto.clientName?.trim();
+      const clientPhone = dto.clientPhone?.trim();
+
+      if (!clientName || !clientPhone) {
+        throw new BadRequestException(
+          'Client name and phone are required for a new client',
+        );
+      }
+
+      let client = await this.prisma.user.findUnique({
+        where: { phone: clientPhone },
+        include: {
+          clientProfile: true,
+        },
+      });
+
+      if (!client) {
+        client = await this.prisma.user.create({
+          data: {
+            phone: clientPhone,
+            role: UserRole.CLIENT,
+            clientProfile: {
+              create: {
+                nickname: clientName,
+                gender: 'Non renseigné',
+                ageRange: 'Non renseigné',
+                city: 'Non renseigné',
+                country: 'Non renseigné',
+              },
+            },
+          },
+          include: {
+            clientProfile: true,
+          },
+        });
+      } else if (!client.clientProfile) {
+        await this.prisma.clientProfile.create({
+          data: {
+            userId: client.id,
+            nickname: clientName,
+            gender: 'Non renseigné',
+            ageRange: 'Non renseigné',
+            city: 'Non renseigné',
+            country: 'Non renseigné',
+          },
+        });
+      }
+
+      clientId = client.id;
+
+      const salonClient = await this.prisma.salonClient.upsert({
+        where: {
+          salonId_clientId: {
+            salonId,
+            clientId,
+          },
+        },
+        update: {},
+        create: {
+          salonId,
+          clientId,
+        },
+        select: {
+          isBlocked: true,
+        },
+      });
+
+      if (salonClient.isBlocked) {
+        throw new BadRequestException('Ce client est bloqué');
+      }
+    }
+
+    const appointment = await this.prisma.appointment.create({
+      data: {
+        salonId,
+        clientId,
+        serviceId: service.id,
+        employeeId,
+        source: AppointmentSource.PRO_DASHBOARD,
+        status: AppointmentStatus.CONFIRMED,
+        startAt,
+        endAt,
+        note: dto.note?.trim() || null,
+        subtotalAmount: service.price,
+        discountAmount: 0,
+        totalAmount: service.price,
+        depositAmount: 0,
+        remainingAmount: service.price,
+        createdById: user.userId,
+      },
+      include: {
+        client: {
+          select: {
+            id: true,
+            email: true,
+            phone: true,
+            clientProfile: {
+              select: { nickname: true },
+            },
+          },
+        },
+        employee: {
+          select: {
+            id: true,
+            displayName: true,
+          },
+        },
+        service: {
+          select: {
+            id: true,
+            name: true,
+            durationMin: true,
+          },
+        },
+      },
+    });
+
+    return {
+      id: appointment.id,
+      startAt: appointment.startAt.toISOString(),
+      endAt: appointment.endAt.toISOString(),
+      status: appointment.status,
+      clientName:
+        appointment.client.clientProfile?.nickname ||
+        appointment.client.email ||
+        appointment.client.phone ||
+        'Client',
+      clientPhone: appointment.client.phone ?? null,
+      serviceName: appointment.service.name,
+      employeeName: appointment.employee?.displayName ?? null,
+    };
+  }
+
   async getProCalendar(
     user: { userId: string; role: UserRole },
     date?: string,
@@ -964,6 +1297,13 @@ export class AppointmentsService {
     const appointments = await this.prisma.appointment.findMany({
       where: {
         salonId: { in: salonIds },
+        status: {
+          in: [
+            AppointmentStatus.CONFIRMED,
+            AppointmentStatus.IN_PROGRESS,
+            AppointmentStatus.COMPLETED,
+          ],
+        },
         startAt: {
           gte: start,
           lte: end,
@@ -1034,9 +1374,18 @@ export class AppointmentsService {
       return [];
     }
 
+    // Une demande en attente n'est pertinente dans cet écran que si sa date
+    // est aujourd'hui ou dans le futur. Les demandes des jours précédents
+    // restent en base, mais ne sont plus affichées ici.
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
     const where: Prisma.AppointmentWhereInput = {
       salonId: { in: salonIds },
       status: AppointmentStatus.PENDING,
+      startAt: {
+        gte: today,
+      },
     };
 
     if (date) {
@@ -1052,8 +1401,14 @@ export class AppointmentsService {
       const end = new Date(targetDate);
       end.setHours(23, 59, 59, 999);
 
+      // Si l'utilisateur sélectionne une date déjà passée, aucune demande
+      // ne doit être affichée, même si une ancienne demande PENDING existe.
+      if (end < today) {
+        return [];
+      }
+
       where.startAt = {
-        gte: start,
+        gte: start < today ? today : start,
         lte: end,
       };
     }

@@ -11,15 +11,15 @@ import {
 } from "react-native";
 import type { Href } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+
 import { ProHeader } from "./components/ProHeader";
 import {
   confirmAppointment,
-  getCalendarAppointments,
+  getPendingAppointmentCount,
   getPendingAppointments,
   rejectAppointment,
   type ProPendingAppointmentItem,
 } from "../../src/api/pro-appointments";
-
 
 type PendingRequest = {
   id: string;
@@ -32,9 +32,6 @@ type PendingRequest = {
 
 const AGENDA_HREF = "/(professional)/agenda" as Href;
 
-
-
-
 function buildWeekDays() {
   const base = new Date();
   const day = base.getDay();
@@ -43,6 +40,7 @@ function buildWeekDays() {
   monday.setDate(base.getDate() + mondayOffset);
 
   const labels = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
+
   return labels.map((label, index) => {
     const d = new Date(monday);
     d.setDate(monday.getDate() + index);
@@ -76,7 +74,9 @@ function formatDuration(startAt: string, endAt: string) {
   return `${diffMin}min`;
 }
 
-function mapPendingRequest(item: ProPendingAppointmentItem): PendingRequest {
+function mapPendingRequest(
+  item: ProPendingAppointmentItem
+): PendingRequest {
   return {
     id: item.id,
     time: formatTime(item.startAt),
@@ -89,30 +89,47 @@ function mapPendingRequest(item: ProPendingAppointmentItem): PendingRequest {
 
 export default function ProCalendarScreen() {
   const weekDays = useMemo(() => buildWeekDays(), []);
+
   const [selectedDate, setSelectedDate] = useState<string>(
     weekDays[2]?.fullDate ?? new Date().toISOString().slice(0, 10)
   );
-  const [selectedRequest, setSelectedRequest] = useState<PendingRequest | null>(null);
-  const [modalType, setModalType] = useState<"accept" | "reject" | null>(null);
+  const [selectedRequest, setSelectedRequest] =
+    useState<PendingRequest | null>(null);
+  const [modalType, setModalType] =
+    useState<"accept" | "reject" | null>(null);
   const [pendingRequests, setPendingRequests] = useState<PendingRequest[]>([]);
+  const [globalPendingCount, setGlobalPendingCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [processingId, setProcessingId] = useState<string | null>(null);
 
   const headerSubtitle = useMemo(() => {
-    return `${pendingRequests.length} demande${pendingRequests.length > 1 ? "s" : ""} en attente`;
-  }, [pendingRequests.length]);
+    return `${globalPendingCount} demande${
+      globalPendingCount > 1 ? "s" : ""
+    } en attente`;
+  }, [globalPendingCount]);
+
+  const loadGlobalPendingCount = async () => {
+    const result = await getPendingAppointmentCount();
+    setGlobalPendingCount(result.count);
+  };
 
   const loadPendingRequests = async (dateToLoad: string) => {
-  const data = await getPendingAppointments(dateToLoad);
+    const data = await getPendingAppointments(dateToLoad);
+    setPendingRequests(data.map(mapPendingRequest));
+  };
 
-  setPendingRequests(data.map(mapPendingRequest));
-};
+  const loadAll = async (dateToLoad: string) => {
+    await Promise.all([
+      loadPendingRequests(dateToLoad),
+      loadGlobalPendingCount(),
+    ]);
+  };
 
   const initialLoad = async () => {
     try {
       setLoading(true);
-      await loadPendingRequests(selectedDate);
+      await loadAll(selectedDate);
     } catch (error) {
       console.error("Pending requests load error:", error);
     } finally {
@@ -123,7 +140,7 @@ export default function ProCalendarScreen() {
   const onRefresh = async () => {
     try {
       setRefreshing(true);
-      await loadPendingRequests(selectedDate);
+      await loadAll(selectedDate);
     } catch (error) {
       console.error("Pending requests refresh error:", error);
     } finally {
@@ -146,9 +163,10 @@ export default function ProCalendarScreen() {
   const acceptCurrentAppointment = async (id: string) => {
     try {
       setProcessingId(id);
-      
       await confirmAppointment(id);
+
       setPendingRequests((prev) => prev.filter((req) => req.id !== id));
+      setGlobalPendingCount((prev) => Math.max(0, prev - 1));
       setSelectedRequest(null);
       setModalType(null);
     } catch (error) {
@@ -161,9 +179,10 @@ export default function ProCalendarScreen() {
   const rejectCurrentAppointment = async (id: string) => {
     try {
       setProcessingId(id);
-      
       await rejectAppointment(id);
+
       setPendingRequests((prev) => prev.filter((req) => req.id !== id));
+      setGlobalPendingCount((prev) => Math.max(0, prev - 1));
       setSelectedRequest(null);
       setModalType(null);
     } catch (error) {
@@ -189,14 +208,23 @@ export default function ProCalendarScreen() {
         >
           {weekDays.map(({ day, date, fullDate }) => {
             const active = selectedDate === fullDate;
+
             return (
               <Pressable
                 key={fullDate}
                 onPress={() => setSelectedDate(fullDate)}
                 style={[styles.dayCard, active && styles.dayCardActive]}
               >
-                <Text style={[styles.dayText, active && styles.dayTextActive]}>{day}</Text>
-                <Text style={[styles.dayDate, active && styles.dayTextActive]}>{date}</Text>
+                <Text
+                  style={[styles.dayText, active && styles.dayTextActive]}
+                >
+                  {day}
+                </Text>
+                <Text
+                  style={[styles.dayDate, active && styles.dayTextActive]}
+                >
+                  {date}
+                </Text>
               </Pressable>
             );
           })}
@@ -219,11 +247,23 @@ export default function ProCalendarScreen() {
           {pendingRequests.length === 0 ? (
             <View style={styles.emptyBox}>
               <View style={styles.emptyIconWrap}>
-                <Ionicons name="calendar-outline" size={30} color="#6B2737" />
+                <Ionicons
+                  name="calendar-outline"
+                  size={30}
+                  color="#6B2737"
+                />
               </View>
-              <Text style={styles.emptyTitle}>Aucune demande en attente</Text>
+              <Text style={styles.emptyTitle}>
+                Aucune demande pour cette date
+              </Text>
               <Text style={styles.emptyText}>
-                Toutes les demandes ont été traitées.
+                {globalPendingCount > 0
+                  ? `${globalPendingCount} demande${
+                      globalPendingCount > 1 ? "s" : ""
+                    } reste${
+                      globalPendingCount > 1 ? "nt" : ""
+                    } en attente à une autre date.`
+                  : "Toutes les demandes ont été traitées."}
               </Text>
             </View>
           ) : (
@@ -232,7 +272,11 @@ export default function ProCalendarScreen() {
                 <View key={request.id} style={styles.requestCard}>
                   <View style={styles.clientRow}>
                     <View style={styles.userIconWrap}>
-                      <Ionicons name="person-outline" size={22} color="#6B2737" />
+                      <Ionicons
+                        name="person-outline"
+                        size={22}
+                        color="#6B2737"
+                      />
                     </View>
 
                     <View style={{ flex: 1 }}>
@@ -243,14 +287,22 @@ export default function ProCalendarScreen() {
 
                   <View style={styles.infoGroup}>
                     <View style={styles.infoRow}>
-                      <Ionicons name="time-outline" size={16} color="#6B2737" />
+                      <Ionicons
+                        name="time-outline"
+                        size={16}
+                        color="#6B2737"
+                      />
                       <Text style={styles.infoText}>
                         {request.time} ({request.duration})
                       </Text>
                     </View>
 
                     <View style={styles.infoRow}>
-                      <Ionicons name="pricetag-outline" size={16} color="#6B2737" />
+                      <Ionicons
+                        name="pricetag-outline"
+                        size={16}
+                        color="#6B2737"
+                      />
                       <Text style={styles.infoText}>{request.service}</Text>
                     </View>
                   </View>
@@ -273,7 +325,11 @@ export default function ProCalendarScreen() {
                       }}
                       style={styles.acceptBtn}
                     >
-                      <Ionicons name="checkmark-circle-outline" size={18} color="#fff" />
+                      <Ionicons
+                        name="checkmark-circle-outline"
+                        size={18}
+                        color="#fff"
+                      />
                       <Text style={styles.acceptBtnText}>Accepter</Text>
                     </Pressable>
                   </View>
@@ -298,13 +354,16 @@ export default function ProCalendarScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>
-              {modalType === "accept" ? "Accepter la demande ?" : "Refuser la demande ?"}
+              {modalType === "accept"
+                ? "Accepter la demande ?"
+                : "Refuser la demande ?"}
             </Text>
 
             {selectedRequest && (
               <>
                 <Text style={styles.modalText}>
-                  {selectedRequest.client} • {selectedRequest.service} • {selectedRequest.time}
+                  {selectedRequest.client} • {selectedRequest.service} •{" "}
+                  {selectedRequest.time}
                 </Text>
 
                 <View style={styles.modalActions}>
@@ -321,7 +380,9 @@ export default function ProCalendarScreen() {
 
                   {modalType === "accept" ? (
                     <Pressable
-                      onPress={() => acceptCurrentAppointment(selectedRequest.id)}
+                      onPress={() =>
+                        acceptCurrentAppointment(selectedRequest.id)
+                      }
                       style={styles.modalAcceptBtn}
                       disabled={processingId === selectedRequest.id}
                     >
@@ -333,7 +394,9 @@ export default function ProCalendarScreen() {
                     </Pressable>
                   ) : (
                     <Pressable
-                      onPress={() => rejectCurrentAppointment(selectedRequest.id)}
+                      onPress={() =>
+                        rejectCurrentAppointment(selectedRequest.id)
+                      }
                       style={styles.modalRejectBtn}
                       disabled={processingId === selectedRequest.id}
                     >
