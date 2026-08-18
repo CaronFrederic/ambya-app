@@ -25,12 +25,8 @@ export class ClientsService {
     }
 
     const salon = await this.prisma.salon.findFirst({
-      where: {
-        ownerId: userId,
-      },
-      select: {
-        id: true,
-      },
+      where: { ownerId: userId },
+      select: { id: true },
     });
 
     if (!salon) {
@@ -62,7 +58,14 @@ export class ClientsService {
   private buildPreferredServices(appointments: any[]) {
     const map = new Map<string, number>();
 
-    for (const appointment of appointments) {
+    const relevantAppointments = appointments.filter(
+      (appointment) =>
+        appointment.status === AppointmentStatus.COMPLETED ||
+        appointment.status === AppointmentStatus.CONFIRMED ||
+        appointment.status === AppointmentStatus.IN_PROGRESS,
+    );
+
+    for (const appointment of relevantAppointments) {
       const serviceName = appointment.service?.name ?? 'Service inconnu';
       map.set(serviceName, (map.get(serviceName) ?? 0) + 1);
     }
@@ -76,7 +79,14 @@ export class ClientsService {
   private buildPreferredEmployees(appointments: any[]) {
     const map = new Map<string, { id: string; name: string; count: number }>();
 
-    for (const appointment of appointments) {
+    const relevantAppointments = appointments.filter(
+      (appointment) =>
+        appointment.status === AppointmentStatus.COMPLETED ||
+        appointment.status === AppointmentStatus.CONFIRMED ||
+        appointment.status === AppointmentStatus.IN_PROGRESS,
+    );
+
+    for (const appointment of relevantAppointments) {
       const employee = appointment.employee;
       if (!employee) continue;
 
@@ -105,7 +115,8 @@ export class ClientsService {
     const appointments = salonClient.appointments ?? [];
 
     const completedAppointments = appointments.filter(
-      (appointment: any) => appointment.status === AppointmentStatus.COMPLETED,
+      (appointment: any) =>
+        appointment.status === AppointmentStatus.COMPLETED,
     );
 
     const cancelledAppointments = appointments.filter(
@@ -113,6 +124,11 @@ export class ClientsService {
         appointment.status === AppointmentStatus.CANCELLED ||
         appointment.status === AppointmentStatus.NO_SHOW ||
         appointment.status === AppointmentStatus.REJECTED,
+    );
+
+    const noShowAppointments = appointments.filter(
+      (appointment: any) =>
+        appointment.status === AppointmentStatus.NO_SHOW,
     );
 
     const revenueGenerated = completedAppointments.reduce(
@@ -162,7 +178,7 @@ export class ClientsService {
 
       noShowRateLabel:
         totalBookings > 0
-          ? `${Math.round((cancelledBookings / totalBookings) * 100)}%`
+          ? `${Math.round((noShowAppointments.length / totalBookings) * 100)}%`
           : null,
 
       allergyAlert: salonClient.client?.clientProfile?.allergies
@@ -178,12 +194,16 @@ export class ClientsService {
         id: appointment.id,
         date: appointment.startAt,
         service: appointment.service?.name ?? 'Service inconnu',
-        employee: appointment.employee?.displayName ?? 'Non assigné',
-        amount: appointment.totalAmount ?? appointment.service?.price ?? 0,
-        status:
-          appointment.status === AppointmentStatus.COMPLETED
-            ? 'COMPLETED'
-            : 'CANCELLED',
+        employee:
+          appointment.employee?.displayName ||
+          [appointment.employee?.firstName, appointment.employee?.lastName]
+            .filter(Boolean)
+            .join(' ') ||
+          appointment.employee?.email ||
+          'Non assigné',
+        amount:
+          appointment.totalAmount ?? appointment.service?.price ?? 0,
+        status: appointment.status,
       })),
     };
   }
@@ -286,10 +306,7 @@ export class ClientsService {
     const salonId = await this.ensureSalon(user);
 
     const salonClient = await this.prisma.salonClient.findFirst({
-      where: {
-        id,
-        salonId,
-      },
+      where: { id, salonId },
     });
 
     if (!salonClient) {
@@ -297,12 +314,8 @@ export class ClientsService {
     }
 
     await this.prisma.salonClient.update({
-      where: {
-        id,
-      },
-      data: {
-        isDepositExempt: dto.isDepositExempt,
-      },
+      where: { id },
+      data: { isDepositExempt: dto.isDepositExempt },
     });
 
     return this.findOne(user, id);
@@ -313,10 +326,7 @@ export class ClientsService {
     const userId = user?.userId ?? user?.sub;
 
     const salonClient = await this.prisma.salonClient.findFirst({
-      where: {
-        id,
-        salonId,
-      },
+      where: { id, salonId },
     });
 
     if (!salonClient) {
@@ -337,9 +347,7 @@ export class ClientsService {
 
     if (existing) {
       await this.prisma.clientNote.update({
-        where: {
-          id: existing.id,
-        },
+        where: { id: existing.id },
         data: {
           content,
           updatedById: userId,
@@ -364,10 +372,7 @@ export class ClientsService {
     const salonId = await this.ensureSalon(user);
 
     const salonClient = await this.prisma.salonClient.findFirst({
-      where: {
-        id,
-        salonId,
-      },
+      where: { id, salonId },
     });
 
     if (!salonClient) {
@@ -375,12 +380,8 @@ export class ClientsService {
     }
 
     await this.prisma.salonClient.update({
-      where: {
-        id,
-      },
-      data: {
-        isBlocked: true,
-      },
+      where: { id },
+      data: { isBlocked: true },
     });
 
     return this.findOne(user, id);

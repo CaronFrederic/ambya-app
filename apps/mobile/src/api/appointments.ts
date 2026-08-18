@@ -119,6 +119,7 @@ export type AppointmentHistoryItem = {
   amount: number;
   status: AppointmentHistoryStatus;
 };
+
 export type AppointmentHistoryDetails = AppointmentHistoryItem & {
   salonId: string;
   salonName: string;
@@ -166,18 +167,23 @@ export type AppointmentHistoryDetails = AppointmentHistoryItem & {
   createdAt: string;
   updatedAt: string;
 };
-export function getAppointmentHistoryDetails(token: string, appointmentId: string) {
+
+export function getAppointmentHistoryDetails(
+  token: string,
+  appointmentId: string
+) {
   return apiFetch<AppointmentHistoryDetails>(
     `/pro/appointments/history/${appointmentId}`,
     {
       method: "GET",
       token,
-    },
+    }
   );
 }
 
 export type GetAppointmentHistoryParams = {
   status?: "all" | "completed" | "cancelled" | "no-show";
+  clientId?: string;
 };
 
 export async function fetchAppointments() {
@@ -205,7 +211,7 @@ export async function createAppointment(payload: CreateAppointmentPayload) {
 
 export async function assignEmployee(
   appointmentId: string,
-  employeeId?: string,
+  employeeId?: string
 ) {
   const res = await api.patch(`/appointments/${appointmentId}/assign-employee`, {
     employeeId,
@@ -214,7 +220,7 @@ export async function assignEmployee(
 }
 
 export async function createAppointmentsFromCart(
-  payload: CreateAppointmentsFromCartPayload,
+  payload: CreateAppointmentsFromCartPayload
 ) {
   const res = await api.post("/appointments/from-cart", payload);
   return res.data;
@@ -222,7 +228,7 @@ export async function createAppointmentsFromCart(
 
 export async function fetchAppointmentGroupDetails(groupId: string) {
   const res = await api.get<AppointmentGroupDetails>(
-    `/appointments/group/${groupId}`,
+    `/appointments/group/${groupId}`
   );
   return res.data;
 }
@@ -247,8 +253,14 @@ export function useUpdateAppointmentGroup() {
   const qc = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ groupId, ...payload }: UpdateAppointmentGroupPayload) => {
-      const res = await api.patch(`/appointments/group/${groupId}`, payload);
+    mutationFn: async ({
+      groupId,
+      ...payload
+    }: UpdateAppointmentGroupPayload) => {
+      const res = await api.patch(
+        `/appointments/group/${groupId}`,
+        payload
+      );
       return res.data;
     },
     onSuccess: async (_data, variables) => {
@@ -271,9 +283,12 @@ export function useCancelAppointmentGroup() {
       groupId: string;
       reason?: string;
     }) => {
-      const res = await api.patch(`/appointments/group/${groupId}/cancel`, {
-        reason,
-      });
+      const res = await api.patch(
+        `/appointments/group/${groupId}/cancel`,
+        {
+          reason,
+        }
+      );
       return res.data;
     },
     onSuccess: async (_data, variables) => {
@@ -298,10 +313,13 @@ export function useCreateAppointmentReview() {
       rating: number;
       comment: string;
     }) => {
-      const res = await api.post(`/appointments/group/${groupId}/review`, {
-        rating,
-        comment,
-      });
+      const res = await api.post(
+        `/appointments/group/${groupId}/review`,
+        {
+          rating,
+          comment,
+        }
+      );
       return res.data;
     },
     onSuccess: async (_data, variables) => {
@@ -315,35 +333,46 @@ export function useCreateAppointmentReview() {
 }
 
 function buildHistoryQuery(params?: GetAppointmentHistoryParams) {
-  if (!params || !params.status || params.status === "all") return "";
-
   const search = new URLSearchParams();
 
-  if (params.status === "completed") search.set("status", "COMPLETED");
-  if (params.status === "cancelled") search.set("status", "CANCELLED");
-  if (params.status === "no-show") search.set("status", "NO_SHOW");
+  if (params?.status === "completed") {
+    search.set("status", "COMPLETED");
+  }
+
+  if (params?.status === "cancelled") {
+    search.set("status", "CANCELLED");
+  }
+
+  if (params?.status === "no-show") {
+    search.set("status", "NO_SHOW");
+  }
+
+  if (params?.clientId?.trim()) {
+    search.set("clientId", params.clientId.trim());
+  }
 
   const qs = search.toString();
+
   return qs ? `?${qs}` : "";
 }
 
 export function getAppointmentHistory(
   token: string,
-  params?: GetAppointmentHistoryParams,
+  params?: GetAppointmentHistoryParams
 ) {
   return apiFetch<AppointmentHistoryItem[]>(
     `/pro/appointments/history${buildHistoryQuery(params)}`,
     {
       method: "GET",
       token,
-    },
+    }
   );
 }
 
 // Export mobile direct desactive: l'auth par query string n'est plus autorisee.
 
 export async function getAppointmentHistoryExportUrl(
-  status?: "all" | "completed" | "cancelled" | "no-show",
+  status?: "all" | "completed" | "cancelled" | "no-show"
 ): Promise<string> {
   const token = await SecureStore.getItemAsync("accessToken");
   void status;
@@ -353,9 +382,10 @@ export async function getAppointmentHistoryExportUrl(
   }
 
   throw new Error(
-    "L'export mobile direct est desactive pour securiser l'authentification. Merci d'utiliser l'interface prevue pour les exports.",
+    "L'export mobile direct est desactive pour securiser l'authentification. Merci d'utiliser l'interface prevue pour les exports."
   );
 }
+
 export type CreateBlockedSlotPayload = {
   date: string;
   startTime: string;
@@ -365,11 +395,14 @@ export type CreateBlockedSlotPayload = {
 
 export function createProBlockedSlot(
   token: string,
-  payload: CreateBlockedSlotPayload,
+  payload: CreateBlockedSlotPayload
 ) {
-  return apiFetch<{ createdCount: number }>("/pro/appointments/blocked-slots", {
-    method: "POST",
-    token,
-    body: JSON.stringify(payload),
-  });
+  return apiFetch<{ createdCount: number }>(
+    "/pro/appointments/blocked-slots",
+    {
+      method: "POST",
+      token,
+      body: JSON.stringify(payload),
+    }
+  );
 }

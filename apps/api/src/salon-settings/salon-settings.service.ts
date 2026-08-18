@@ -1,16 +1,22 @@
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { extname, join } from 'node:path';
+import { randomUUID } from 'node:crypto';
+
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   NotFoundException,
-} from '@nestjs/common'
-import { Prisma, UserRole } from '@prisma/client'
-import { PrismaService } from '../prisma/prisma.service'
-import { UpsertSalonSettingsDto } from './dto/upsert-salon-settings.dto'
+} from '@nestjs/common';
+import { Prisma, UserRole } from '@prisma/client';
+
+import { PrismaService } from '../prisma/prisma.service';
+import { UpsertSalonSettingsDto } from './dto/upsert-salon-settings.dto';
 
 type CurrentUser = {
-  userId: string
-  role: UserRole
-}
+  userId: string;
+  role: UserRole;
+};
 
 const DAY_TO_INDEX: Record<string, number> = {
   Lundi: 1,
@@ -20,7 +26,7 @@ const DAY_TO_INDEX: Record<string, number> = {
   Vendredi: 5,
   Samedi: 6,
   Dimanche: 0,
-}
+};
 
 const INDEX_TO_DAY: Record<number, string> = {
   0: 'Dimanche',
@@ -30,15 +36,28 @@ const INDEX_TO_DAY: Record<number, string> = {
   4: 'Jeudi',
   5: 'Vendredi',
   6: 'Samedi',
-}
+};
+
+const MIME_TO_EXTENSION: Record<string, string> = {
+  'image/jpeg': '.jpg',
+  'image/jpg': '.jpg',
+  'image/png': '.png',
+  'image/webp': '.webp',
+  'image/heic': '.heic',
+  'image/heif': '.heif',
+};
 
 @Injectable()
 export class SalonSettingsService {
   constructor(private readonly prisma: PrismaService) {}
 
   private async getManagedSalon(user: CurrentUser) {
-    if (user.role !== 'PROFESSIONAL' && user.role !== 'SALON_MANAGER' && user.role !== 'ADMIN') {
-      throw new ForbiddenException('Access denied')
+    if (
+      user.role !== 'PROFESSIONAL' &&
+      user.role !== 'SALON_MANAGER' &&
+      user.role !== 'ADMIN'
+    ) {
+      throw new ForbiddenException('Access denied');
     }
 
     const salon = await this.prisma.salon.findFirst({
@@ -50,26 +69,83 @@ export class SalonSettingsService {
           orderBy: [{ dayOfWeek: 'asc' }, { startTime: 'asc' }],
         },
       },
-    })
+    });
 
     if (!salon) {
-      throw new NotFoundException('Salon not found')
+      throw new NotFoundException('Salon not found');
     }
 
-    return salon
+    return salon;
+  }
+
+  async uploadPhoto(
+    user: CurrentUser,
+    file: any,
+    baseUrl: string,
+  ) {
+    const salon = await this.getManagedSalon(user);
+
+    if (!file?.buffer || !file?.mimetype) {
+      throw new BadRequestException('Fichier image invalide.');
+    }
+
+    const fallbackExtension = MIME_TO_EXTENSION[file.mimetype];
+
+    if (!fallbackExtension) {
+      throw new BadRequestException('Format d’image non supporté.');
+    }
+
+    const originalExtension = extname(file.originalname ?? '').toLowerCase();
+    const allowedExtensions = new Set([
+      '.jpg',
+      '.jpeg',
+      '.png',
+      '.webp',
+      '.heic',
+      '.heif',
+    ]);
+
+    const extension = allowedExtensions.has(originalExtension)
+      ? originalExtension === '.jpeg'
+        ? '.jpg'
+        : originalExtension
+      : fallbackExtension;
+
+    const fileName = `${Date.now()}-${randomUUID()}${extension}`;
+    const relativeDirectory = join('salons', salon.id);
+    const absoluteDirectory = join(
+      process.cwd(),
+      'uploads',
+      relativeDirectory,
+    );
+
+    mkdirSync(absoluteDirectory, { recursive: true });
+
+    const absolutePath = join(absoluteDirectory, fileName);
+    writeFileSync(absolutePath, file.buffer);
+
+    const normalizedBaseUrl = baseUrl.replace(/\/+$/, '');
+    const publicPath = `/uploads/salons/${salon.id}/${fileName}`;
+
+    return {
+      url: `${normalizedBaseUrl}${publicPath}`,
+    };
   }
 
   async getSettings(user: CurrentUser) {
-    const salon = await this.getManagedSalon(user)
+    const salon = await this.getManagedSalon(user);
 
     const rawPaymentSettings =
       salon.paymentSettings && typeof salon.paymentSettings === 'object'
         ? (salon.paymentSettings as Prisma.JsonObject)
-        : {}
+        : {};
 
-    const categories = salon.categories ?? []
+    const categories = salon.categories ?? [];
 
-    const scheduleByDay: Record<string, { start: string; end: string; enabled: boolean }[]> = {
+    const scheduleByDay: Record<
+      string,
+      { start: string; end: string; enabled: boolean }[]
+    > = {
       Lundi: [],
       Mardi: [],
       Mercredi: [],
@@ -77,29 +153,29 @@ export class SalonSettingsService {
       Vendredi: [],
       Samedi: [],
       Dimanche: [],
-    }
+    };
 
     for (const row of salon.openingHours) {
-      const label = INDEX_TO_DAY[row.dayOfWeek]
-      if (!label) continue
+      const label = INDEX_TO_DAY[row.dayOfWeek];
+      if (!label) continue;
 
       scheduleByDay[label].push({
         start: row.startTime,
         end: row.endTime,
         enabled: row.isOpen,
-      })
+      });
     }
 
     const standardSource = scheduleByDay['Lundi']?.length
       ? scheduleByDay['Lundi']
-      : [{ start: '09:00', end: '18:00', enabled: true }]
+      : [{ start: '09:00', end: '18:00', enabled: true }];
 
     const scheduleType =
       typeof rawPaymentSettings.scheduleType === 'string' &&
       (rawPaymentSettings.scheduleType === 'standard' ||
         rawPaymentSettings.scheduleType === 'custom')
         ? rawPaymentSettings.scheduleType
-        : 'standard'
+        : 'standard';
 
     return {
       id: salon.id,
@@ -165,13 +241,16 @@ export class SalonSettingsService {
 
       depositEnabled: salon.depositEnabled,
       depositPercentage: salon.depositPercentage,
-    }
+    };
   }
 
-  async upsertSettings(user: CurrentUser, dto: UpsertSalonSettingsDto) {
-    const salon = await this.getManagedSalon(user)
+  async upsertSettings(
+    user: CurrentUser,
+    dto: UpsertSalonSettingsDto,
+  ) {
+    const salon = await this.getManagedSalon(user);
 
-    const categories = dto.categories ?? []
+    const categories = dto.categories ?? [];
 
     const paymentSettings: Prisma.InputJsonObject = {
       payMobileMoney: dto.paymentSettings.payMobileMoney,
@@ -183,9 +262,10 @@ export class SalonSettingsService {
       bankName: dto.paymentSettings.bankName ?? '',
       iban: dto.paymentSettings.iban ?? '',
       bankOwner: dto.paymentSettings.bankOwner ?? '',
-      cancelPolicyHours: dto.paymentSettings.cancelPolicyHours ?? 12,
+      cancelPolicyHours:
+        dto.paymentSettings.cancelPolicyHours ?? 12,
       scheduleType: dto.scheduleType,
-    }
+    };
 
     const scheduleRows =
       dto.scheduleType === 'standard'
@@ -197,59 +277,62 @@ export class SalonSettingsService {
               isOpen: slot.enabled,
             })),
           )
-        : Object.entries(dto.customSlots).flatMap(([dayLabel, slots]) => {
-            const dayIndex = DAY_TO_INDEX[dayLabel]
-            if (dayIndex === undefined) return []
-            return slots.map((slot) => ({
-              dayOfWeek: dayIndex,
-              startTime: slot.start,
-              endTime: slot.end,
-              isOpen: slot.enabled,
-            }))
-          })
+        : Object.entries(dto.customSlots).flatMap(
+            ([dayLabel, slots]) => {
+              const dayIndex = DAY_TO_INDEX[dayLabel];
+              if (dayIndex === undefined) return [];
+
+              return slots.map((slot) => ({
+                dayOfWeek: dayIndex,
+                startTime: slot.start,
+                endTime: slot.end,
+                isOpen: slot.enabled,
+              }));
+            },
+          );
 
     await this.prisma.$transaction(async (tx) => {
-  await tx.salon.update({
-    where: { id: salon.id },
-    data: {
-      name: dto.name,
-      description: dto.description ?? null,
-      address: dto.address ?? null,
-      phone: dto.phone ?? null,
-      email: dto.email ?? null,
+      await tx.salon.update({
+        where: { id: salon.id },
+        data: {
+          name: dto.name,
+          description: dto.description ?? null,
+          address: dto.address ?? null,
+          phone: dto.phone ?? null,
+          email: dto.email ?? null,
 
-      coverImageUrl: dto.coverImageUrl ?? null,
-      galleryImageUrls: dto.galleryImageUrls ?? [],
+          coverImageUrl: dto.coverImageUrl ?? null,
+          galleryImageUrls: dto.galleryImageUrls ?? [],
 
-      instagramHandle: dto.instagramHandle ?? null,
-      showInstagramFeed: dto.showInstagramFeed ?? false,
-      tiktokHandle: dto.tiktokHandle ?? null,
-      showTikTokFeed: dto.showTikTokFeed ?? false,
-      facebookUrl: dto.facebookUrl ?? null,
-      websiteUrl: dto.websiteUrl ?? null,
+          instagramHandle: dto.instagramHandle ?? null,
+          showInstagramFeed: dto.showInstagramFeed ?? false,
+          tiktokHandle: dto.tiktokHandle ?? null,
+          showTikTokFeed: dto.showTikTokFeed ?? false,
+          facebookUrl: dto.facebookUrl ?? null,
+          websiteUrl: dto.websiteUrl ?? null,
 
-      depositEnabled: dto.depositEnabled,
-      depositPercentage: dto.depositPercentage,
-      categories,
+          depositEnabled: dto.depositEnabled,
+          depositPercentage: dto.depositPercentage,
+          categories,
 
-      paymentSettings,
-    },
-  });
+          paymentSettings,
+        },
+      });
 
-  await tx.salonOpeningHour.deleteMany({
-    where: { salonId: salon.id },
-  });
+      await tx.salonOpeningHour.deleteMany({
+        where: { salonId: salon.id },
+      });
 
-  if (scheduleRows.length > 0) {
-    await tx.salonOpeningHour.createMany({
-      data: scheduleRows.map((row) => ({
-        salonId: salon.id,
-        ...row,
-      })),
+      if (scheduleRows.length > 0) {
+        await tx.salonOpeningHour.createMany({
+          data: scheduleRows.map((row) => ({
+            salonId: salon.id,
+            ...row,
+          })),
+        });
+      }
     });
-  }
-});
 
-return this.getSettings(user);
+    return this.getSettings(user);
   }
 }

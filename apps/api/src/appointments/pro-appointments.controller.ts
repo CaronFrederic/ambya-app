@@ -51,8 +51,12 @@ export class ProAppointmentsController {
   }
 
   @Get('history')
-  getHistory(@CurrentUser() user: JwtUser, @Query('status') status?: string) {
-    return this.service.getProHistory(user, status);
+  getHistory(
+    @CurrentUser() user: JwtUser,
+    @Query('status') status?: string,
+    @Query('clientId') clientId?: string,
+  ) {
+    return this.service.getProHistory(user, status, clientId);
   }
 
   @Get('history/export')

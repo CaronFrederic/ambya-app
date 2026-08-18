@@ -17,8 +17,9 @@ import * as SecureStore from "expo-secure-store";
 
 import { ProHeader } from "./components/ProHeader";
 import { logout } from "../../src/api/auth";
-import { getSalonSettings, updateSalonSettings } from "../../src/api/salon-settings";
+import { getSalonSettings, updateSalonSettings, uploadSalonPhoto } from "../../src/api/salon-settings";
 import { useAuthRefresh } from "../../src/providers/AuthRefreshProvider";
+
 const COLORS = {
   bg: "#FAF7F2",
   text: "#3A3A3A",
@@ -27,6 +28,73 @@ const COLORS = {
 };
 
 type TabId = "infos" | "photos" | "horaires" | "paiements" | "acompte";
+
+type ScheduleSlot = {
+  start: string;
+  end: string;
+  enabled: boolean;
+};
+
+function SlotEditor({
+  slots,
+  onChange,
+}: {
+  slots: ScheduleSlot[];
+  onChange: (next: ScheduleSlot[]) => void;
+}) {
+  const updateSlot = (index: number, patch: Partial<ScheduleSlot>) => {
+    onChange(
+      slots.map((slot, i) => (i === index ? { ...slot, ...patch } : slot))
+    );
+  };
+
+  return (
+    <View style={{ gap: 10 }}>
+      {slots.map((slot, idx) => (
+        <View key={idx} style={styles.slotRow}>
+          <Switch
+            value={slot.enabled}
+            onValueChange={(value) => updateSlot(idx, { enabled: value })}
+          />
+          <TextInput
+            value={slot.start}
+            onChangeText={(text) => updateSlot(idx, { start: text })}
+            placeholder="09:00"
+            style={[styles.input, { flex: 1 }]}
+          />
+          <Text style={{ color: "rgba(58,58,58,0.5)", fontWeight: "700" }}>–</Text>
+          <TextInput
+            value={slot.end}
+            onChangeText={(text) => updateSlot(idx, { end: text })}
+            placeholder="18:00"
+            style={[styles.input, { flex: 1 }]}
+          />
+
+          {slots.length > 1 && (
+            <Pressable
+              onPress={() => onChange(slots.filter((_, i) => i !== idx))}
+              style={styles.smallDangerBtn}
+            >
+              <Text style={styles.smallDangerBtnText}>✕</Text>
+            </Pressable>
+          )}
+        </View>
+      ))}
+
+      <Pressable
+        onPress={() =>
+          onChange([
+            ...slots,
+            { start: "09:00", end: "18:00", enabled: true },
+          ])
+        }
+        style={styles.inlineBtn}
+      >
+        <Text style={styles.inlineBtnText}>＋ Ajouter une plage</Text>
+      </Pressable>
+    </View>
+  );
+}
 
 export default function SalonSettingsScreen() {
   const { refreshAuth } = useAuthRefresh();
@@ -77,11 +145,15 @@ export default function SalonSettingsScreen() {
   const [profileImage, setProfileImage] = useState<string | null>(null);
   const [galleryImages, setGalleryImages] = useState<string[]>([]);
   const [previewUri, setPreviewUri] = useState<string | null>(null);
+  const [uploadingProfileImage, setUploadingProfileImage] = useState(false);
+  const [uploadingGalleryImages, setUploadingGalleryImages] = useState(false);
 
   // horaires
   const [scheduleType, setScheduleType] = useState<"standard" | "custom">("standard");
-  const [standardSlots, setStandardSlots] = useState([{ start: "09:00", end: "18:00", enabled: true }]);
-  const [customSlots, setCustomSlots] = useState<Record<string, { start: string; end: string; enabled: boolean }[]>>({
+  const [standardSlots, setStandardSlots] = useState([
+    { start: "09:00", end: "18:00", enabled: true },
+  ]);
+  const [customSlots, setCustomSlots] = useState<Record<string, ScheduleSlot[]>>({
     Lundi: [{ start: "09:00", end: "18:00", enabled: true }],
     Mardi: [{ start: "09:00", end: "18:00", enabled: true }],
     Mercredi: [{ start: "09:00", end: "18:00", enabled: true }],
@@ -112,9 +184,83 @@ export default function SalonSettingsScreen() {
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
 
-useEffect(() => {
-  async function loadSettings() {
+  useEffect(() => {
+    async function loadSettings() {
+      try {
+        const token = await SecureStore.getItemAsync("accessToken");
+
+        if (!token) {
+          Alert.alert("Session expirée", "Veuillez vous reconnecter.");
+          return;
+        }
+
+        const settings = await getSalonSettings(token);
+
+        setName(settings.name ?? "");
+        setDesc(settings.description ?? "");
+        setAddress(settings.address ?? "");
+        setPhone(settings.phone ?? "");
+        setEmail(settings.email ?? "");
+
+        setCategories((prev) =>
+          Object.fromEntries(
+            Object.keys(prev).map((category) => [
+              category,
+              settings.categories?.includes(category) ?? false,
+            ])
+          )
+        );
+
+        setProfileImage(settings.coverImageUrl ?? null);
+        setGalleryImages(settings.galleryImageUrls ?? []);
+
+        setInstagramHandle(settings.instagramHandle ?? "");
+        setShowInstagramFeed(settings.showInstagramFeed ?? false);
+        setTiktokHandle(settings.tiktokHandle ?? "");
+        setShowTikTokFeed(settings.showTikTokFeed ?? false);
+        setFacebookUrl(settings.facebookUrl ?? "");
+        setWebsiteUrl(settings.websiteUrl ?? "");
+
+        setScheduleType(settings.scheduleType ?? "standard");
+        setStandardSlots(
+          settings.standardSlots?.length
+            ? settings.standardSlots
+            : [{ start: "09:00", end: "18:00", enabled: true }]
+        );
+        setCustomSlots(settings.customSlots ?? customSlots);
+
+        setPayMobileMoney(settings.paymentSettings?.payMobileMoney ?? true);
+        setPayCard(settings.paymentSettings?.payCard ?? true);
+        setPayCash(settings.paymentSettings?.payCash ?? true);
+        setOrangeMoney(settings.paymentSettings?.orangeMoney ?? "");
+        setMoovMoney(settings.paymentSettings?.moovMoney ?? "");
+        setAirtelMoney(settings.paymentSettings?.airtelMoney ?? "");
+        setBankName(settings.paymentSettings?.bankName ?? "");
+        setIban(settings.paymentSettings?.iban ?? "");
+        setBankOwner(settings.paymentSettings?.bankOwner ?? "");
+
+        setDepositEnabled(settings.depositEnabled ?? false);
+        setDepositPercentage(settings.depositPercentage ?? 30);
+        setCancelPolicyHours(
+          (settings.paymentSettings?.cancelPolicyHours ?? 12) as 12 | 24 | 48
+        );
+      } catch (error) {
+        console.log("Load salon settings error:", error);
+        Alert.alert("Erreur", "Impossible de charger les paramètres du salon.");
+      } finally {
+        setLoadingSettings(false);
+      }
+    }
+
+    loadSettings();
+  }, []);
+
+  async function handleSaveSettings() {
+    if (savingSettings) return;
+
     try {
+      setSavingSettings(true);
+
       const token = await SecureStore.getItemAsync("accessToken");
 
       if (!token) {
@@ -122,132 +268,73 @@ useEffect(() => {
         return;
       }
 
-      const settings = await getSalonSettings(token);
+      const selectedCategories = Object.entries(categories)
+        .filter(([, selected]) => selected)
+        .map(([category]) => category);
 
-      setName(settings.name ?? "");
-      setDesc(settings.description ?? "");
-      setAddress(settings.address ?? "");
-      setPhone(settings.phone ?? "");
-      setEmail(settings.email ?? "");
+      const payload = {
+        name: name.trim(),
+        description: desc.trim() || undefined,
+        address: address.trim() || undefined,
+        phone: phone.trim() || undefined,
+        email: email.trim() || undefined,
+        categories: selectedCategories,
 
-      setCategories((prev) =>
-        Object.fromEntries(
-          Object.keys(prev).map((category) => [
-            category,
-            settings.categories?.includes(category) ?? false,
-          ])
-        )
-      );
+        coverImageUrl: profileImage,
+        galleryImageUrls: galleryImages,
 
-      setProfileImage(settings.coverImageUrl ?? null);
-      setGalleryImages(settings.galleryImageUrls ?? []);
+        instagramHandle: instagramHandle.trim() || undefined,
+        showInstagramFeed,
+        tiktokHandle: tiktokHandle.trim() || undefined,
+        showTikTokFeed,
+        facebookUrl: facebookUrl.trim() || undefined,
+        websiteUrl: websiteUrl.trim() || undefined,
 
-      setInstagramHandle(settings.instagramHandle ?? "");
-      setShowInstagramFeed(settings.showInstagramFeed ?? false);
-      setTiktokHandle(settings.tiktokHandle ?? "");
-      setShowTikTokFeed(settings.showTikTokFeed ?? false);
-      setFacebookUrl(settings.facebookUrl ?? "");
-      setWebsiteUrl(settings.websiteUrl ?? "");
+        scheduleType,
+        standardSlots,
+        customSlots,
 
-      setScheduleType(settings.scheduleType ?? "standard");
-      setStandardSlots(settings.standardSlots?.length ? settings.standardSlots : [{ start: "09:00", end: "18:00", enabled: true }]);
-      setCustomSlots(settings.customSlots ?? customSlots);
+        paymentSettings: {
+          payMobileMoney,
+          payCard,
+          payCash,
+          orangeMoney: orangeMoney.trim(),
+          moovMoney: moovMoney.trim(),
+          airtelMoney: airtelMoney.trim(),
+          bankName: bankName.trim(),
+          iban: iban.trim(),
+          bankOwner: bankOwner.trim(),
+          cancelPolicyHours,
+        },
 
-      setPayMobileMoney(settings.paymentSettings?.payMobileMoney ?? true);
-      setPayCard(settings.paymentSettings?.payCard ?? true);
-      setPayCash(settings.paymentSettings?.payCash ?? true);
-      setOrangeMoney(settings.paymentSettings?.orangeMoney ?? "");
-      setMoovMoney(settings.paymentSettings?.moovMoney ?? "");
-      setAirtelMoney(settings.paymentSettings?.airtelMoney ?? "");
-      setBankName(settings.paymentSettings?.bankName ?? "");
-      setIban(settings.paymentSettings?.iban ?? "");
-      setBankOwner(settings.paymentSettings?.bankOwner ?? "");
+        depositEnabled,
+        depositPercentage,
+      };
 
-      setDepositEnabled(settings.depositEnabled ?? false);
-      setDepositPercentage(settings.depositPercentage ?? 30);
-      setCancelPolicyHours((settings.paymentSettings?.cancelPolicyHours ?? 12) as 12 | 24 | 48);
+      await updateSalonSettings(token, payload);
+
+      Alert.alert("Succès", "Les paramètres du salon ont été enregistrés.");
     } catch (error) {
-      console.log("Load salon settings error:", error);
-      Alert.alert("Erreur", "Impossible de charger les paramètres du salon.");
+      console.log("Save salon settings error:", error);
+      Alert.alert("Erreur", "Impossible d’enregistrer les modifications.");
     } finally {
-      setLoadingSettings(false);
+      setSavingSettings(false);
     }
   }
 
-  loadSettings();
-}, []);
+  async function pickSingleImage() {
+    if (uploadingProfileImage) return;
 
-async function handleSaveSettings() {
-  if (savingSettings) return;
+    const { status } =
+      await ImagePicker.requestMediaLibraryPermissionsAsync();
 
-  try {
-    setSavingSettings(true);
-
-    const token = await SecureStore.getItemAsync("accessToken");
-
-    if (!token) {
-      Alert.alert("Session expirée", "Veuillez vous reconnecter.");
+    if (status !== "granted") {
+      Alert.alert(
+        "Permission requise",
+        "Autorisez l'accès à vos photos pour ajouter une image au salon."
+      );
       return;
     }
-
-    const selectedCategories = Object.entries(categories)
-      .filter(([, selected]) => selected)
-      .map(([category]) => category);
-
-    const payload = {
-      name: name.trim(),
-      description: desc.trim() || undefined,
-      address: address.trim() || undefined,
-      phone: phone.trim() || undefined,
-      email: email.trim() || undefined,
-      categories: selectedCategories,
-
-      coverImageUrl: profileImage,
-      galleryImageUrls: galleryImages,
-
-      instagramHandle: instagramHandle.trim() || undefined,
-      showInstagramFeed,
-      tiktokHandle: tiktokHandle.trim() || undefined,
-      showTikTokFeed,
-      facebookUrl: facebookUrl.trim() || undefined,
-      websiteUrl: websiteUrl.trim() || undefined,
-
-      scheduleType,
-      standardSlots,
-      customSlots,
-
-      paymentSettings: {
-        payMobileMoney,
-        payCard,
-        payCash,
-        orangeMoney: orangeMoney.trim(),
-        moovMoney: moovMoney.trim(),
-        airtelMoney: airtelMoney.trim(),
-        bankName: bankName.trim(),
-        iban: iban.trim(),
-        bankOwner: bankOwner.trim(),
-        cancelPolicyHours,
-      },
-
-      depositEnabled,
-      depositPercentage,
-    };
-
-    await updateSalonSettings(token, payload);
-
-    Alert.alert("Succès", "Les paramètres du salon ont été enregistrés.");
-  } catch (error) {
-    console.log("Save salon settings error:", error);
-    Alert.alert("Erreur", "Impossible d’enregistrer les modifications.");
-  } finally {
-    setSavingSettings(false);
-  }
-}
-
-
-  async function pickSingleImage(setter: (uri: string) => void) {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== "granted") return;
 
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -256,25 +343,135 @@ async function handleSaveSettings() {
       aspect: [1, 1],
     });
 
-    if (!result.canceled) {
-      setter(result.assets[0].uri);
+    if (result.canceled) return;
+
+    const asset = result.assets[0];
+
+    if (!asset?.uri) {
+      Alert.alert("Erreur", "Impossible de lire la photo sélectionnée.");
+      return;
+    }
+
+    try {
+      setUploadingProfileImage(true);
+
+      const token = await SecureStore.getItemAsync("accessToken");
+
+      if (!token) {
+        Alert.alert("Session expirée", "Veuillez vous reconnecter.");
+        return;
+      }
+
+      const uploaded = await uploadSalonPhoto(token, {
+        uri: asset.uri,
+        fileName: asset.fileName,
+        mimeType: asset.mimeType,
+      });
+
+      setProfileImage(uploaded.url);
+    } catch (error) {
+      console.log("Upload salon profile photo error:", error);
+      Alert.alert(
+        "Erreur",
+        error instanceof Error
+          ? error.message
+          : "Impossible d'envoyer la photo."
+      );
+    } finally {
+      setUploadingProfileImage(false);
     }
   }
 
   async function pickMultipleImages() {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== "granted") return;
+    if (uploadingGalleryImages) return;
+
+    const remainingSlots = Math.max(0, 10 - galleryImages.length);
+
+    if (remainingSlots === 0) {
+      Alert.alert(
+        "Galerie complète",
+        "Vous avez déjà ajouté 10 photos."
+      );
+      return;
+    }
+
+    const { status } =
+      await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+    if (status !== "granted") {
+      Alert.alert(
+        "Permission requise",
+        "Autorisez l'accès à vos photos pour compléter la galerie."
+      );
+      return;
+    }
 
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       quality: 0.9,
       allowsMultipleSelection: true,
-      selectionLimit: 10 - galleryImages.length,
+      selectionLimit: remainingSlots,
     });
 
-    if (!result.canceled) {
-      const uris = result.assets.map((a) => a.uri);
-      setGalleryImages((prev) => [...prev, ...uris].slice(0, 10));
+    if (result.canceled) return;
+
+    const assets = result.assets.slice(0, remainingSlots);
+
+    try {
+      setUploadingGalleryImages(true);
+
+      const token = await SecureStore.getItemAsync("accessToken");
+
+      if (!token) {
+        Alert.alert("Session expirée", "Veuillez vous reconnecter.");
+        return;
+      }
+
+      const uploadedUrls: string[] = [];
+      let failedUploads = 0;
+
+      for (const asset of assets) {
+        if (!asset?.uri) {
+          failedUploads += 1;
+          continue;
+        }
+
+        try {
+          const uploaded = await uploadSalonPhoto(token, {
+            uri: asset.uri,
+            fileName: asset.fileName,
+            mimeType: asset.mimeType,
+          });
+
+          uploadedUrls.push(uploaded.url);
+        } catch (error) {
+          console.log("Upload salon gallery photo error:", error);
+          failedUploads += 1;
+        }
+      }
+
+      if (uploadedUrls.length > 0) {
+        setGalleryImages((prev) =>
+          [...prev, ...uploadedUrls].slice(0, 10)
+        );
+      }
+
+      if (failedUploads > 0) {
+        Alert.alert(
+          "Upload partiel",
+          `${failedUploads} photo${
+            failedUploads > 1 ? "s n'ont" : " n'a"
+          } pas pu être envoyée${failedUploads > 1 ? "s" : ""}.`
+        );
+      }
+    } catch (error) {
+      console.log("Upload salon gallery error:", error);
+      Alert.alert(
+        "Erreur",
+        "Impossible d'envoyer les photos de la galerie."
+      );
+    } finally {
+      setUploadingGalleryImages(false);
     }
   }
 
@@ -293,79 +490,51 @@ async function handleSaveSettings() {
     }
   }
 
-  function SlotEditor({
-    slots,
-    onChange,
-  }: {
-    slots: { start: string; end: string; enabled: boolean }[];
-    onChange: (next: { start: string; end: string; enabled: boolean }[]) => void;
-  }) {
-    return (
-      <View style={{ gap: 10 }}>
-        {slots.map((s, idx) => (
-          <View key={idx} style={styles.slotRow}>
-            <Switch value={s.enabled} onValueChange={(v) => onChange(slots.map((x, i) => (i === idx ? { ...x, enabled: v } : x)))} />
-            <TextInput
-              value={s.start}
-              onChangeText={(t) => onChange(slots.map((x, i) => (i === idx ? { ...x, start: t } : x)))}
-              placeholder="09:00"
-              style={[styles.input, { flex: 1 }]}
-            />
-            <Text style={{ color: "rgba(58,58,58,0.5)", fontWeight: "700" }}>–</Text>
-            <TextInput
-              value={s.end}
-              onChangeText={(t) => onChange(slots.map((x, i) => (i === idx ? { ...x, end: t } : x)))}
-              placeholder="18:00"
-              style={[styles.input, { flex: 1 }]}
-            />
-
-            {slots.length > 1 && (
-              <Pressable onPress={() => onChange(slots.filter((_, i) => i !== idx))} style={styles.smallDangerBtn}>
-                <Text style={styles.smallDangerBtnText}>✕</Text>
-              </Pressable>
-            )}
-          </View>
-        ))}
-
-        <Pressable onPress={() => onChange([...slots, { start: "09:00", end: "18:00", enabled: true }])} style={styles.inlineBtn}>
-          <Text style={styles.inlineBtnText}>＋ Ajouter une plage</Text>
-        </Pressable>
-      </View>
-    );
-  }
-
   return (
     <View style={{ flex: 1, backgroundColor: COLORS.bg }}>
-      <ProHeader title="Paramètres du Salon" subtitle="Configurez votre profil" backTo="/(professional)/dashboard" />
+      <ProHeader
+        title="Paramètres du Salon"
+        subtitle="Configurez votre profil"
+        backTo="/(professional)/dashboard"
+      />
 
       <View style={styles.tabsContainer}>
-  <ScrollView
-    horizontal
-    showsHorizontalScrollIndicator={false}
-    bounces={false}
-    contentContainerStyle={styles.tabsContent}
-  >
-    {tabs.map((t) => {
-      const active = activeTab === (t.id as TabId);
-
-      return (
-        <Pressable
-          key={t.id}
-          onPress={() => setActiveTab(t.id as TabId)}
-          style={styles.tabBtn}
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          bounces={false}
+          contentContainerStyle={styles.tabsContent}
         >
-          <Text style={[styles.tabText, active && styles.tabTextActive]}>
-            {t.label}
-          </Text>
+          {tabs.map((t) => {
+            const active = activeTab === (t.id as TabId);
 
-          <View style={[styles.tabIndicator, active && styles.tabIndicatorActive]} />
-        </Pressable>
-      );
-    })}
-  </ScrollView>
-</View>
+            return (
+              <Pressable
+                key={t.id}
+                onPress={() => setActiveTab(t.id as TabId)}
+                style={styles.tabBtn}
+              >
+                <Text style={[styles.tabText, active && styles.tabTextActive]}>
+                  {t.label}
+                </Text>
 
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+                <View
+                  style={[
+                    styles.tabIndicator,
+                    active && styles.tabIndicatorActive,
+                  ]}
+                />
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      </View>
+
+      <ScrollView
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
         {activeTab === "infos" && (
           <View style={{ gap: 14 }}>
             <Field label="Nom du salon">
@@ -373,7 +542,12 @@ async function handleSaveSettings() {
             </Field>
 
             <Field label="Description">
-              <TextInput value={desc} onChangeText={setDesc} style={[styles.input, { height: 120, textAlignVertical: "top" }]} multiline />
+              <TextInput
+                value={desc}
+                onChangeText={setDesc}
+                style={[styles.input, { height: 120, textAlignVertical: "top" }]}
+                multiline
+              />
               <Text style={styles.help}>Max 500 caractères</Text>
             </Field>
 
@@ -535,10 +709,21 @@ async function handleSaveSettings() {
             </View>
 
             <Pressable
-              onPress={() => pickSingleImage((uri) => setProfileImage(uri))}
-              style={[styles.primaryBtn, { backgroundColor: COLORS.primary }]}
+              onPress={pickSingleImage}
+              style={[
+                styles.primaryBtn,
+                { backgroundColor: COLORS.primary },
+                uploadingProfileImage && { opacity: 0.7 },
+              ]}
+              disabled={uploadingProfileImage}
             >
-              <Text style={styles.primaryBtnText}>{profileImage ? "Changer la photo" : "Ajouter une photo"}</Text>
+              {uploadingProfileImage ? (
+                <ActivityIndicator color="#FFF" />
+              ) : (
+                <Text style={styles.primaryBtnText}>
+                  {profileImage ? "Changer la photo" : "Ajouter une photo"}
+                </Text>
+              )}
             </Pressable>
 
             <Text style={styles.help}>Format recommandé : Carré (1:1), JPG ou PNG, max 5MB</Text>
@@ -557,9 +742,49 @@ async function handleSaveSettings() {
               ))}
 
               {galleryImages.length < 10 && (
-                <Pressable onPress={pickMultipleImages} style={styles.galleryAdd}>
-                  <Text style={{ color: "rgba(107,39,55,0.6)", fontWeight: "900", fontSize: 20 }}>＋</Text>
-                  <Text style={{ color: "rgba(107,39,55,0.6)", fontWeight: "700", fontSize: 12 }}>Ajouter</Text>
+                <Pressable
+                  onPress={pickMultipleImages}
+                  style={[
+                    styles.galleryAdd,
+                    uploadingGalleryImages && { opacity: 0.65 },
+                  ]}
+                  disabled={uploadingGalleryImages}
+                >
+                  {uploadingGalleryImages ? (
+                    <>
+                      <ActivityIndicator color={COLORS.primary} />
+                      <Text
+                        style={{
+                          color: "rgba(107,39,55,0.6)",
+                          fontWeight: "700",
+                          fontSize: 12,
+                        }}
+                      >
+                        Envoi...
+                      </Text>
+                    </>
+                  ) : (
+                    <>
+                      <Text
+                        style={{
+                          color: "rgba(107,39,55,0.6)",
+                          fontWeight: "900",
+                          fontSize: 20,
+                        }}
+                      >
+                        ＋
+                      </Text>
+                      <Text
+                        style={{
+                          color: "rgba(107,39,55,0.6)",
+                          fontWeight: "700",
+                          fontSize: 12,
+                        }}
+                      >
+                        Ajouter
+                      </Text>
+                    </>
+                  )}
                 </Pressable>
               )}
             </View>
@@ -723,16 +948,16 @@ async function handleSaveSettings() {
         )}
 
         <Pressable
-  onPress={handleSaveSettings}
-  style={[styles.primaryBtn, { marginTop: 18 }, savingSettings && { opacity: 0.7 }]}
-  disabled={savingSettings}
->
-  {savingSettings ? (
-    <ActivityIndicator color="#FFF" />
-  ) : (
-    <Text style={styles.primaryBtnText}>Enregistrer les modifications</Text>
-  )}
-</Pressable>
+          onPress={handleSaveSettings}
+          style={[styles.primaryBtn, { marginTop: 18 }, savingSettings && { opacity: 0.7 }]}
+          disabled={savingSettings}
+        >
+          {savingSettings ? (
+            <ActivityIndicator color="#FFF" />
+          ) : (
+            <Text style={styles.primaryBtnText}>Enregistrer les modifications</Text>
+          )}
+        </Pressable>
 
         <Pressable
           onPress={() => setShowLogoutModal(true)}
@@ -853,49 +1078,49 @@ const styles = StyleSheet.create({
     color: COLORS.text,
   },
 
- tabsContainer: {
-  height: 70,
-  backgroundColor: "#FFF",
-  borderBottomWidth: 1,
-  borderBottomColor: "rgba(107,39,55,0.06)",
-},
+  tabsContainer: {
+    height: 70,
+    backgroundColor: "#FFF",
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(107,39,55,0.06)",
+  },
 
-tabsContent: {
-  paddingHorizontal: 18,
-  alignItems: "center",
-  gap: 28,
-},
+  tabsContent: {
+    paddingHorizontal: 18,
+    alignItems: "center",
+    gap: 28,
+  },
 
-tabBtn: {
-  height: 70,
-  minWidth: 74,
-  alignItems: "center",
-  justifyContent: "center",
-  position: "relative",
-},
+  tabBtn: {
+    height: 70,
+    minWidth: 74,
+    alignItems: "center",
+    justifyContent: "center",
+    position: "relative",
+  },
 
-tabText: {
-  color: "rgba(58,58,58,0.55)",
-  fontSize: 15,
-  fontWeight: "900",
-},
+  tabText: {
+    color: "rgba(58,58,58,0.55)",
+    fontSize: 15,
+    fontWeight: "900",
+  },
 
-tabTextActive: {
-  color: COLORS.primary,
-},
+  tabTextActive: {
+    color: COLORS.primary,
+  },
 
-tabIndicator: {
-  position: "absolute",
-  bottom: 0,
-  height: 3,
-  width: "100%",
-  borderRadius: 999,
-  backgroundColor: "transparent",
-},
+  tabIndicator: {
+    position: "absolute",
+    bottom: 0,
+    height: 3,
+    width: "100%",
+    borderRadius: 999,
+    backgroundColor: "transparent",
+  },
 
-tabIndicatorActive: {
-  backgroundColor: COLORS.primary,
-},
+  tabIndicatorActive: {
+    backgroundColor: COLORS.primary,
+  },
 
   grid2: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   checkRow: { width: "48%", flexDirection: "row", alignItems: "center", gap: 10, padding: 10, borderRadius: 14 },

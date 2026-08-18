@@ -10,7 +10,7 @@ import {
   Alert,
   Linking,
 } from "react-native";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { ProHeader } from "./components/ProHeader";
 import { formatFCFA, formatDateFR } from "./utils/format";
 import {
@@ -83,6 +83,16 @@ function getStatusLabel(status: Status) {
 }
 
 export default function BookingHistoryScreen() {
+  const params = useLocalSearchParams<{
+    clientId?: string;
+    clientName?: string;
+  }>();
+
+  const clientId =
+    typeof params.clientId === "string" ? params.clientId : undefined;
+  const clientName =
+    typeof params.clientName === "string" ? params.clientName : undefined;
+
   const [filter, setFilter] = useState<"all" | Status>("all");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -127,6 +137,7 @@ export default function BookingHistoryScreen() {
 
     const data = await getAppointmentHistory(token, {
       status: currentFilter ?? filter,
+      clientId,
     });
 
     const mapped = data
@@ -172,7 +183,7 @@ export default function BookingHistoryScreen() {
         console.error("Booking history filter reload error:", error);
       });
     }
-  }, [filter]);
+  }, [filter, clientId]);
 
   const filtered = useMemo(() => {
     return bookings.filter((b) => (filter === "all" ? true : b.status === filter));
@@ -182,8 +193,18 @@ export default function BookingHistoryScreen() {
     <View style={{ flex: 1, backgroundColor: COLORS.bg }}>
       <ProHeader
         title="Historique des Réservations"
-        subtitle="Toutes vos réservations"
-        backTo="/(professional)/dashboard"
+        subtitle={
+          clientId && clientName
+            ? `Historique de ${clientName}`
+            : "Toutes vos réservations"
+        }
+        backTo={
+          clientId
+            ? (`/(professional)/client-details?id=${encodeURIComponent(
+                clientId
+              )}&client=${encodeURIComponent(clientName ?? "Client")}` as any)
+            : "/(professional)/dashboard"
+        }
       />
 
       {loading ? (

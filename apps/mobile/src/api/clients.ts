@@ -1,12 +1,21 @@
 import { apiFetch } from "./client";
 
+export type ClientAppointmentStatus =
+  | "PENDING"
+  | "CONFIRMED"
+  | "IN_PROGRESS"
+  | "REJECTED"
+  | "CANCELLED"
+  | "COMPLETED"
+  | "NO_SHOW";
+
 export type ClientBookingHistoryItem = {
   id: string;
   date: string;
   service: string;
   employee: string;
   amount: number;
-  status: "COMPLETED" | "CANCELLED";
+  status: ClientAppointmentStatus;
 };
 
 export type ClientPreferredService = {
@@ -110,6 +119,7 @@ export async function getSalonClients(token: string, search?: string) {
     const fullName =
       client.fullName ||
       [client.firstName, client.lastName].filter(Boolean).join(" ") ||
+      client.clientProfile?.nickname ||
       client.name ||
       client.email ||
       client.phone ||

@@ -1,16 +1,35 @@
+import { mkdirSync } from 'node:fs';
+import { join } from 'node:path';
+
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
+import { NestExpressApplication } from '@nestjs/platform-express';
+
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+
+  const uploadsDirectory = join(process.cwd(), 'uploads');
+  mkdirSync(uploadsDirectory, { recursive: true });
+
+  app.useStaticAssets(uploadsDirectory, {
+    prefix: '/uploads/',
+  });
+
   const allowedOrigins = (process.env.CORS_ORIGINS ?? '')
     .split(',')
     .map((origin) => origin.trim())
     .filter(Boolean);
-  const authRateWindowMs = Number(process.env.AUTH_RATE_LIMIT_WINDOW_MS ?? 15 * 60 * 1000);
+
+  const authRateWindowMs = Number(
+    process.env.AUTH_RATE_LIMIT_WINDOW_MS ?? 15 * 60 * 1000,
+  );
   const authRateLimit = Number(process.env.AUTH_RATE_LIMIT_MAX ?? 20);
-  const authAttempts = new Map<string, { count: number; resetAt: number }>();
+  const authAttempts = new Map<
+    string,
+    { count: number; resetAt: number }
+  >();
 
   app.setGlobalPrefix('api');
 
@@ -60,7 +79,8 @@ async function bootstrap() {
 
     if (current.count >= authRateLimit) {
       res.status(429).json({
-        message: 'Trop de tentatives. Merci de reessayer dans quelques minutes.',
+        message:
+          'Trop de tentatives. Merci de reessayer dans quelques minutes.',
       });
       return;
     }

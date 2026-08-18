@@ -1469,6 +1469,7 @@ export class AppointmentsService {
   async getProHistory(
     user: { userId: string; role: UserRole },
     status?: string,
+    clientId?: string,
   ) {
     if (user.role !== UserRole.PROFESSIONAL && user.role !== UserRole.ADMIN) {
       throw new ForbiddenException('Not allowed');
@@ -1492,6 +1493,26 @@ export class AppointmentsService {
         in: allowedStatuses,
       },
     };
+
+    if (clientId?.trim()) {
+      const normalizedClientId = clientId.trim();
+
+      // Depuis la fiche client mobile, l'identifiant transmis est l'id du
+      // SalonClient. On le résout vers le vrai User.clientId utilisé par
+      // Appointment. Si l'appelant fournit déjà un User id, on l'accepte
+      // également, tout en conservant le filtre de salon ci-dessus.
+      const salonClient = await this.prisma.salonClient.findFirst({
+        where: {
+          id: normalizedClientId,
+          salonId: { in: salonIds },
+        },
+        select: {
+          clientId: true,
+        },
+      });
+
+      where.clientId = salonClient?.clientId ?? normalizedClientId;
+    }
 
     if (
       status &&
