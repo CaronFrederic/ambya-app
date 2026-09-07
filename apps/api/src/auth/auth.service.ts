@@ -4,6 +4,9 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { randomUUID } from 'crypto';
+import { promises as fs } from 'fs';
+import { extname, join } from 'path';
 import * as bcrypt from 'bcryptjs';
 import { Prisma, UserRole } from '@prisma/client';
 
@@ -26,6 +29,33 @@ export class AuthService {
 
   private shouldExposeOtpDebugCode() {
     return process.env.AUTH_EXPOSE_OTP_DEBUG === 'true';
+  }
+
+  async uploadOwnerRegistrationPhoto(file: any, baseUrl: string) {
+    if (!file?.buffer) {
+      throw new BadRequestException('Photo invalide');
+    }
+
+    const extensionByMime: Record<string, string> = {
+      'image/jpeg': '.jpg',
+      'image/jpg': '.jpg',
+      'image/png': '.png',
+      'image/webp': '.webp',
+      'image/heic': '.heic',
+      'image/heif': '.heif',
+    };
+
+    const originalExtension = extname(file.originalname ?? '').toLowerCase();
+    const extension = extensionByMime[file.mimetype] || originalExtension || '.jpg';
+    const directory = join(process.cwd(), 'uploads', 'registrations');
+    const fileName = `registration-${Date.now()}-${randomUUID()}${extension}`;
+
+    await fs.mkdir(directory, { recursive: true });
+    await fs.writeFile(join(directory, fileName), file.buffer);
+
+    return {
+      url: `${baseUrl}/uploads/registrations/${fileName}`,
+    };
   }
 
   async register(dto: RegisterDto) {
@@ -202,6 +232,16 @@ export class AuthService {
       throw new BadRequestException("Le nom de l'etablissement est requis");
     }
 
+    const photos = Array.from(
+      new Set((dto.photos ?? []).map((photo) => photo.trim()).filter(Boolean)),
+    );
+
+    if (photos.length < 3) {
+      throw new BadRequestException(
+        "Au moins 3 photos de l'etablissement sont obligatoires",
+      );
+    }
+
     const hashedPassword = await bcrypt.hash(dto.password, 10);
 
     const loginMethod: AppLoginMethod =
@@ -303,6 +343,8 @@ export class AuthService {
         country: dto.countryCode?.trim() || undefined,
         phone: phone || undefined,
         email: email || undefined,
+        coverImageUrl: photos[0],
+        galleryImageUrls: photos,
         description:
           descriptionParts.length > 0
             ? descriptionParts.join(' • ')
@@ -328,6 +370,8 @@ export class AuthService {
           address: true,
           city: true,
           ownerId: true,
+          coverImageUrl: true,
+          galleryImageUrls: true,
           establishmentType: true,
           district: true,
           categories: true,
@@ -665,4 +709,3 @@ export class AuthService {
     return undefined;
   }
 }
-

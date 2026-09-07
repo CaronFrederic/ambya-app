@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import {
   Alert,
+  Image,
   Modal,
   Pressable,
   ScrollView,
@@ -12,6 +13,7 @@ import {
 } from "react-native";
 import { router } from "expo-router";
 import * as SecureStore from "expo-secure-store";
+import * as ImagePicker from "expo-image-picker";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { Screen } from "../../src/components/Screen";
@@ -20,8 +22,10 @@ import { Input } from "../../src/components/Input";
 import { Button } from "../../src/components/Button";
 import {
   registerProfessional,
+  uploadProfessionalRegistrationPhoto,
   type CountryCode,
   type RegisterProfessionalPayload,
+  type ProfessionalRegistrationPhoto,
 } from "../../src/api/pro-registration";
 import { verifyOtp, resendOtp } from "../../src/api/auth";
 import { fetchMeLoyalty, fetchMeSummary } from "../../src/api/me";
@@ -52,7 +56,11 @@ type DaySchedule = {
 type ServiceType = "individual" | "group";
 type LoginMethod = "phone" | "email";
 type PaymentMethod = "mobile-money" | "bank";
-type MobileMoneyOperator = "" | "airtel" | "moov" | "mtn" | "orange";
+type MobileMoneyOperator = "" | "airtel" | "moov";
+
+type RegistrationPhoto = ProfessionalRegistrationPhoto & {
+  id: string;
+};
 
 type GroupSettings = {
   maxCapacity: number;
@@ -83,8 +91,10 @@ type FormData = {
   email: string;
   address: string;
   city: string;
+  customCity: string;
   district: string;
   customDistrict: string;
+  photos: RegistrationPhoto[];
 
   schedule: Record<string, DaySchedule>;
   teamSize: number;
@@ -195,6 +205,17 @@ const DAY_LABELS: Record<string, string> = {
   dimanche: "Dimanche",
 };
 
+const TIME_OPTIONS = Array.from({ length: 48 }, (_, index) => {
+  const hours = Math.floor(index / 2);
+  const minutes = index % 2 === 0 ? "00" : "30";
+  const value = `${String(hours).padStart(2, "0")}:${minutes}`;
+
+  return {
+    label: value,
+    value,
+  };
+});
+
 const CITIES: Record<CountryCode, string[]> = {
   "+241": [
     "Libreville",
@@ -204,19 +225,8 @@ const CITIES: Record<CountryCode, string[]> = {
     "Moanda",
     "Mouila",
     "Lambaréné",
+    "autre",
   ],
-  "+243": [
-    "Kinshasa",
-    "Lubumbashi",
-    "Goma",
-    "Bukavu",
-    "Kisangani",
-    "Kananga",
-    "Mbandaka",
-  ],
-  "+242": ["Brazzaville", "Pointe-Noire", "Dolisie", "Nkayi"],
-  "+237": ["Douala", "Yaoundé", "Garoua", "Bafoussam", "Bamenda"],
-  "+225": ["Abidjan", "Yamoussoukro", "Bouaké", "San-Pédro", "Korhogo"],
 };
 
 const DISTRICTS: Record<string, string[]> = {
@@ -231,15 +241,6 @@ const DISTRICTS: Record<string, string[]> = {
     "Plaine Orety",
     "Louis",
     "Petit Paris",
-  ],
-  Kinshasa: [
-    "Gombe",
-    "Ngaliema",
-    "Limete",
-    "Kintambo",
-    "Kasavubu",
-    "Bandalungwa",
-    "Barumbu",
   ],
 };
 
@@ -299,8 +300,10 @@ export default function ProSignup() {
     email: "",
     address: "",
     city: "",
+    customCity: "",
     district: "",
     customDistrict: "",
+    photos: [],
 
     schedule: createDefaultSchedule(),
     teamSize: 1,
@@ -354,14 +357,19 @@ export default function ProSignup() {
     const emailValid = isEmail(formData.email);
     const contactValid = phoneValid || emailValid;
 
+    const cityValid =
+      formData.city !== "" &&
+      (formData.city !== "autre" || formData.customCity.trim().length > 0);
+
     return (
       formData.establishmentName.trim().length >= 3 &&
       typeValid &&
       formData.categories.length > 0 &&
       contactValid &&
       formData.address.trim().length >= 10 &&
-      formData.city !== "" &&
-      districtValid
+      cityValid &&
+      districtValid &&
+      formData.photos.length >= 3
     );
   }, [formData]);
 
@@ -422,7 +430,23 @@ export default function ProSignup() {
       formData.mobileMoneyNumber,
     );
 
-    const payload: RegisterProfessionalPayload = {
+    if (formData.photos.length < 3) {
+      Alert.alert(
+        "Photos obligatoires",
+        "Ajoutez au moins 3 photos de votre établissement ou de vos réalisations avant de créer votre compte.",
+      );
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+
+      const uploadedPhotos = await Promise.all(
+        formData.photos.map((photo) => uploadProfessionalRegistrationPhoto(photo)),
+      );
+      const photoUrls = uploadedPhotos.map((item) => item.url);
+
+      const payload: RegisterProfessionalPayload = {
       establishmentName: formData.establishmentName.trim() || undefined,
       establishmentType: formData.establishmentType || undefined,
       customType: formData.customType.trim() || undefined,
@@ -433,7 +457,10 @@ export default function ProSignup() {
       email: formData.email.trim().toLowerCase() || undefined,
 
       address: formData.address.trim() || undefined,
-      city: formData.city || undefined,
+      city:
+        formData.city === "autre"
+          ? formData.customCity.trim() || undefined
+          : formData.city || undefined,
       district: formData.district || undefined,
       customDistrict: formData.customDistrict.trim() || undefined,
 
@@ -469,10 +496,8 @@ export default function ProSignup() {
       acceptNewsletter: formData.acceptNewsletter,
 
       salonName: formData.establishmentName.trim() || undefined,
+      photos: photoUrls,
     };
-
-    try {
-      setSubmitting(true);
 
       const data = await registerProfessional(payload);
 
@@ -907,6 +932,46 @@ function Step1({
     }));
   };
 
+  const pickPhotos = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+    if (!permission.granted) {
+      Alert.alert(
+        "Accès aux photos requis",
+        "Autorisez l'accès à vos photos pour ajouter les images obligatoires de votre établissement.",
+      );
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.9,
+      allowsMultipleSelection: true,
+      selectionLimit: 10,
+    });
+
+    if (result.canceled) return;
+
+    const selected = result.assets.map((asset, index) => ({
+      id: `${Date.now()}-${index}-${Math.random().toString(36).slice(2, 8)}`,
+      uri: asset.uri,
+      fileName: asset.fileName ?? `ambya-${Date.now()}-${index}.jpg`,
+      mimeType: asset.mimeType ?? undefined,
+    }));
+
+    setFormData((prev) => ({
+      ...prev,
+      photos: [...prev.photos, ...selected],
+    }));
+  };
+
+  const removePhoto = (id: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      photos: prev.photos.filter((photo) => photo.id !== id),
+    }));
+  };
+
   return (
     <StepCard
       title="ÉTAPE 1/4 : INFORMATIONS DE L'ÉTABLISSEMENT"
@@ -999,40 +1064,24 @@ function Step1({
       />
 
       <View style={styles.row}>
-        <View style={styles.codePicker}>
-          <SelectChips
-            value={formData.countryCode}
-            onChange={(value) =>
-              setFormData((prev) => ({
-                ...prev,
-                countryCode: value as CountryCode,
-                city: "",
-                district: "",
-                customDistrict: "",
-              }))
-            }
-            options={[
-              { label: "🇬🇦 +241", value: "+241" },
-              { label: "🇨🇩 +243", value: "+243" },
-              { label: "🇨🇬 +242", value: "+242" },
-              { label: "🇨🇲 +237", value: "+237" },
-              { label: "🇨🇮 +225", value: "+225" },
-            ]}
-          />
+        <View style={styles.gabonCodeBox}>
+          <Text style={styles.gabonFlag}>🇬🇦</Text>
+          <Text style={styles.gabonCodeText}>+241</Text>
         </View>
 
         <View style={styles.flex1}>
           <Input
-            placeholder="XX XX XX XX"
+            placeholder="07 XX XX XX XX"
             keyboardType="phone-pad"
+            maxLength={9}
             value={formData.phoneNumber}
             onChangeText={(value: string) =>
               setFormData((prev) => ({
                 ...prev,
-                phoneNumber: normalizePhone(value),
+                phoneNumber: normalizePhone(value).slice(0, 9),
               }))
             }
-            hint="Ce numéro sera visible par les clients pour vous contacter."
+            hint="Pour le moment, seuls les numéros gabonais (+241) sont acceptés."
           />
         </View>
       </View>
@@ -1078,12 +1127,27 @@ function Step1({
           setFormData((prev) => ({
             ...prev,
             city: value,
+            customCity: value === "autre" ? prev.customCity : "",
             district: "",
             customDistrict: "",
           }))
         }
-        options={cities.map((city: string) => ({ label: city, value: city }))}
+        options={cities.map((city: string) => ({
+          label: city === "autre" ? "Autre ville" : city,
+          value: city,
+        }))}
       />
+
+      {formData.city === "autre" ? (
+        <Input
+          label="Nom de la ville *"
+          placeholder="Saisissez votre ville"
+          value={formData.customCity}
+          onChangeText={(value: string) =>
+            setFormData((prev) => ({ ...prev, customCity: value }))
+          }
+        />
+      ) : null}
 
       <FieldLabel label="Quartier *" />
       <SelectChips
@@ -1110,6 +1174,42 @@ function Step1({
           }
         />
       ) : null}
+
+      <SectionTitle title="Photos de l'établissement *" />
+      <Text style={styles.photoHelp}>
+        Ajoutez au minimum 3 photos de votre établissement, de vos installations ou de vos réalisations.
+      </Text>
+
+      <View style={styles.registrationPhotoGrid}>
+        {formData.photos.map((photo) => (
+          <View key={photo.id} style={styles.registrationPhotoItem}>
+            <Image source={{ uri: photo.uri }} style={styles.registrationPhotoImage} />
+            <Pressable
+              style={styles.registrationPhotoRemove}
+              onPress={() => removePhoto(photo.id)}
+            >
+              <Text style={styles.registrationPhotoRemoveText}>✕</Text>
+            </Pressable>
+          </View>
+        ))}
+
+        <Pressable style={styles.registrationPhotoAdd} onPress={pickPhotos}>
+          <Text style={styles.registrationPhotoAddIcon}>＋</Text>
+          <Text style={styles.registrationPhotoAddText}>Ajouter</Text>
+        </Pressable>
+      </View>
+
+      {formData.photos.length >= 3 ? (
+        <InfoBox
+          tone="success"
+          text={`✓ ${formData.photos.length} photo(s) ajoutée(s) — minimum atteint.`}
+        />
+      ) : (
+        <InfoBox
+          tone="warning"
+          text={`${formData.photos.length} / 3 photos minimum — ajoutez encore ${3 - formData.photos.length} photo(s) pour continuer.`}
+        />
+      )}
     </StepCard>
   );
 }
@@ -1209,23 +1309,23 @@ function Step2({
                 {schedule.slots.map((slot, index) => (
                   <View key={`${day}-${index}`} style={styles.slotRow}>
                     <View style={styles.flex1}>
-                      <Input
+                      <DropdownSelect
                         label="Début"
                         value={slot.start}
-                        onChangeText={(value: string) =>
+                        options={TIME_OPTIONS}
+                        onChange={(value) =>
                           updateSlot(day, index, "start", value)
                         }
-                        placeholder="08:00"
                       />
                     </View>
                     <View style={styles.flex1}>
-                      <Input
+                      <DropdownSelect
                         label="Fin"
                         value={slot.end}
-                        onChangeText={(value: string) =>
+                        options={TIME_OPTIONS}
+                        onChange={(value) =>
                           updateSlot(day, index, "end", value)
                         }
-                        placeholder="18:00"
                       />
                     </View>
                     {schedule.slots.length > 1 ? (
@@ -1745,8 +1845,6 @@ function Step4({
             options={[
               { label: "Airtel Money", value: "airtel" },
               { label: "Moov Money", value: "moov" },
-              { label: "MTN Mobile Money", value: "mtn" },
-              { label: "Orange Money", value: "orange" },
             ]}
           />
 
@@ -2141,6 +2239,97 @@ function InfoBox({
       >
         {text}
       </Text>
+    </View>
+  );
+}
+
+function DropdownSelect({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: { label: string; value: string }[];
+  onChange: (value: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const selected = options.find((option) => option.value === value);
+
+  return (
+    <View>
+      <FieldLabel label={label} />
+      <Pressable
+        style={styles.dropdownButton}
+        onPress={() => setOpen(true)}
+      >
+        <Text style={styles.dropdownButtonText}>
+          {selected?.label ?? "Sélectionner"}
+        </Text>
+        <Text style={styles.dropdownChevron}>⌄</Text>
+      </Pressable>
+
+      <Modal
+        visible={open}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setOpen(false)}
+      >
+        <Pressable
+          style={styles.dropdownOverlay}
+          onPress={() => setOpen(false)}
+        >
+          <Pressable
+            style={styles.dropdownModal}
+            onPress={(event) => event.stopPropagation()}
+          >
+            <Text style={styles.dropdownModalTitle}>{label}</Text>
+
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              style={styles.dropdownList}
+            >
+              {options.map((option) => {
+                const active = option.value === value;
+
+                return (
+                  <Pressable
+                    key={option.value}
+                    style={[
+                      styles.dropdownOption,
+                      active && styles.dropdownOptionActive,
+                    ]}
+                    onPress={() => {
+                      onChange(option.value);
+                      setOpen(false);
+                    }}
+                  >
+                    <Text
+                      style={[
+                        styles.dropdownOptionText,
+                        active && styles.dropdownOptionTextActive,
+                      ]}
+                    >
+                      {option.label}
+                    </Text>
+                    {active ? (
+                      <Text style={styles.dropdownCheck}>✓</Text>
+                    ) : null}
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+
+            <Pressable
+              style={styles.dropdownClose}
+              onPress={() => setOpen(false)}
+            >
+              <Text style={styles.dropdownCloseText}>Fermer</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -2563,6 +2752,94 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
 
+  dropdownButton: {
+    minHeight: 48,
+    borderWidth: 1,
+    borderColor: overlays.brand20,
+    borderRadius: radius.md,
+    backgroundColor: colors.card,
+    paddingHorizontal: spacing.md,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+
+  dropdownButtonText: {
+    color: colors.text,
+    ...typography.body,
+  },
+
+  dropdownChevron: {
+    color: colors.brand,
+    fontSize: 18,
+    fontWeight: "700",
+  },
+
+  dropdownOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    justifyContent: "center",
+    padding: spacing.lg,
+  },
+
+  dropdownModal: {
+    backgroundColor: colors.card,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    maxHeight: "78%",
+  },
+
+  dropdownModalTitle: {
+    color: colors.brand,
+    fontSize: 18,
+    fontWeight: "700",
+    marginBottom: spacing.md,
+  },
+
+  dropdownList: {
+    maxHeight: 420,
+  },
+
+  dropdownOption: {
+    minHeight: 46,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.md,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+
+  dropdownOptionActive: {
+    backgroundColor: overlays.brand10,
+  },
+
+  dropdownOptionText: {
+    color: colors.text,
+    ...typography.body,
+  },
+
+  dropdownOptionTextActive: {
+    color: colors.brand,
+    fontWeight: "700",
+  },
+
+  dropdownCheck: {
+    color: colors.brand,
+    fontWeight: "800",
+  },
+
+  dropdownClose: {
+    marginTop: spacing.md,
+    alignItems: "center",
+    paddingVertical: spacing.sm,
+  },
+
+  dropdownCloseText: {
+    color: colors.brand,
+    fontWeight: "700",
+  },
+
   chipsWrap: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -2691,6 +2968,28 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: spacing.md,
     alignItems: "flex-start",
+  },
+
+  gabonCodeBox: {
+    minHeight: 48,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: overlays.brand20,
+    backgroundColor: colors.card,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.xs,
+  },
+
+  gabonFlag: {
+    fontSize: 18,
+  },
+
+  gabonCodeText: {
+    color: colors.text,
+    fontWeight: "700",
   },
 
   codePicker: {
@@ -2998,6 +3297,76 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
 
+
+  photoHelp: {
+    color: colors.textMuted,
+    ...typography.body,
+    lineHeight: 21,
+  },
+
+  registrationPhotoGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+  },
+
+  registrationPhotoItem: {
+    width: "30%",
+    aspectRatio: 1,
+    borderRadius: radius.lg,
+    overflow: "hidden",
+    backgroundColor: colors.muted,
+    position: "relative",
+  },
+
+  registrationPhotoImage: {
+    width: "100%",
+    height: "100%",
+  },
+
+  registrationPhotoRemove: {
+    position: "absolute",
+    top: 6,
+    right: 6,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: colors.dangerText,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  registrationPhotoRemoveText: {
+    color: "#fff",
+    fontWeight: "800",
+    fontSize: 12,
+  },
+
+  registrationPhotoAdd: {
+    width: "30%",
+    aspectRatio: 1,
+    borderRadius: radius.lg,
+    borderWidth: 2,
+    borderStyle: "dashed",
+    borderColor: overlays.brand20,
+    backgroundColor: colors.card,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
+  },
+
+  registrationPhotoAddIcon: {
+    color: colors.brand,
+    fontSize: 28,
+    fontWeight: "700",
+  },
+
+  registrationPhotoAddText: {
+    color: colors.brand,
+    fontWeight: "700",
+    fontSize: 12,
+  },
+
   navRow: {
     flexDirection: "row",
     gap: spacing.md,
@@ -3187,4 +3556,3 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
 });
-

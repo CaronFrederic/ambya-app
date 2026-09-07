@@ -14,6 +14,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
+import DateTimePicker, { type DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import { ProHeader } from "./components/ProHeader";
 import {
   acceptEmployeeLeaveRequest,
@@ -116,6 +117,55 @@ function mapApiLeaveRequestToUi(request: ApiLeaveRequest): AppointmentRequest {
   };
 }
 
+
+function formatDateForDisplay(date: Date): string {
+  const day = String(date.getDate()).padStart(2, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const year = date.getFullYear();
+  return `${day}/${month}/${year}`;
+}
+
+function formatManualDateInput(value: string): string {
+  const digits = value.replace(/\D/g, "").slice(0, 8);
+
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+
+  return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+}
+
+function parseFrenchDate(value: string): Date | null {
+  const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(value.trim());
+  if (!match) return null;
+
+  const day = Number(match[1]);
+  const month = Number(match[2]);
+  const year = Number(match[3]);
+
+  const date = new Date(year, month - 1, day);
+
+  if (
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day
+  ) {
+    return null;
+  }
+
+  return date;
+}
+
+function formatDateForApi(value: string): string | null {
+  const date = parseFrenchDate(value);
+  if (!date) return null;
+
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
 export default function TeamManagementScreen() {
   const [showModal, setShowModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
@@ -138,6 +188,8 @@ export default function TeamManagementScreen() {
   const [absenceReason, setAbsenceReason] = useState("");
   const [absenceStartDate, setAbsenceStartDate] = useState("");
   const [absenceEndDate, setAbsenceEndDate] = useState("");
+  const [showStartDatePicker, setShowStartDatePicker] = useState(false);
+  const [showEndDatePicker, setShowEndDatePicker] = useState(false);
 
   const [toastVisible, setToastVisible] = useState(false);
   const [toastMsg, setToastMsg] = useState("");
@@ -345,6 +397,8 @@ export default function TeamManagementScreen() {
       setAbsenceReason("");
       setAbsenceStartDate("");
       setAbsenceEndDate("");
+      setShowStartDatePicker(false);
+      setShowEndDatePicker(false);
     }
   };
 
@@ -358,20 +412,80 @@ export default function TeamManagementScreen() {
     }
   };
 
+  const handleStartDatePickerChange = (
+    event: DateTimePickerEvent,
+    selectedDate?: Date,
+  ) => {
+    if (Platform.OS === "android") {
+      setShowStartDatePicker(false);
+    }
+
+    if (event.type === "dismissed" || !selectedDate) {
+      return;
+    }
+
+    setAbsenceStartDate(formatDateForDisplay(selectedDate));
+
+    const currentEndDate = parseFrenchDate(absenceEndDate);
+    if (currentEndDate && currentEndDate < selectedDate) {
+      setAbsenceEndDate("");
+    }
+  };
+
+  const handleEndDatePickerChange = (
+    event: DateTimePickerEvent,
+    selectedDate?: Date,
+  ) => {
+    if (Platform.OS === "android") {
+      setShowEndDatePicker(false);
+    }
+
+    if (event.type === "dismissed" || !selectedDate) {
+      return;
+    }
+
+    setAbsenceEndDate(formatDateForDisplay(selectedDate));
+  };
+
   const handleConfirmAbsence = async () => {
-    if (!showAbsenceModal || !absenceStartDate) return;
+    if (!showAbsenceModal) return;
+
+    const startDateForApi = formatDateForApi(absenceStartDate);
+    const endDateForApi = absenceEndDate
+      ? formatDateForApi(absenceEndDate)
+      : undefined;
+
+    if (!startDateForApi) {
+      toast("La date de début doit être au format JJ/MM/AAAA.");
+      return;
+    }
+
+    if (absenceEndDate && !endDateForApi) {
+      toast("La date de fin doit être au format JJ/MM/AAAA.");
+      return;
+    }
+
+    const startDate = parseFrenchDate(absenceStartDate);
+    const endDate = absenceEndDate ? parseFrenchDate(absenceEndDate) : null;
+
+    if (startDate && endDate && endDate < startDate) {
+      toast("La date de fin ne peut pas être antérieure à la date de début.");
+      return;
+    }
 
     const emp = employees.find((e) => e.id === showAbsenceModal);
 
     try {
       await markEmployeeAbsent(showAbsenceModal, {
-        startDate: absenceStartDate,
-        endDate: absenceEndDate || undefined,
+        startDate: startDateForApi,
+        endDate: endDateForApi,
         reason: absenceReason || undefined,
       });
 
       await loadEmployees();
       setShowAbsenceModal(null);
+      setShowStartDatePicker(false);
+      setShowEndDatePicker(false);
       toast(`${emp?.name ?? "Employé"} a été marqué(e) absent(e)`);
     } catch (error) {
       toast(error instanceof Error ? error.message : "Erreur lors du marquage d'absence.");
@@ -579,12 +693,12 @@ export default function TeamManagementScreen() {
         </View>
       </Modal>
 
-      <Modal visible={showAbsenceModal !== null} transparent animationType="slide" onRequestClose={() => setShowAbsenceModal(null)}>
+      <Modal visible={showAbsenceModal !== null} transparent animationType="slide" onRequestClose={() => { setShowAbsenceModal(null); setShowStartDatePicker(false); setShowEndDatePicker(false); }}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Marquer comme absent</Text>
-              <Pressable onPress={() => setShowAbsenceModal(null)}>
+              <Pressable onPress={() => { setShowAbsenceModal(null); setShowStartDatePicker(false); setShowEndDatePicker(false); }}>
                 <Ionicons name="close" size={22} color="#3A3A3A" />
               </Pressable>
             </View>
@@ -597,19 +711,108 @@ export default function TeamManagementScreen() {
             </View>
 
             <Text style={styles.label}>Date de début *</Text>
-            <TextInput value={absenceStartDate} onChangeText={setAbsenceStartDate} placeholder="YYYY-MM-DD" autoCapitalize="none" style={styles.input} />
+            <View style={styles.dateInputRow}>
+              <TextInput
+                value={absenceStartDate}
+                onChangeText={(value) =>
+                  setAbsenceStartDate(formatManualDateInput(value))
+                }
+                placeholder="JJ/MM/AAAA"
+                keyboardType="number-pad"
+                maxLength={10}
+                style={styles.dateInput}
+              />
+              <Pressable
+                onPress={() => {
+                  setShowEndDatePicker(false);
+                  setShowStartDatePicker((visible) => !visible);
+                }}
+                style={styles.calendarBtn}
+                accessibilityRole="button"
+                accessibilityLabel="Choisir la date de début dans le calendrier"
+              >
+                <Ionicons name="calendar-outline" size={21} color="#6B2737" />
+              </Pressable>
+            </View>
+
+            {showStartDatePicker && (
+              <View style={styles.datePickerWrap}>
+                <DateTimePicker
+                  value={parseFrenchDate(absenceStartDate) ?? new Date()}
+                  mode="date"
+                  display={Platform.OS === "ios" ? "inline" : "default"}
+                  onChange={handleStartDatePickerChange}
+                  locale="fr-FR"
+                />
+                {Platform.OS === "ios" && (
+                  <Pressable
+                    onPress={() => setShowStartDatePicker(false)}
+                    style={styles.datePickerDoneBtn}
+                  >
+                    <Text style={styles.datePickerDoneText}>Terminé</Text>
+                  </Pressable>
+                )}
+              </View>
+            )}
 
             <Text style={styles.label}>Date de fin (optionnelle)</Text>
-            <TextInput value={absenceEndDate} onChangeText={setAbsenceEndDate} placeholder="YYYY-MM-DD" autoCapitalize="none" style={styles.input} />
+            <View style={styles.dateInputRow}>
+              <TextInput
+                value={absenceEndDate}
+                onChangeText={(value) =>
+                  setAbsenceEndDate(formatManualDateInput(value))
+                }
+                placeholder="JJ/MM/AAAA"
+                keyboardType="number-pad"
+                maxLength={10}
+                style={styles.dateInput}
+              />
+              <Pressable
+                onPress={() => {
+                  setShowStartDatePicker(false);
+                  setShowEndDatePicker((visible) => !visible);
+                }}
+                style={styles.calendarBtn}
+                accessibilityRole="button"
+                accessibilityLabel="Choisir la date de fin dans le calendrier"
+              >
+                <Ionicons name="calendar-outline" size={21} color="#6B2737" />
+              </Pressable>
+            </View>
+
+            {showEndDatePicker && (
+              <View style={styles.datePickerWrap}>
+                <DateTimePicker
+                  value={
+                    parseFrenchDate(absenceEndDate) ??
+                    parseFrenchDate(absenceStartDate) ??
+                    new Date()
+                  }
+                  minimumDate={parseFrenchDate(absenceStartDate) ?? undefined}
+                  mode="date"
+                  display={Platform.OS === "ios" ? "inline" : "default"}
+                  onChange={handleEndDatePickerChange}
+                  locale="fr-FR"
+                />
+                {Platform.OS === "ios" && (
+                  <Pressable
+                    onPress={() => setShowEndDatePicker(false)}
+                    style={styles.datePickerDoneBtn}
+                  >
+                    <Text style={styles.datePickerDoneText}>Terminé</Text>
+                  </Pressable>
+                )}
+              </View>
+            )}
 
             <Text style={styles.label}>Motif (optionnel)</Text>
             <TextInput value={absenceReason} onChangeText={setAbsenceReason} placeholder="Maladie, urgence..." style={styles.input} />
 
             <View style={styles.modalFooter}>
-              <Pressable onPress={() => setShowAbsenceModal(null)} style={styles.secondaryBtn}>
+              <Pressable onPress={() => { setShowAbsenceModal(null); setShowStartDatePicker(false); setShowEndDatePicker(false); }} style={styles.secondaryBtn}>
                 <Text style={styles.secondaryBtnText}>Annuler</Text>
               </Pressable>
-              <Pressable onPress={handleConfirmAbsence} disabled={!absenceStartDate} style={[styles.dangerBtn, !absenceStartDate && { opacity: 0.5 }]}>
+              <Pressable onPress={handleConfirmAbsence} disabled={!parseFrenchDate(absenceStartDate)} style={[styles.dangerBtn, !parseFrenchDate(absenceStartDate) && { opacity: 0.5 }]}>
                 <Text style={styles.dangerBtnText}>Confirmer</Text>
               </Pressable>
             </View>
@@ -858,6 +1061,12 @@ const styles = StyleSheet.create({
   alertText: { flex: 1, color: "#3A3A3A", fontSize: 12 },
   label: { color: "#3A3A3A", fontSize: 13, fontWeight: "700", marginBottom: 6, marginTop: 8 },
   input: { backgroundColor: "#FAF7F2", borderRadius: 16, paddingHorizontal: 14, paddingVertical: Platform.OS === "ios" ? 12 : 10, borderWidth: 1, borderColor: "rgba(107,39,55,0.2)" },
+  dateInputRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  dateInput: { flex: 1, backgroundColor: "#FAF7F2", borderRadius: 16, paddingHorizontal: 14, paddingVertical: Platform.OS === "ios" ? 12 : 10, borderWidth: 1, borderColor: "rgba(107,39,55,0.2)", color: "#3A3A3A" },
+  calendarBtn: { width: 48, height: 48, borderRadius: 16, backgroundColor: "#FAF7F2", borderWidth: 1, borderColor: "rgba(107,39,55,0.2)", alignItems: "center", justifyContent: "center" },
+  datePickerWrap: { marginTop: 8, backgroundColor: "#FAF7F2", borderRadius: 16, padding: 8, overflow: "hidden" },
+  datePickerDoneBtn: { alignSelf: "flex-end", paddingVertical: 8, paddingHorizontal: 12 },
+  datePickerDoneText: { color: "#6B2737", fontWeight: "800" },
   helpText: { color: "rgba(58,58,58,0.6)", fontSize: 12, marginTop: 8 },
   modalFooter: { flexDirection: "row", gap: 10, marginTop: 14 },
   secondaryBtn: { backgroundColor: "#FAF7F2", borderRadius: 999, paddingVertical: 12, paddingHorizontal: 14, alignItems: "center", justifyContent: "center" },

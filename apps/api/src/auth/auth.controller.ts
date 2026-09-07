@@ -1,4 +1,17 @@
-import { Body, Controller, Get, Post, UseGuards } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  Post,
+  Req,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import type { Request } from 'express';
+
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { CreateOwnerDto } from './dto/create-owner.dto';
@@ -14,6 +27,57 @@ export class AuthController {
   @Post('register')
   register(@Body() dto: RegisterDto) {
     return this.auth.register(dto);
+  }
+
+  @Post('register-owner/photos')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: {
+        fileSize: 5 * 1024 * 1024,
+      },
+      fileFilter: (_req, file, callback) => {
+        const allowedMimeTypes = new Set([
+          'image/jpeg',
+          'image/jpg',
+          'image/png',
+          'image/webp',
+          'image/heic',
+          'image/heif',
+        ]);
+
+        if (!allowedMimeTypes.has(file.mimetype)) {
+          callback(
+            new BadRequestException(
+              'Format non supporté. Utilisez JPG, PNG, WEBP, HEIC ou HEIF.',
+            ),
+            false,
+          );
+          return;
+        }
+
+        callback(null, true);
+      },
+    }),
+  )
+  uploadOwnerRegistrationPhoto(
+    @UploadedFile() file: any,
+    @Req() req: Request,
+  ) {
+    if (!file) {
+      throw new BadRequestException('Aucune photo reçue.');
+    }
+
+    const forwardedProto = req.headers['x-forwarded-proto'];
+    const protocol = Array.isArray(forwardedProto)
+      ? forwardedProto[0]
+      : forwardedProto?.split(',')[0]?.trim() || req.protocol;
+
+    const forwardedHost = req.headers['x-forwarded-host'];
+    const host = Array.isArray(forwardedHost)
+      ? forwardedHost[0]
+      : forwardedHost?.split(',')[0]?.trim() || req.get('host');
+
+    return this.auth.uploadOwnerRegistrationPhoto(file, `${protocol}://${host}`);
   }
 
   @Post('register-owner')

@@ -122,11 +122,11 @@ export class CreateOwnerDto {
   @IsString()
   customType?: string;
 
- @IsOptional()
-@IsArray()
-@ArrayMinSize(1)
-@IsString({ each: true })
-categories?: string[];
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(1)
+  @IsString({ each: true })
+  categories?: string[];
 
   @IsOptional()
   @IsString()
@@ -147,6 +147,13 @@ categories?: string[];
   @IsOptional()
   @IsString()
   customDistrict?: string;
+
+  @IsArray()
+  @ArrayMinSize(3, {
+    message: "Au moins 3 photos de l'établissement sont obligatoires",
+  })
+  @IsString({ each: true })
+  photos!: string[];
 
   @IsOptional()
   @IsObject()

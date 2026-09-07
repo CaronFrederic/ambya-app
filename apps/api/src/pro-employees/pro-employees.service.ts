@@ -14,7 +14,6 @@ import { Prisma } from '@prisma/client';
 export class ProEmployeesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  // ✅ FIX IMPORTANT (async)
   private async ensureSalon(user: any): Promise<string> {
     if (user?.salonId) {
       return user.salonId;
@@ -45,8 +44,14 @@ export class ProEmployeesService {
   async findAll(user: any) {
     const salonId = await this.ensureSalon(user);
 
+    // Un employé "supprimé" est conservé en base pour préserver
+    // l'historique des rendez-vous/congés/absences, mais ne doit plus
+    // apparaître dans la gestion de l'équipe.
     return this.prisma.employee.findMany({
-      where: { salonId },
+      where: {
+        salonId,
+        isActive: true,
+      },
       orderBy: { createdAt: 'desc' },
     });
   }
@@ -111,7 +116,11 @@ export class ProEmployeesService {
     const salonId = await this.ensureSalon(user);
 
     const employee = await this.prisma.employee.findFirst({
-      where: { id, salonId },
+      where: {
+        id,
+        salonId,
+        isActive: true,
+      },
     });
 
     if (!employee) {
@@ -128,19 +137,41 @@ export class ProEmployeesService {
     const salonId = await this.ensureSalon(user);
 
     const employee = await this.prisma.employee.findFirst({
-      where: { id, salonId },
+      where: {
+        id,
+        salonId,
+        isActive: true,
+      },
+      select: {
+        id: true,
+        userId: true,
+      },
     });
 
     if (!employee) {
       throw new NotFoundException('Employé introuvable');
     }
 
-    return this.prisma.employee.update({
-      where: { id },
-      data: {
-        isActive: false,
-        status: 'INACTIVE',
-      },
+    // Soft delete : on conserve l'employé pour l'historique,
+    // mais on le retire de l'équipe active et on désactive aussi
+    // son compte utilisateur.
+    return this.prisma.$transaction(async (tx) => {
+      const deletedEmployee = await tx.employee.update({
+        where: { id: employee.id },
+        data: {
+          isActive: false,
+          status: 'INACTIVE',
+        },
+      });
+
+      await tx.user.update({
+        where: { id: employee.userId },
+        data: {
+          isActive: false,
+        },
+      });
+
+      return deletedEmployee;
     });
   }
 
@@ -148,7 +179,11 @@ export class ProEmployeesService {
     const salonId = await this.ensureSalon(user);
 
     const employee = await this.prisma.employee.findFirst({
-      where: { id, salonId },
+      where: {
+        id,
+        salonId,
+        isActive: true,
+      },
     });
 
     if (!employee) {
@@ -177,7 +212,11 @@ export class ProEmployeesService {
     const salonId = await this.ensureSalon(user);
 
     const employee = await this.prisma.employee.findFirst({
-      where: { id, salonId },
+      where: {
+        id,
+        salonId,
+        isActive: true,
+      },
     });
 
     if (!employee) {
@@ -191,7 +230,7 @@ export class ProEmployeesService {
   }
 
   // ========================
-  // LEAVE REQUESTS (NOUVEAU)
+  // LEAVE REQUESTS
   // ========================
 
   private mapLeaveRequest(request: any) {
@@ -249,7 +288,10 @@ export class ProEmployeesService {
     const request = await this.prisma.leaveRequest.findFirst({
       where: {
         id,
-        employee: { salonId },
+        employee: {
+          salonId,
+          isActive: true,
+        },
       },
     });
 

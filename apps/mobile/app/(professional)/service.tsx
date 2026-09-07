@@ -14,7 +14,6 @@ import {
   RefreshControl,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import * as ImagePicker from "expo-image-picker";
 import type { Href } from "expo-router";
 
 import { ProHeader } from "./components/ProHeader";
@@ -148,7 +147,6 @@ function mapApiServiceToUi(service: ApiService): Service {
     duration: service.durationMin,
     description: service.description ?? "",
     isActive: service.isActive && service.status === "ACTIVE",
-    imageUri: null,
   };
 }
 
@@ -173,7 +171,6 @@ export default function ServicesScreen() {
     duration: string;
     description: string;
     isActive: boolean;
-    imageUri: string | null;
   }>({
     name: "",
     category: "Coiffure",
@@ -182,7 +179,6 @@ export default function ServicesScreen() {
     duration: "",
     description: "",
     isActive: true,
-    imageUri: null,
   });
 
   const totalServices = useMemo(() => services.length, [services.length]);
@@ -206,8 +202,7 @@ export default function ServicesScreen() {
       duration: "",
       description: "",
       isActive: true,
-      imageUri: null,
-    });
+      });
     setEditingId(null);
   };
 
@@ -265,7 +260,6 @@ export default function ServicesScreen() {
       duration: String(service.duration),
       description: service.description,
       isActive: service.isActive,
-      imageUri: service.imageUri ?? null,
     });
     setShowModal(true);
   };
@@ -354,29 +348,6 @@ export default function ServicesScreen() {
           ? error.message
           : "Erreur lors de la suppression."
       );
-    }
-  };
-
-  const pickImage = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-
-    if (status !== "granted") {
-      toast("Permission galerie refusée.");
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.85,
-      allowsEditing: true,
-      aspect: [4, 3],
-    });
-
-    if (!result.canceled) {
-      setForm((p) => ({
-        ...p,
-        imageUri: result.assets[0]?.uri ?? null,
-      }));
     }
   };
 
@@ -714,70 +685,6 @@ export default function ServicesScreen() {
                   },
                 ]}
               />
-
-              <View style={styles.sectionSep} />
-
-              <Text style={styles.label}>
-                Photo du service (optionnel)
-              </Text>
-
-              {!!form.imageUri ? (
-                <View style={styles.imagePreviewWrap}>
-                  <Image
-                    source={{ uri: form.imageUri }}
-                    style={styles.imagePreview}
-                  />
-
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      gap: 10,
-                      marginTop: 10,
-                    }}
-                  >
-                    <Pressable
-                      onPress={pickImage}
-                      style={[
-                        styles.secondaryBtn,
-                        { flex: 1 },
-                      ]}
-                    >
-                      <Ionicons
-                        name="image-outline"
-                        size={16}
-                        color={COLORS.text}
-                      />
-                      <Text style={styles.secondaryText}>Changer</Text>
-                    </Pressable>
-
-                    <Pressable
-                      onPress={() =>
-                        setForm((p) => ({
-                          ...p,
-                          imageUri: null,
-                        }))
-                      }
-                      style={[
-                        styles.dangerBtn,
-                        { flex: 1 },
-                      ]}
-                    >
-                      <Ionicons
-                        name="trash-outline"
-                        size={16}
-                        color="#fff"
-                      />
-                      <Text style={styles.dangerText}>Retirer</Text>
-                    </Pressable>
-                  </View>
-                </View>
-              ) : (
-                <Pressable onPress={pickImage} style={styles.uploadBtn}>
-                  <Ionicons name="camera-outline" size={18} color="#fff" />
-                  <Text style={styles.uploadText}>Ajouter une photo</Text>
-                </Pressable>
-              )}
-
               <View style={styles.switchRow}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.label}>Service actif</Text>
@@ -1165,42 +1072,8 @@ const styles = StyleSheet.create({
     fontSize: 13,
   },
 
-  sectionSep: {
-    height: 1,
-    backgroundColor: "rgba(107,39,55,0.12)",
-    marginTop: 14,
-    marginBottom: 8,
-  },
 
-  uploadBtn: {
-    marginTop: 2,
-    backgroundColor: COLORS.brand,
-    borderRadius: 14,
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-  },
-  uploadText: {
-    color: "#fff",
-    fontWeight: "800",
-  },
 
-  imagePreviewWrap: {
-    backgroundColor: COLORS.bg,
-    borderRadius: 16,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: "rgba(107,39,55,0.15)",
-  },
-  imagePreview: {
-    width: "100%",
-    height: 180,
-    borderRadius: 14,
-    backgroundColor: "#eee",
-  },
 
   switchRow: {
     marginTop: 14,
