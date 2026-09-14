@@ -11,138 +11,154 @@ import {
   Max,
   Min,
   ValidateNested,
-} from 'class-validator'
-import { Type } from 'class-transformer'
+} from 'class-validator';
+import { Type } from 'class-transformer';
 
 class SlotDto {
   @IsString()
-  start!: string
+  start!: string;
 
   @IsString()
-  end!: string
+  end!: string;
 
   @IsBoolean()
-  enabled!: boolean
+  enabled!: boolean;
 }
 
 class PaymentSettingsDto {
   @IsBoolean()
-  payMobileMoney!: boolean
+  payMobileMoney!: boolean;
 
   @IsBoolean()
-  payCard!: boolean
+  payCard!: boolean;
 
   @IsBoolean()
-  payCash!: boolean
+  payCash!: boolean;
 
   @IsOptional()
   @IsString()
-  orangeMoney?: string
+  orangeMoney?: string;
 
   @IsOptional()
   @IsString()
-  moovMoney?: string
+  moovMoney?: string;
 
   @IsOptional()
   @IsString()
-  airtelMoney?: string
+  airtelMoney?: string;
 
   @IsOptional()
   @IsString()
-  bankName?: string
+  bankName?: string;
 
   @IsOptional()
   @IsString()
-  iban?: string
+  iban?: string;
 
   @IsOptional()
   @IsString()
-  bankOwner?: string
+  bankOwner?: string;
 
   @IsOptional()
   @IsInt()
   @Min(0)
   @Max(168)
-  cancelPolicyHours?: number
+  cancelPolicyHours?: number;
+
+  @IsOptional()
+  @IsIn(['FREE', 'PRO', 'BUSINESS'])
+  subscriptionPlan?: 'FREE' | 'PRO' | 'BUSINESS';
+
+  @IsOptional()
+  @IsIn(['ACTIVE', 'CANCELLED'])
+  subscriptionStatus?: 'ACTIVE' | 'CANCELLED';
+
+  @IsOptional()
+  @IsString()
+  subscriptionStartedAt?: string | null;
+
+  @IsOptional()
+  @IsString()
+  subscriptionCancelledAt?: string | null;
 }
 
 export class UpsertSalonSettingsDto {
   @IsString()
-  name!: string
+  name!: string;
 
   @IsOptional()
   @IsString()
-  description?: string
+  description?: string;
 
   @IsOptional()
   @IsString()
-  address?: string
+  address?: string;
 
   @IsOptional()
   @IsString()
-  phone?: string
+  phone?: string;
 
   @IsOptional()
   @IsEmail()
-  email?: string
+  email?: string;
 
   @IsOptional()
   @IsArray()
   @IsString({ each: true })
-  categories?: string[]
+  categories?: string[];
 
   @IsOptional()
   @IsString()
-  coverImageUrl?: string | null
+  coverImageUrl?: string | null;
 
   @IsOptional()
   @IsArray()
   @IsString({ each: true })
-  galleryImageUrls?: string[]
+  galleryImageUrls?: string[];
 
   @IsOptional()
   @IsString()
-  instagramHandle?: string
+  instagramHandle?: string;
 
   @IsOptional()
   @IsBoolean()
-  showInstagramFeed?: boolean
+  showInstagramFeed?: boolean;
 
   @IsOptional()
   @IsString()
-  tiktokHandle?: string
+  tiktokHandle?: string;
 
   @IsOptional()
   @IsBoolean()
-  showTikTokFeed?: boolean
+  showTikTokFeed?: boolean;
 
   @IsOptional()
   @IsString()
-  facebookUrl?: string
+  facebookUrl?: string;
 
   @IsOptional()
   @IsUrl({}, { message: 'websiteUrl must be a valid URL' })
-  websiteUrl?: string
+  websiteUrl?: string;
 
   @IsIn(['standard', 'custom'])
-  scheduleType!: 'standard' | 'custom'
+  scheduleType!: 'standard' | 'custom';
 
   @ValidateNested({ each: true })
   @Type(() => SlotDto)
-  standardSlots!: SlotDto[]
+  standardSlots!: SlotDto[];
 
   @IsObject()
-  customSlots!: Record<string, SlotDto[]>
+  customSlots!: Record<string, SlotDto[]>;
 
   @ValidateNested()
   @Type(() => PaymentSettingsDto)
-  paymentSettings!: PaymentSettingsDto
+  paymentSettings!: PaymentSettingsDto;
 
   @IsBoolean()
-  depositEnabled!: boolean
+  depositEnabled!: boolean;
 
   @IsInt()
   @Min(10)
   @Max(50)
-  depositPercentage!: number
+  depositPercentage!: number;
 }

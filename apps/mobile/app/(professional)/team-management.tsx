@@ -13,7 +13,6 @@ import {
   RefreshControl,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
-import * as ImagePicker from "expo-image-picker";
 import DateTimePicker, { type DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import { ProHeader } from "./components/ProHeader";
 import {
@@ -181,7 +180,6 @@ export default function TeamManagementScreen() {
     email: "",
     role: "",
     customRole: "",
-    photo: null as string | null,
   });
 
   const [showAbsenceModal, setShowAbsenceModal] = useState<string | null>(null);
@@ -260,7 +258,6 @@ export default function TeamManagementScreen() {
       email: "",
       role: "",
       customRole: "",
-      photo: null,
     });
   };
 
@@ -287,30 +284,11 @@ export default function TeamManagementScreen() {
       email: emp.email ?? "",
       role: rolesToSelect.join(", "),
       customRole: unknownRoles.join(", "),
-      photo: emp.photo ?? null,
     });
 
     setShowModal(true);
   };
 
-  const pickPhoto = async () => {
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) {
-      toast("Permission galerie refusée");
-      return;
-    }
-
-    const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.8,
-      allowsEditing: true,
-      aspect: [1, 1],
-    });
-
-    if (!res.canceled) {
-      setEditFormData((p) => ({ ...p, photo: res.assets[0]?.uri ?? null }));
-    }
-  };
 
   const handleSaveEmployee = async () => {
     const fullName = [editFormData.firstName.trim(), editFormData.name.trim()]
@@ -345,7 +323,6 @@ export default function TeamManagementScreen() {
         await updateEmployee(editingEmployee, {
           displayName: fullName,
           roleLabel: resolvedRole,
-          photoUrl: editFormData.photo ?? undefined,
           phone: editFormData.phone || undefined,
           email: editFormData.email || undefined,
         });
@@ -356,7 +333,6 @@ export default function TeamManagementScreen() {
           displayName: fullName,
           firstName: editFormData.firstName || undefined,
           roleLabel: resolvedRole,
-          photoUrl: editFormData.photo ?? undefined,
           phone: editFormData.phone || undefined,
           email: editFormData.email || undefined,
         });
@@ -828,31 +804,6 @@ export default function TeamManagementScreen() {
                 {editingEmployee ? "Modifier un employé" : "Ajouter un employé"}
               </Text>
 
-              <Text style={styles.label}>Photo (optionnel)</Text>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-                <View style={styles.photoBox}>
-                  {editFormData.photo ? (
-                    <Image source={{ uri: editFormData.photo }} style={{ width: "100%", height: "100%" }} />
-                  ) : (
-                    <Ionicons name="camera" size={24} color="rgba(107,39,55,0.6)" />
-                  )}
-                </View>
-
-                <View style={{ flex: 1, gap: 10 }}>
-                  <Pressable onPress={pickPhoto} style={styles.smallPrimary}>
-                    <Ionicons name="image-outline" size={16} color="#fff" />
-                    <Text style={styles.smallPrimaryText}>Choisir</Text>
-                  </Pressable>
-
-                  {!!editFormData.photo && (
-                    <Pressable onPress={() => setEditFormData((p) => ({ ...p, photo: null }))} style={styles.smallDanger}>
-                      <Ionicons name="trash-outline" size={16} color="#fff" />
-                      <Text style={styles.smallPrimaryText}>Retirer</Text>
-                    </Pressable>
-                  )}
-                </View>
-              </View>
-
               <Text style={styles.label}>Nom</Text>
               <TextInput value={editFormData.name} onChangeText={(v) => setEditFormData((p) => ({ ...p, name: v }))} placeholder="Nom" style={styles.input} />
 
@@ -1082,10 +1033,6 @@ const styles = StyleSheet.create({
   chipActive: { backgroundColor: "rgba(107,39,55,0.10)", borderColor: "#6B2737" },
   chipText: { fontSize: 12, color: "#3A3A3A" },
   chipTextActive: { fontWeight: "800", color: "#6B2737" },
-  photoBox: { width: 72, height: 72, borderRadius: 18, backgroundColor: "#FAF7F2", borderWidth: 1, borderColor: "rgba(107,39,55,0.2)", justifyContent: "center", alignItems: "center", overflow: "hidden" },
-  smallPrimary: { backgroundColor: "#6B2737", borderRadius: 999, paddingVertical: 10, paddingHorizontal: 12, flexDirection: "row", gap: 6, justifyContent: "center", alignItems: "center" },
-  smallDanger: { backgroundColor: "#dc2626", borderRadius: 999, paddingVertical: 10, paddingHorizontal: 12, flexDirection: "row", gap: 6, justifyContent: "center", alignItems: "center" },
-  smallPrimaryText: { color: "#fff", fontWeight: "900", fontSize: 12 },
   leaveRequestsBtn: { backgroundColor: "#D4AF6A", borderRadius: 999, paddingVertical: 14, paddingHorizontal: 16, flexDirection: "row", gap: 8, justifyContent: "center", alignItems: "center", marginBottom: 8 },
   leaveRequestsBtnText: { color: "#fff", fontSize: 14, fontWeight: "700" },
   requestsModalCard: { backgroundColor: "#fff", borderRadius: 30, padding: 18, maxHeight: "90%" },

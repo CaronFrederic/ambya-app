@@ -47,6 +47,15 @@ const MIME_TO_EXTENSION: Record<string, string> = {
   'image/heif': '.heif',
 };
 
+function getStringValue(
+  source: Prisma.JsonObject,
+  key: string,
+  fallback = '',
+): string {
+  const value = source[key];
+  return typeof value === 'string' ? value : fallback;
+}
+
 @Injectable()
 export class SalonSettingsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -78,11 +87,7 @@ export class SalonSettingsService {
     return salon;
   }
 
-  async uploadPhoto(
-    user: CurrentUser,
-    file: any,
-    baseUrl: string,
-  ) {
+  async uploadPhoto(user: CurrentUser, file: any, baseUrl: string) {
     const salon = await this.getManagedSalon(user);
 
     if (!file?.buffer || !file?.mimetype) {
@@ -113,11 +118,7 @@ export class SalonSettingsService {
 
     const fileName = `${Date.now()}-${randomUUID()}${extension}`;
     const relativeDirectory = join('salons', salon.id);
-    const absoluteDirectory = join(
-      process.cwd(),
-      'uploads',
-      relativeDirectory,
-    );
+    const absoluteDirectory = join(process.cwd(), 'uploads', relativeDirectory);
 
     mkdirSync(absoluteDirectory, { recursive: true });
 
@@ -177,6 +178,28 @@ export class SalonSettingsService {
         ? rawPaymentSettings.scheduleType
         : 'standard';
 
+    const rawSubscriptionPlan = getStringValue(
+      rawPaymentSettings,
+      'subscriptionPlan',
+      'FREE',
+    );
+    const subscriptionPlan = ['FREE', 'PRO', 'BUSINESS'].includes(
+      rawSubscriptionPlan,
+    )
+      ? rawSubscriptionPlan
+      : 'FREE';
+
+    const rawSubscriptionStatus = getStringValue(
+      rawPaymentSettings,
+      'subscriptionStatus',
+      'ACTIVE',
+    );
+    const subscriptionStatus = ['ACTIVE', 'CANCELLED'].includes(
+      rawSubscriptionStatus,
+    )
+      ? rawSubscriptionStatus
+      : 'ACTIVE';
+
     return {
       id: salon.id,
       name: salon.name ?? '',
@@ -209,34 +232,26 @@ export class SalonSettingsService {
           rawPaymentSettings.payCash === undefined
             ? true
             : Boolean(rawPaymentSettings.payCash),
-        orangeMoney:
-          typeof rawPaymentSettings.orangeMoney === 'string'
-            ? rawPaymentSettings.orangeMoney
-            : '',
-        moovMoney:
-          typeof rawPaymentSettings.moovMoney === 'string'
-            ? rawPaymentSettings.moovMoney
-            : '',
-        airtelMoney:
-          typeof rawPaymentSettings.airtelMoney === 'string'
-            ? rawPaymentSettings.airtelMoney
-            : '',
-        bankName:
-          typeof rawPaymentSettings.bankName === 'string'
-            ? rawPaymentSettings.bankName
-            : '',
-        iban:
-          typeof rawPaymentSettings.iban === 'string'
-            ? rawPaymentSettings.iban
-            : '',
-        bankOwner:
-          typeof rawPaymentSettings.bankOwner === 'string'
-            ? rawPaymentSettings.bankOwner
-            : '',
+        orangeMoney: getStringValue(rawPaymentSettings, 'orangeMoney'),
+        moovMoney: getStringValue(rawPaymentSettings, 'moovMoney'),
+        airtelMoney: getStringValue(rawPaymentSettings, 'airtelMoney'),
+        bankName: getStringValue(rawPaymentSettings, 'bankName'),
+        iban: getStringValue(rawPaymentSettings, 'iban'),
+        bankOwner: getStringValue(rawPaymentSettings, 'bankOwner'),
         cancelPolicyHours:
           typeof rawPaymentSettings.cancelPolicyHours === 'number'
             ? rawPaymentSettings.cancelPolicyHours
             : 12,
+        subscriptionPlan,
+        subscriptionStatus,
+        subscriptionStartedAt:
+          typeof rawPaymentSettings.subscriptionStartedAt === 'string'
+            ? rawPaymentSettings.subscriptionStartedAt
+            : null,
+        subscriptionCancelledAt:
+          typeof rawPaymentSettings.subscriptionCancelledAt === 'string'
+            ? rawPaymentSettings.subscriptionCancelledAt
+            : null,
       },
 
       depositEnabled: salon.depositEnabled,
@@ -244,13 +259,31 @@ export class SalonSettingsService {
     };
   }
 
-  async upsertSettings(
-    user: CurrentUser,
-    dto: UpsertSalonSettingsDto,
-  ) {
+  async upsertSettings(user: CurrentUser, dto: UpsertSalonSettingsDto) {
     const salon = await this.getManagedSalon(user);
 
     const categories = dto.categories ?? [];
+
+    const rawPaymentSettings =
+      salon.paymentSettings && typeof salon.paymentSettings === 'object'
+        ? (salon.paymentSettings as Prisma.JsonObject)
+        : {};
+
+    const subscriptionPlan =
+      dto.paymentSettings.subscriptionPlan ??
+      (['FREE', 'PRO', 'BUSINESS'].includes(
+        getStringValue(rawPaymentSettings, 'subscriptionPlan', 'FREE'),
+      )
+        ? getStringValue(rawPaymentSettings, 'subscriptionPlan', 'FREE')
+        : 'FREE');
+
+    const subscriptionStatus =
+      dto.paymentSettings.subscriptionStatus ??
+      (['ACTIVE', 'CANCELLED'].includes(
+        getStringValue(rawPaymentSettings, 'subscriptionStatus', 'ACTIVE'),
+      )
+        ? getStringValue(rawPaymentSettings, 'subscriptionStatus', 'ACTIVE')
+        : 'ACTIVE');
 
     const paymentSettings: Prisma.InputJsonObject = {
       payMobileMoney: dto.paymentSettings.payMobileMoney,
@@ -262,9 +295,16 @@ export class SalonSettingsService {
       bankName: dto.paymentSettings.bankName ?? '',
       iban: dto.paymentSettings.iban ?? '',
       bankOwner: dto.paymentSettings.bankOwner ?? '',
-      cancelPolicyHours:
-        dto.paymentSettings.cancelPolicyHours ?? 12,
+      cancelPolicyHours: dto.paymentSettings.cancelPolicyHours ?? 12,
       scheduleType: dto.scheduleType,
+      subscriptionPlan,
+      subscriptionStatus,
+      subscriptionStartedAt:
+        dto.paymentSettings.subscriptionStartedAt ??
+        getStringValue(rawPaymentSettings, 'subscriptionStartedAt'),
+      subscriptionCancelledAt:
+        dto.paymentSettings.subscriptionCancelledAt ??
+        getStringValue(rawPaymentSettings, 'subscriptionCancelledAt'),
     };
 
     const scheduleRows =
@@ -277,19 +317,17 @@ export class SalonSettingsService {
               isOpen: slot.enabled,
             })),
           )
-        : Object.entries(dto.customSlots).flatMap(
-            ([dayLabel, slots]) => {
-              const dayIndex = DAY_TO_INDEX[dayLabel];
-              if (dayIndex === undefined) return [];
+        : Object.entries(dto.customSlots).flatMap(([dayLabel, slots]) => {
+            const dayIndex = DAY_TO_INDEX[dayLabel];
+            if (dayIndex === undefined) return [];
 
-              return slots.map((slot) => ({
-                dayOfWeek: dayIndex,
-                startTime: slot.start,
-                endTime: slot.end,
-                isOpen: slot.enabled,
-              }));
-            },
-          );
+            return slots.map((slot) => ({
+              dayOfWeek: dayIndex,
+              startTime: slot.start,
+              endTime: slot.end,
+              isOpen: slot.enabled,
+            }));
+          });
 
     await this.prisma.$transaction(async (tx) => {
       await tx.salon.update({

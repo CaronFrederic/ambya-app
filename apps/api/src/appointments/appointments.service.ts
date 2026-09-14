@@ -42,6 +42,37 @@ type ServiceCategoryInput = ServiceCategory | string | null;
 export class AppointmentsService {
   constructor(private readonly prisma: PrismaService) {}
 
+  private async getPlatformFeePctForSalon(salonId: string): Promise<number> {
+    const salon = await this.prisma.salon.findUnique({
+      where: { id: salonId },
+      select: { paymentSettings: true },
+    });
+
+    if (!salon) {
+      throw new BadRequestException('Salon not found');
+    }
+
+    const paymentSettings =
+      salon.paymentSettings && typeof salon.paymentSettings === 'object'
+        ? (salon.paymentSettings as Prisma.JsonObject)
+        : {};
+
+    const subscriptionPlan =
+      typeof paymentSettings.subscriptionPlan === 'string'
+        ? paymentSettings.subscriptionPlan
+        : 'FREE';
+    const subscriptionStatus =
+      typeof paymentSettings.subscriptionStatus === 'string'
+        ? paymentSettings.subscriptionStatus
+        : 'ACTIVE';
+
+    const hasActiveSubscription =
+      subscriptionStatus === 'ACTIVE' &&
+      (subscriptionPlan === 'PRO' || subscriptionPlan === 'BUSINESS');
+
+    return hasActiveSubscription ? 0 : 10;
+  }
+
   async listForUser(
     user: { userId: string; role: UserRole },
     q: ListAppointmentsDto,
@@ -188,7 +219,7 @@ export class AppointmentsService {
     const appliedDiscountTier =
       discountAmount > 0 ? loyalty?.pendingDiscountTier ?? null : null;
 
-    const platformFeePct = 10;
+    const platformFeePct = await this.getPlatformFeePctForSalon(dto.salonId);
     const platformFeeAmount = Math.floor(
       (payableAmount * platformFeePct) / 100,
     );
@@ -340,6 +371,7 @@ export class AppointmentsService {
 
     const paymentMethod = dto.paymentMethod ?? 'CASH';
     const isInternalPaymentCaptured = paymentMethod !== 'CASH';
+    const platformFeePct = await this.getPlatformFeePctForSalon(dto.salonId);
 
     const appointments = await this.prisma.$transaction(async (tx) => {
       const created: Prisma.AppointmentGetPayload<{
@@ -421,6 +453,15 @@ export class AppointmentsService {
           },
         });
 
+        const platformFeeAmount = Math.floor(
+          (service.price * platformFeePct) / 100,
+        );
+        const providerFeeAmount = 0;
+        const netAmount = Math.max(
+          0,
+          service.price - platformFeeAmount - providerFeeAmount,
+        );
+
         await tx.paymentIntent.create({
           data: {
             userId: user.userId,
@@ -444,9 +485,9 @@ export class AppointmentsService {
                   bookingGroupId,
                 }
               : Prisma.DbNull,
-            platformFeeAmount: 0,
-            providerFeeAmount: 0,
-            netAmount: service.price,
+            platformFeeAmount,
+            providerFeeAmount,
+            netAmount,
           },
         });
 

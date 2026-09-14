@@ -6,6 +6,9 @@ export type SalonSlot = {
   enabled: boolean;
 };
 
+export type SubscriptionPlan = "FREE" | "PRO" | "BUSINESS";
+export type SubscriptionStatus = "ACTIVE" | "CANCELLED";
+
 export type SalonSettingsResponse = {
   id: string;
   name: string;
@@ -40,6 +43,10 @@ export type SalonSettingsResponse = {
     iban: string;
     bankOwner: string;
     cancelPolicyHours: number;
+    subscriptionPlan: SubscriptionPlan;
+    subscriptionStatus: SubscriptionStatus;
+    subscriptionStartedAt: string | null;
+    subscriptionCancelledAt: string | null;
   };
 
   depositEnabled: boolean;
@@ -79,6 +86,10 @@ export type UpdateSalonSettingsPayload = {
     iban?: string;
     bankOwner?: string;
     cancelPolicyHours?: number;
+    subscriptionPlan?: SubscriptionPlan;
+    subscriptionStatus?: SubscriptionStatus;
+    subscriptionStartedAt?: string | null;
+    subscriptionCancelledAt?: string | null;
   };
 
   depositEnabled: boolean;

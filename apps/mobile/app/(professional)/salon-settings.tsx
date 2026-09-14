@@ -17,7 +17,13 @@ import * as SecureStore from "expo-secure-store";
 
 import { ProHeader } from "./components/ProHeader";
 import { logout } from "../../src/api/auth";
-import { getSalonSettings, updateSalonSettings, uploadSalonPhoto } from "../../src/api/salon-settings";
+import {
+  getSalonSettings,
+  updateSalonSettings,
+  uploadSalonPhoto,
+  type SubscriptionPlan,
+  type SubscriptionStatus,
+} from "../../src/api/salon-settings";
 import { useAuthRefresh } from "../../src/providers/AuthRefreshProvider";
 
 const COLORS = {
@@ -27,7 +33,45 @@ const COLORS = {
   gold: "#D4AF6A",
 };
 
-type TabId = "infos" | "photos" | "horaires" | "paiements" | "acompte";
+type TabId = "infos" | "photos" | "horaires" | "paiements" | "acompte" | "abonnement";
+
+type SubscriptionOffer = {
+  id: Exclude<SubscriptionPlan, "FREE">;
+  name: string;
+  price: number;
+  description: string;
+  features: string[];
+  recommended?: boolean;
+};
+
+const SUBSCRIPTION_OFFERS: SubscriptionOffer[] = [
+  {
+    id: "PRO",
+    name: "AMBYA Pro",
+    price: 15000,
+    description: "Pour les indépendants et petits salons qui utilisent AMBYA régulièrement.",
+    features: [
+      "0 % de commission AMBYA",
+      "Gestion des employés",
+      "Promotions et fidélisation",
+      "Statistiques essentielles",
+    ],
+    recommended: true,
+  },
+  {
+    id: "BUSINESS",
+    name: "AMBYA Business",
+    price: 30000,
+    description: "Pour les salons avec une équipe et un volume de réservations plus important.",
+    features: [
+      "0 % de commission AMBYA",
+      "Toutes les fonctions AMBYA Pro",
+      "Rapports avancés",
+      "Visibilité renforcée",
+      "Support prioritaire",
+    ],
+  },
+];
 
 type ScheduleSlot = {
   start: string;
@@ -106,6 +150,7 @@ export default function SalonSettingsScreen() {
       { id: "horaires", label: "Horaires" },
       { id: "paiements", label: "Paiements" },
       { id: "acompte", label: "Acompte" },
+      { id: "abonnement", label: "Abonnement" },
     ],
     []
   );
@@ -181,6 +226,12 @@ export default function SalonSettingsScreen() {
   const [depositPercentage, setDepositPercentage] = useState(30);
   const [cancelPolicyHours, setCancelPolicyHours] = useState<12 | 24 | 48>(12);
 
+  // abonnement (configuration bêta, stockée dans paymentSettings)
+  const [subscriptionPlan, setSubscriptionPlan] = useState<SubscriptionPlan>("FREE");
+  const [subscriptionStatus, setSubscriptionStatus] = useState<SubscriptionStatus>("ACTIVE");
+  const [subscriptionStartedAt, setSubscriptionStartedAt] = useState<string | null>(null);
+  const [subscriptionCancelledAt, setSubscriptionCancelledAt] = useState<string | null>(null);
+
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
 
@@ -244,6 +295,10 @@ export default function SalonSettingsScreen() {
         setCancelPolicyHours(
           (settings.paymentSettings?.cancelPolicyHours ?? 12) as 12 | 24 | 48
         );
+        setSubscriptionPlan(settings.paymentSettings?.subscriptionPlan ?? "FREE");
+        setSubscriptionStatus(settings.paymentSettings?.subscriptionStatus ?? "ACTIVE");
+        setSubscriptionStartedAt(settings.paymentSettings?.subscriptionStartedAt ?? null);
+        setSubscriptionCancelledAt(settings.paymentSettings?.subscriptionCancelledAt ?? null);
       } catch (error) {
         console.log("Load salon settings error:", error);
         Alert.alert("Erreur", "Impossible de charger les paramètres du salon.");
@@ -305,6 +360,10 @@ export default function SalonSettingsScreen() {
           iban: iban.trim(),
           bankOwner: bankOwner.trim(),
           cancelPolicyHours,
+          subscriptionPlan,
+          subscriptionStatus,
+          subscriptionStartedAt,
+          subscriptionCancelledAt,
         },
 
         depositEnabled,
@@ -320,6 +379,43 @@ export default function SalonSettingsScreen() {
     } finally {
       setSavingSettings(false);
     }
+  }
+
+  const hasActiveSubscription =
+    subscriptionPlan !== "FREE" && subscriptionStatus === "ACTIVE";
+
+  const currentSubscriptionOffer = SUBSCRIPTION_OFFERS.find(
+    (offer) => offer.id === subscriptionPlan
+  );
+
+  function selectSubscription(plan: Exclude<SubscriptionPlan, "FREE">) {
+    const now = new Date().toISOString();
+
+    setSubscriptionPlan(plan);
+    setSubscriptionStatus("ACTIVE");
+    setSubscriptionCancelledAt(null);
+    setSubscriptionStartedAt((current) =>
+      hasActiveSubscription && current ? current : now
+    );
+  }
+
+  function cancelSubscription() {
+    Alert.alert(
+      "Annuler l'abonnement ?",
+      "Votre salon repassera à l'offre sans abonnement. Une commission AMBYA de 10 % sera alors appliquée aux nouvelles réservations.",
+      [
+        { text: "Conserver l'abonnement", style: "cancel" },
+        {
+          text: "Annuler l'abonnement",
+          style: "destructive",
+          onPress: () => {
+            setSubscriptionPlan("FREE");
+            setSubscriptionStatus("CANCELLED");
+            setSubscriptionCancelledAt(new Date().toISOString());
+          },
+        },
+      ]
+    );
   }
 
   async function pickSingleImage() {
@@ -876,15 +972,22 @@ export default function SalonSettingsScreen() {
 
             <Text style={styles.sectionTitle}>Frais & commissions</Text>
             <View style={styles.rowBetween}>
-              <Text style={styles.rowLabel}>Commission AMBYA</Text>
-              <Text style={styles.rowValue}>15%</Text>
-            </View>
-            <View style={styles.rowBetween}>
-              <Text style={styles.rowLabel}>Frais de transaction</Text>
-              <Text style={styles.rowValue}>2–5%</Text>
+              <View style={{ flex: 1, paddingRight: 12 }}>
+                <Text style={styles.rowLabel}>Commission AMBYA</Text>
+                <Text style={styles.help}>
+                  {hasActiveSubscription
+                    ? `Incluse dans votre abonnement ${currentSubscriptionOffer?.name ?? "AMBYA"}.`
+                    : "Uniquement pour les prestataires sans abonnement."}
+                </Text>
+              </View>
+              <Text style={styles.rowValue}>{hasActiveSubscription ? "0 %" : "10 %"}</Text>
             </View>
             <View style={styles.tipBoxGold}>
-              <Text style={styles.tipTextGold}>💡 Exemple : pour 10 000 FCFA, vous recevez environ 6 500 FCFA</Text>
+              <Text style={styles.tipTextGold}>
+                {hasActiveSubscription
+                  ? "✓ Aucune commission AMBYA n'est prélevée sur vos nouvelles réservations."
+                  : "💡 Souscrivez à un abonnement AMBYA pour passer à 0 % de commission."}
+              </Text>
             </View>
           </View>
         )}
@@ -944,6 +1047,132 @@ export default function SalonSettingsScreen() {
                 })}
               </>
             )}
+          </View>
+        )}
+
+        {activeTab === "abonnement" && (
+          <View style={{ gap: 14 }}>
+            <Text style={styles.sectionTitle}>Votre abonnement</Text>
+
+            <View style={[styles.subscriptionCurrentCard, hasActiveSubscription && styles.subscriptionCurrentCardActive]}>
+              <View style={styles.subscriptionHeaderRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.subscriptionEyebrow}>OFFRE ACTUELLE</Text>
+                  <Text style={styles.subscriptionCurrentTitle}>
+                    {hasActiveSubscription
+                      ? currentSubscriptionOffer?.name ?? "Abonnement AMBYA"
+                      : "Sans abonnement"}
+                  </Text>
+                </View>
+                <View style={[styles.subscriptionStatusBadge, hasActiveSubscription ? styles.subscriptionStatusBadgeActive : styles.subscriptionStatusBadgeFree]}>
+                  <Text style={[styles.subscriptionStatusText, hasActiveSubscription ? styles.subscriptionStatusTextActive : styles.subscriptionStatusTextFree]}>
+                    {hasActiveSubscription ? "Actif" : "Sans abonnement"}
+                  </Text>
+                </View>
+              </View>
+
+              {hasActiveSubscription ? (
+                <>
+                  <Text style={styles.subscriptionPrice}>
+                    {currentSubscriptionOffer?.price.toLocaleString("fr-FR")} FCFA
+                    <Text style={styles.subscriptionPricePeriod}> / mois</Text>
+                  </Text>
+                  <Text style={styles.subscriptionCommissionGood}>✓ Commission AMBYA : 0 %</Text>
+                  {!!subscriptionStartedAt && (
+                    <Text style={styles.help}>
+                      Actif depuis le {new Date(subscriptionStartedAt).toLocaleDateString("fr-FR")}
+                    </Text>
+                  )}
+                </>
+              ) : (
+                <>
+                  <Text style={styles.subscriptionPrice}>0 FCFA</Text>
+                  <Text style={styles.subscriptionCommissionWarning}>Commission AMBYA : 10 %</Text>
+                  {subscriptionStatus === "CANCELLED" && !!subscriptionCancelledAt && (
+                    <Text style={styles.help}>
+                      Dernier abonnement annulé le {new Date(subscriptionCancelledAt).toLocaleDateString("fr-FR")}
+                    </Text>
+                  )}
+                </>
+              )}
+            </View>
+
+            <Text style={styles.sectionTitle}>Consulter les offres</Text>
+            <Text style={styles.help}>
+              Tarifs provisoires pour la bêta. Ils pourront être ajustés après validation commerciale.
+            </Text>
+
+            {SUBSCRIPTION_OFFERS.map((offer) => {
+              const selected =
+                subscriptionPlan === offer.id && subscriptionStatus === "ACTIVE";
+
+              return (
+                <View
+                  key={offer.id}
+                  style={[
+                    styles.subscriptionOfferCard,
+                    selected && styles.subscriptionOfferCardSelected,
+                  ]}
+                >
+                  <View style={styles.subscriptionHeaderRow}>
+                    <View style={{ flex: 1 }}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                        <Text style={styles.subscriptionOfferName}>{offer.name}</Text>
+                        {offer.recommended && (
+                          <View style={styles.recommendedBadge}>
+                            <Text style={styles.recommendedBadgeText}>Recommandé</Text>
+                          </View>
+                        )}
+                      </View>
+                      <Text style={styles.subscriptionOfferDescription}>{offer.description}</Text>
+                    </View>
+                  </View>
+
+                  <Text style={styles.subscriptionOfferPrice}>
+                    {offer.price.toLocaleString("fr-FR")} FCFA
+                    <Text style={styles.subscriptionPricePeriod}> / mois</Text>
+                  </Text>
+
+                  <View style={{ gap: 7, marginTop: 10 }}>
+                    {offer.features.map((feature) => (
+                      <Text key={feature} style={styles.subscriptionFeature}>✓ {feature}</Text>
+                    ))}
+                  </View>
+
+                  <Pressable
+                    onPress={() => selectSubscription(offer.id)}
+                    disabled={selected}
+                    style={[
+                      styles.subscriptionChooseBtn,
+                      selected && styles.subscriptionChooseBtnSelected,
+                    ]}
+                  >
+                    <Text style={[
+                      styles.subscriptionChooseBtnText,
+                      selected && styles.subscriptionChooseBtnTextSelected,
+                    ]}>
+                      {selected
+                        ? "Offre actuelle"
+                        : hasActiveSubscription
+                        ? "Changer pour cette offre"
+                        : "Choisir cette offre"}
+                    </Text>
+                  </Pressable>
+                </View>
+              );
+            })}
+
+            {hasActiveSubscription && (
+              <Pressable onPress={cancelSubscription} style={styles.subscriptionCancelBtn}>
+                <Text style={styles.subscriptionCancelBtnText}>Annuler mon abonnement</Text>
+              </Pressable>
+            )}
+
+            <View style={styles.tipBoxGold}>
+              <Text style={styles.tipTextGold}>
+                ℹ️ Pour cette version bêta, le changement ou l'annulation prend effet après avoir appuyé sur « Enregistrer les modifications ».
+              </Text>
+            </View>
           </View>
         )}
 
@@ -1167,6 +1396,45 @@ const styles = StyleSheet.create({
   rowBetween: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 10, paddingHorizontal: 12, backgroundColor: "#FFF", borderRadius: 16, borderWidth: 1, borderColor: "rgba(107,39,55,0.12)" },
   rowLabel: { color: COLORS.text, fontWeight: "800" },
   rowValue: { color: COLORS.primary, fontWeight: "900" },
+
+  subscriptionCurrentCard: {
+    backgroundColor: "#FFF",
+    borderRadius: 20,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: "rgba(107,39,55,0.12)",
+  },
+  subscriptionCurrentCardActive: {
+    borderColor: "rgba(34,197,94,0.35)",
+    backgroundColor: "rgba(34,197,94,0.05)",
+  },
+  subscriptionHeaderRow: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
+  subscriptionEyebrow: { color: "rgba(58,58,58,0.5)", fontSize: 10, fontWeight: "900", letterSpacing: 0.6 },
+  subscriptionCurrentTitle: { color: COLORS.primary, fontSize: 20, fontWeight: "900", marginTop: 4 },
+  subscriptionStatusBadge: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999 },
+  subscriptionStatusBadgeActive: { backgroundColor: "#DCFCE7" },
+  subscriptionStatusBadgeFree: { backgroundColor: "#F3F4F6" },
+  subscriptionStatusText: { fontSize: 11, fontWeight: "900" },
+  subscriptionStatusTextActive: { color: "#15803D" },
+  subscriptionStatusTextFree: { color: "#6B7280" },
+  subscriptionPrice: { color: COLORS.text, fontSize: 22, fontWeight: "900", marginTop: 16 },
+  subscriptionPricePeriod: { fontSize: 12, fontWeight: "700", color: "rgba(58,58,58,0.55)" },
+  subscriptionCommissionGood: { color: "#15803D", fontWeight: "800", marginTop: 8, marginBottom: 4 },
+  subscriptionCommissionWarning: { color: "#C2410C", fontWeight: "800", marginTop: 8, marginBottom: 4 },
+  subscriptionOfferCard: { backgroundColor: "#FFF", borderRadius: 20, padding: 16, borderWidth: 1, borderColor: "rgba(107,39,55,0.12)" },
+  subscriptionOfferCardSelected: { borderColor: COLORS.gold, borderWidth: 2, backgroundColor: "rgba(212,175,106,0.07)" },
+  subscriptionOfferName: { color: COLORS.primary, fontSize: 18, fontWeight: "900" },
+  subscriptionOfferDescription: { color: "rgba(58,58,58,0.65)", fontSize: 12, marginTop: 6, lineHeight: 18 },
+  subscriptionOfferPrice: { color: COLORS.text, fontSize: 20, fontWeight: "900", marginTop: 14 },
+  subscriptionFeature: { color: COLORS.text, fontSize: 13, fontWeight: "600" },
+  recommendedBadge: { backgroundColor: "rgba(212,175,106,0.22)", borderRadius: 999, paddingHorizontal: 9, paddingVertical: 4 },
+  recommendedBadgeText: { color: COLORS.primary, fontSize: 10, fontWeight: "900" },
+  subscriptionChooseBtn: { marginTop: 16, backgroundColor: COLORS.primary, borderRadius: 999, paddingVertical: 12, alignItems: "center" },
+  subscriptionChooseBtnSelected: { backgroundColor: "rgba(107,39,55,0.08)", borderWidth: 1, borderColor: "rgba(107,39,55,0.2)" },
+  subscriptionChooseBtnText: { color: "#FFF", fontWeight: "900" },
+  subscriptionChooseBtnTextSelected: { color: COLORS.primary },
+  subscriptionCancelBtn: { borderWidth: 1, borderColor: "rgba(220,38,38,0.35)", backgroundColor: "rgba(220,38,38,0.05)", borderRadius: 999, paddingVertical: 13, alignItems: "center" },
+  subscriptionCancelBtnText: { color: "#DC2626", fontWeight: "900" },
 
   primaryBtn: { backgroundColor: COLORS.primary, paddingVertical: 14, borderRadius: 999, alignItems: "center" },
   primaryBtnText: { color: "#FFF", fontWeight: "900" },

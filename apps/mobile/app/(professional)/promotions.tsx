@@ -10,13 +10,18 @@ import {
   ActivityIndicator,
   RefreshControl,
   Alert,
+  Platform,
+  Keyboard,
+  TouchableWithoutFeedback,
 } from "react-native";
+import DateTimePicker, { DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import { ProHeader } from "./components/ProHeader";
 import {
   createPromotion,
   deletePromotion,
   getPromotions,
   getPromotionStats,
+  updatePromotion,
   type PromotionItem,
   type PromotionStats,
   type PromotionType,
@@ -28,6 +33,8 @@ type Promo = PromotionItem;
 
 export default function PromotionsScreen() {
   const [showModal, setShowModal] = useState(false);
+  const [editingPromotionId, setEditingPromotionId] = useState<string | null>(null);
+  const [datePickerTarget, setDatePickerTarget] = useState<"startDate" | "endDate" | null>(null);
 
   const [promotions, setPromotions] = useState<Promo[]>([]);
   const [stats, setStats] = useState<PromotionStats | null>(null);
@@ -56,6 +63,91 @@ export default function PromotionsScreen() {
       startDate: "",
       endDate: "",
     });
+  };
+
+  const openCreateModal = () => {
+    setEditingPromotionId(null);
+    resetForm();
+    setShowModal(true);
+  };
+
+  const openEditModal = (promotion: Promo) => {
+    setEditingPromotionId(promotion.id);
+    setForm({
+      title: promotion.name,
+      type: promotion.type,
+      value: String(promotion.value),
+      servicesText: promotion.services || "Tous les services",
+      startDate: promotion.start,
+      endDate: promotion.end,
+    });
+    setShowModal(true);
+  };
+
+  const closePromotionModal = () => {
+    setShowModal(false);
+    setDatePickerTarget(null);
+    setEditingPromotionId(null);
+    resetForm();
+  };
+
+  const promotionTypeOptions: { label: string; value: PromotionType }[] = [
+    { label: "Pourcentage", value: "percentage" },
+    { label: "Montant fixe", value: "fixed" },
+  ];
+
+  const formatDateForDisplay = (value: string) => {
+    const apiDate = toApiDate(value);
+    const match = apiDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+
+    if (!match) return value;
+
+    const [, year, month, day] = match;
+    return `${day}/${month}/${year}`;
+  };
+
+  const parseDateForPicker = (value: string) => {
+    const apiDate = toApiDate(value);
+    const match = apiDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+
+    if (!match) return new Date();
+
+    const [, year, month, day] = match;
+    return new Date(Number(year), Number(month) - 1, Number(day));
+  };
+
+  const formatDateForForm = (date: Date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+
+    return `${year}-${month}-${day}`;
+  };
+
+  const handleDateChange = (
+    event: DateTimePickerEvent,
+    selectedDate?: Date
+  ) => {
+    if (Platform.OS === "android") {
+      setDatePickerTarget(null);
+    }
+
+    if (event.type === "dismissed" || !selectedDate || !datePickerTarget) {
+      return;
+    }
+
+    const target = datePickerTarget;
+    const formattedDate = formatDateForForm(selectedDate);
+
+    setForm((prev) => ({
+      ...prev,
+      [target]: formattedDate,
+      ...(target === "startDate" &&
+      prev.endDate &&
+      new Date(`${prev.endDate}T00:00:00`) < selectedDate
+        ? { endDate: formattedDate }
+        : {}),
+    }));
   };
 
   const loadData = async () => {
@@ -102,63 +194,83 @@ export default function PromotionsScreen() {
     initialLoad();
   }, []);
 
-const handleCreatePromotion = async () => {
-  const value = Number(form.value);
-  const startDate = toApiDate(form.startDate);
-  const endDate = toApiDate(form.endDate);
+  const handleSavePromotion = async () => {
+    const value = Number(form.value);
+    const startDate = toApiDate(form.startDate);
+    const endDate = toApiDate(form.endDate);
+    const isEditing = editingPromotionId !== null;
 
-  if (!form.title.trim()) {
-    Alert.alert("Validation", "Le nom de la promotion est requis.");
-    return;
-  }
+    if (!form.title.trim()) {
+      Alert.alert("Validation", "Le nom de la promotion est requis.");
+      return;
+    }
 
-  if (!value || value <= 0) {
-    Alert.alert("Validation", "La valeur doit être supérieure à 0.");
-    return;
-  }
+    if (!value || value <= 0) {
+      Alert.alert("Validation", "La valeur doit être supérieure à 0.");
+      return;
+    }
 
-  if (!startDate || !endDate) {
-    Alert.alert("Validation", "Les dates de début et de fin sont requises.");
-    return;
-  }
+    if (!startDate || !endDate) {
+      Alert.alert("Validation", "Les dates de début et de fin sont requises.");
+      return;
+    }
 
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
-    Alert.alert("Validation", "Les dates doivent être au format YYYY-MM-DD. Exemple : 2026-05-05");
-    return;
-  }
+    if (
+      !/^\d{4}-\d{2}-\d{2}$/.test(startDate) ||
+      !/^\d{4}-\d{2}-\d{2}$/.test(endDate)
+    ) {
+      Alert.alert(
+        "Validation",
+        "Les dates doivent être au format YYYY-MM-DD. Exemple : 2026-05-05"
+      );
+      return;
+    }
 
-  if (new Date(endDate) < new Date(startDate)) {
-    Alert.alert("Validation", "La date de fin doit être après la date de début.");
-    return;
-  }
+    if (new Date(endDate) < new Date(startDate)) {
+      Alert.alert("Validation", "La date de fin doit être après la date de début.");
+      return;
+    }
 
-  try {
-    setSubmitting(true);
+    try {
+      setSubmitting(true);
 
-    await createPromotion({
-      title: form.title.trim(),
-      type: form.type,
-      value,
-      startDate,
-      endDate,
-      appliesToAllServices: true,
-    });
+      const payload = {
+        title: form.title.trim(),
+        type: form.type,
+        value,
+        startDate,
+        endDate,
+        appliesToAllServices: true,
+      };
 
-    await loadData();
-    setShowModal(false);
-    resetForm();
+      if (editingPromotionId) {
+        await updatePromotion(editingPromotionId, payload);
+      } else {
+        await createPromotion(payload);
+      }
 
-    Alert.alert("Succès", "Promotion créée avec succès.");
-  } catch (error) {
-    console.error("Create promotion error:", error);
-    Alert.alert(
-      "Création impossible",
-      error instanceof Error ? error.message : "Une erreur est survenue."
-    );
-  } finally {
-    setSubmitting(false);
-  }
-};
+      await loadData();
+      closePromotionModal();
+
+      Alert.alert(
+        "Succès",
+        isEditing
+          ? "Promotion modifiée avec succès"
+          : "Promotion créée avec succès."
+      );
+    } catch (error) {
+      console.error(
+        isEditing ? "Update promotion error:" : "Create promotion error:",
+        error
+      );
+      Alert.alert(
+        isEditing ? "Modification impossible" : "Création impossible",
+        error instanceof Error ? error.message : "Une erreur est survenue."
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const handleDeletePromotion = async (id: string) => {
     try {
@@ -175,7 +287,8 @@ const handleCreatePromotion = async () => {
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: COLORS.bg }}>
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+      <View style={{ flex: 1, backgroundColor: COLORS.bg }}>
       <ProHeader
         title="Promotions & Offres"
         subtitle="Attirez plus de clients"
@@ -191,6 +304,8 @@ const handleCreatePromotion = async () => {
         <ScrollView
           contentContainerStyle={{ padding: 18 }}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
           refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
           }
@@ -213,7 +328,7 @@ const handleCreatePromotion = async () => {
             />
           </View>
 
-          <Pressable onPress={() => setShowModal(true)} style={styles.primaryBtn}>
+          <Pressable onPress={openCreateModal} style={styles.primaryBtn}>
             <Text style={styles.primaryBtnText}>＋ Créer une promotion</Text>
           </Pressable>
 
@@ -283,12 +398,7 @@ const handleCreatePromotion = async () => {
                 <View style={styles.actionsRow}>
                   <Pressable
                     style={styles.actionBtn}
-                    onPress={() =>
-                      Alert.alert(
-                        "Bientôt disponible",
-                        "La modification de promotion sera branchée ensuite."
-                      )
-                    }
+                    onPress={() => openEditModal(p)}
                   >
                     <Text style={styles.actionBtnText}>✎ Modifier</Text>
                   </Pressable>
@@ -317,10 +427,19 @@ const handleCreatePromotion = async () => {
         </ScrollView>
       )}
 
-      <Modal visible={showModal} transparent animationType="slide" onRequestClose={() => setShowModal(false)}>
-        <View style={styles.modalBg}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Créer une promotion</Text>
+      <Modal
+        visible={showModal}
+        transparent
+        animationType="slide"
+        onRequestClose={closePromotionModal}
+      >
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+          <View style={styles.modalBg}>
+            <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+              <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>
+              {editingPromotionId ? "Modifier la promotion" : "Créer une promotion"}
+            </Text>
 
             <Field label="Nom de la promotion">
               <TextInput
@@ -332,19 +451,43 @@ const handleCreatePromotion = async () => {
               />
             </Field>
 
-            <Field label="Type (percentage/fixed)">
-              <TextInput
-                style={styles.input}
-                placeholder="percentage"
-                placeholderTextColor="rgba(58,58,58,0.35)"
-                value={form.type}
-                onChangeText={(v) =>
-                  setForm((p) => ({
-                    ...p,
-                    type: v === "fixed" ? "fixed" : "percentage",
-                  }))
-                }
-              />
+            <Field label="Type de réduction">
+              <View style={styles.typeOptions}>
+                {promotionTypeOptions.map((option) => {
+                  const selected = form.type === option.value;
+
+                  return (
+                    <Pressable
+                      key={option.value}
+                      onPress={() => {
+                        Keyboard.dismiss();
+                        setForm((prev) => ({ ...prev, type: option.value }));
+                      }}
+                      style={[
+                        styles.typeOption,
+                        selected && styles.typeOptionSelected,
+                      ]}
+                    >
+                      <View
+                        style={[
+                          styles.typeRadio,
+                          selected && styles.typeRadioSelected,
+                        ]}
+                      >
+                        {selected ? <View style={styles.typeRadioDot} /> : null}
+                      </View>
+                      <Text
+                        style={[
+                          styles.typeOptionText,
+                          selected && styles.typeOptionTextSelected,
+                        ]}
+                      >
+                        {option.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
             </Field>
 
             <Field label="Valeur">
@@ -370,33 +513,104 @@ const handleCreatePromotion = async () => {
 
             <View style={{ flexDirection: "row", gap: 10 }}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.label}>Date début</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="YYYY-MM-DD"
-                  placeholderTextColor="rgba(58,58,58,0.35)"
-                  value={form.startDate}
-                  onChangeText={(v) => setForm((p) => ({ ...p, startDate: v }))}
-                />
+                <Text style={styles.label}>Date de début</Text>
+                <Pressable
+                  onPress={() => {
+                    Keyboard.dismiss();
+                    setDatePickerTarget("startDate");
+                  }}
+                  style={styles.dateButton}
+                >
+                  <Text
+                    style={[
+                      styles.dateButtonText,
+                      !form.startDate && styles.dateButtonPlaceholder,
+                    ]}
+                  >
+                    {form.startDate
+                      ? formatDateForDisplay(form.startDate)
+                      : "Choisir une date"}
+                  </Text>
+                  <Text style={styles.dateButtonIcon}>📅</Text>
+                </Pressable>
               </View>
 
               <View style={{ flex: 1 }}>
-                <Text style={styles.label}>Date fin</Text>
-                <TextInput
-                  style={styles.input}
-                  placeholder="YYYY-MM-DD"
-                  placeholderTextColor="rgba(58,58,58,0.35)"
-                  value={form.endDate}
-                  onChangeText={(v) => setForm((p) => ({ ...p, endDate: v }))}
-                />
+                <Text style={styles.label}>Date de fin</Text>
+                <Pressable
+                  onPress={() => {
+                    Keyboard.dismiss();
+                    setDatePickerTarget("endDate");
+                  }}
+                  style={styles.dateButton}
+                >
+                  <Text
+                    style={[
+                      styles.dateButtonText,
+                      !form.endDate && styles.dateButtonPlaceholder,
+                    ]}
+                  >
+                    {form.endDate
+                      ? formatDateForDisplay(form.endDate)
+                      : "Choisir une date"}
+                  </Text>
+                  <Text style={styles.dateButtonIcon}>📅</Text>
+                </Pressable>
               </View>
             </View>
+
+            {datePickerTarget && Platform.OS === "android" ? (
+              <DateTimePicker
+                value={parseDateForPicker(form[datePickerTarget])}
+                mode="date"
+                display="calendar"
+                minimumDate={
+                  datePickerTarget === "endDate" && form.startDate
+                    ? parseDateForPicker(form.startDate)
+                    : undefined
+                }
+                onChange={handleDateChange}
+              />
+            ) : null}
+
+            {datePickerTarget && Platform.OS === "ios" ? (
+              <View style={styles.iosCalendarCard}>
+                <Text style={styles.iosCalendarTitle}>
+                  {datePickerTarget === "startDate"
+                    ? "Choisir la date de début"
+                    : "Choisir la date de fin"}
+                </Text>
+
+                <DateTimePicker
+                  value={parseDateForPicker(form[datePickerTarget])}
+                  mode="date"
+                  display="inline"
+                  minimumDate={
+                    datePickerTarget === "endDate" && form.startDate
+                      ? parseDateForPicker(form.startDate)
+                      : undefined
+                  }
+                  onChange={handleDateChange}
+                  locale="fr-FR"
+                  themeVariant="light"
+                  accentColor={COLORS.primary}
+                  style={styles.iosCalendar}
+                />
+
+                <Pressable
+                  onPress={() => setDatePickerTarget(null)}
+                  style={styles.calendarDoneBtn}
+                >
+                  <Text style={styles.calendarDoneText}>Terminé</Text>
+                </Pressable>
+              </View>
+            ) : null}
 
             <View style={{ flexDirection: "row", gap: 10, marginTop: 14 }}>
               <Pressable
                 onPress={() => {
-                  setShowModal(false);
-                  resetForm();
+                  Keyboard.dismiss();
+                  closePromotionModal();
                 }}
                 style={styles.secondaryBtn}
               >
@@ -404,19 +618,31 @@ const handleCreatePromotion = async () => {
               </Pressable>
 
               <Pressable
-                onPress={handleCreatePromotion}
+                onPress={() => {
+                  Keyboard.dismiss();
+                  handleSavePromotion();
+                }}
                 style={[styles.primaryBtn, { flex: 1, marginBottom: 0 }]}
                 disabled={submitting}
               >
                 <Text style={styles.primaryBtnText}>
-                  {submitting ? "Création..." : "Créer"}
+                  {submitting
+                    ? editingPromotionId
+                      ? "Enregistrement..."
+                      : "Création..."
+                    : editingPromotionId
+                    ? "Enregistrer"
+                    : "Créer"}
                 </Text>
               </Pressable>
             </View>
+              </View>
+            </TouchableWithoutFeedback>
           </View>
-        </View>
+        </TouchableWithoutFeedback>
       </Modal>
-    </View>
+      </View>
+    </TouchableWithoutFeedback>
   );
 }
 
@@ -531,6 +757,114 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     color: COLORS.text,
   },
+  typeOptions: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  typeOption: {
+    flex: 1,
+    minHeight: 52,
+    backgroundColor: "#FFF",
+    borderWidth: 1,
+    borderColor: "rgba(107,39,55,0.18)",
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 9,
+  },
+  typeOptionSelected: {
+    borderColor: COLORS.primary,
+    backgroundColor: "rgba(107,39,55,0.06)",
+  },
+  typeRadio: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 2,
+    borderColor: "rgba(107,39,55,0.30)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  typeRadioSelected: {
+    borderColor: COLORS.primary,
+  },
+  typeRadioDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: COLORS.primary,
+  },
+  typeOptionText: {
+    color: COLORS.text,
+    fontWeight: "700",
+    fontSize: 13,
+  },
+  typeOptionTextSelected: {
+    color: COLORS.primary,
+    fontWeight: "900",
+  },
+
+  dateButton: {
+    marginTop: 8,
+    minHeight: 48,
+    backgroundColor: "#FFF",
+    borderWidth: 1,
+    borderColor: "rgba(107,39,55,0.2)",
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  dateButtonText: {
+    flex: 1,
+    color: COLORS.text,
+    fontWeight: "700",
+    fontSize: 13,
+  },
+  dateButtonPlaceholder: {
+    color: "rgba(58,58,58,0.35)",
+    fontWeight: "600",
+  },
+  dateButtonIcon: {
+    fontSize: 16,
+  },
+
+  iosCalendarCard: {
+    marginTop: 14,
+    backgroundColor: "#FFF",
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: "rgba(107,39,55,0.12)",
+    padding: 12,
+  },
+  iosCalendar: {
+    backgroundColor: "#FFF",
+    alignSelf: "stretch",
+  },
+
+  iosCalendarTitle: {
+    color: COLORS.primary,
+    fontWeight: "900",
+    fontSize: 14,
+    marginBottom: 4,
+    textAlign: "center",
+  },
+  calendarDoneBtn: {
+    alignSelf: "center",
+    marginTop: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 22,
+    borderRadius: 999,
+    backgroundColor: COLORS.primary,
+  },
+  calendarDoneText: {
+    color: "#FFF",
+    fontWeight: "900",
+  },
+
   secondaryBtn: { flex: 1, backgroundColor: "rgba(107,39,55,0.06)", paddingVertical: 14, borderRadius: 999, alignItems: "center" },
   secondaryBtnText: { color: COLORS.text, fontWeight: "900" },
 });
