@@ -1,11 +1,5 @@
-import { IsOptional, IsString } from 'class-validator';
-
+import { IsOptional, IsString, Matches } from 'class-validator';
 export class ListExpensesDto {
-  @IsOptional()
-  @IsString()
-  month?: string; // ex: 2026-03
-
-  @IsOptional()
-  @IsString()
-  category?: string;
+  @IsOptional() @IsString() @Matches(/^\d{4}-\d{2}$/) month?: string;
+  @IsOptional() @IsString() category?: string;
 }

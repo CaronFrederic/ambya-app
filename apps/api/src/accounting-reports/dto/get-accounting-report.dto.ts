@@ -1,22 +1,8 @@
 import { IsIn, IsOptional, IsString, Matches } from "class-validator";
 
 export class GetAccountingReportDto {
-  @IsIn(["compte-resultat", "rapport-mensuel"])
-  reportType!: "compte-resultat" | "rapport-mensuel";
-
-  @IsIn([
-    "Ce mois",
-    "Mois dernier",
-    "Trimestre en cours",
-    "Cette année",
-    "Personnalisé",
-  ])
-  periodType!:
-    | "Ce mois"
-    | "Mois dernier"
-    | "Trimestre en cours"
-    | "Cette année"
-    | "Personnalisé";
+  @IsIn(["Ce mois", "Trimestre", "Année", "Choisir"])
+  periodType!: "Ce mois" | "Trimestre" | "Année" | "Choisir";
 
   @IsOptional()
   @IsString()
@@ -29,6 +15,6 @@ export class GetAccountingReportDto {
   endDate?: string;
 
   @IsOptional()
-  @IsIn(["excel"])
-  format?: "excel";
+  @IsIn(["pdf", "excel"])
+  format?: "pdf" | "excel";
 }

@@ -1,1242 +1,1309 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, {
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  Pressable,
-  TextInput,
   ActivityIndicator,
   Alert,
-  Linking,
+  Modal,
+  Platform,
+  Pressable,
   RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
 } from "react-native";
+import DateTimePicker, {
+  type DateTimePickerEvent,
+} from "@react-native-community/datetimepicker";
 import { Ionicons } from "@expo/vector-icons";
+import { router } from "expo-router";
+
 import { ProHeader } from "./components/ProHeader";
 import {
   getAccountingReport,
-  getAccountingReportExportUrl,
   type AccountingReportResponse,
+  type ComparisonIndicator,
   type PeriodType,
-  type ViewMode,
 } from "../../src/api/accounting-reports";
 
 const COLORS = {
-  bg: "#FAF7F2",
-  text: "#3A3A3A",
-  primary: "#6B2737",
+  background: "#FAF7F2",
+  brand: "#6B2737",
+  brandDark: "#4E1B27",
+  brandSoft: "#8E4356",
+  text: "#2A1B20",
+  muted: "#8A7A7E",
   gold: "#D4AF6A",
-  green: "#008A3D",
-  red: "#D00000",
-  blue: "#0057FF",
+  goldPale: "#F0E2C6",
+  line: "#EAE0DA",
+  white: "#FFFFFF",
+  green: "#3F7A5E",
+  greenPale: "#EAF2ED",
 };
 
-function formatFCFA(value: number) {
-  return `${Math.round(value).toLocaleString("fr-FR")} FCFA`;
+const PERIODS: PeriodType[] = [
+  "Ce mois",
+  "Trimestre",
+  "Année",
+  "Choisir",
+];
+
+function formatMoney(value: number): string {
+  return new Intl.NumberFormat("fr-FR").format(value);
 }
 
-function currentMonthTitle() {
-  return new Date().toLocaleDateString("fr-FR", {
-    month: "long",
-    year: "numeric",
-  });
+function toYmd(date: Date): string {
+  return `${date.getFullYear()}-${String(
+    date.getMonth() + 1
+  ).padStart(2, "0")}-${String(date.getDate()).padStart(
+    2,
+    "0"
+  )}`;
 }
 
-function diffPercent(real: number, forecast: number) {
-  if (forecast <= 0) return 0;
-  return Math.round(((real - forecast) / forecast) * 1000) / 10;
+function parseYmd(value: string): Date {
+  const [year, month, day] = value
+    .split("-")
+    .map(Number);
+
+  return new Date(year, month - 1, day);
+}
+
+function formatDisplayDate(value: string): string {
+  return new Intl.DateTimeFormat("fr-FR").format(
+    parseYmd(value)
+  );
 }
 
 function getCurrentMonthDates() {
-  const now = new Date();
-  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-  const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0));
+  const today = new Date();
 
   return {
-    startDate: start.toISOString().slice(0, 10),
-    endDate: end.toISOString().slice(0, 10),
+    startDate: toYmd(
+      new Date(
+        today.getFullYear(),
+        today.getMonth(),
+        1
+      )
+    ),
+    endDate: toYmd(today),
   };
 }
 
-export default function AccountingReports() {
-  const [viewMode, setViewMode] = useState<ViewMode>("comparaison");
-  const [periodType, setPeriodType] = useState<PeriodType>("Ce mois");
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
+function getDiffPresentation(
+  indicator: ComparisonIndicator,
+  kind: "revenue" | "expense" | "result"
+) {
+  const diff = indicator.diffPercent;
 
-  const [report, setReport] = useState<AccountingReportResponse | null>(null);
+  if (diff === null || diff === 0) {
+    return {
+      value: "—",
+      label: "stable",
+      positive: false,
+      neutral: true,
+    };
+  }
+
+  const positive =
+    kind === "expense" ? diff < 0 : diff > 0;
+
+  return {
+    value: `${diff > 0 ? "+" : ""}${diff
+      .toFixed(1)
+      .replace(".", ",")} %`,
+    label: positive ? "mieux" : "à surveiller",
+    positive,
+    neutral: false,
+  };
+}
+
+function SummaryRow({
+  label,
+  value,
+  muted = false,
+}: {
+  label: string;
+  value: number;
+  muted?: boolean;
+}) {
+  return (
+    <View style={styles.summaryRow}>
+      <Text
+        style={[
+          styles.summaryLabel,
+          muted && styles.mutedText,
+        ]}
+      >
+        {label}
+      </Text>
+
+      <Text style={styles.summaryAmount}>
+        {formatMoney(value)} F
+      </Text>
+    </View>
+  );
+}
+
+function ComparisonRow({
+  label,
+  indicator,
+  kind,
+}: {
+  label: string;
+  indicator: ComparisonIndicator;
+  kind: "revenue" | "expense" | "result";
+}) {
+  const presentation = getDiffPresentation(
+    indicator,
+    kind
+  );
+
+  return (
+    <View style={styles.comparisonRow}>
+      <Text style={styles.comparisonLabel}>
+        {label}
+      </Text>
+
+      <View style={styles.comparisonRight}>
+        <Text style={styles.comparisonPercent}>
+          {presentation.value}
+        </Text>
+
+        <View
+          style={[
+            styles.comparisonBadge,
+            presentation.positive &&
+              styles.comparisonBadgePositive,
+          ]}
+        >
+          <Text
+            style={[
+              styles.comparisonBadgeText,
+              presentation.positive &&
+                styles.comparisonBadgeTextPositive,
+            ]}
+          >
+            {presentation.neutral
+              ? "— stable"
+              : `${presentation.positive ? "▲" : "▼"} ${
+                  presentation.label
+                }`}
+          </Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+function ComparisonChart({
+  report,
+}: {
+  report: AccountingReportResponse;
+}) {
+  const data = [
+    {
+      label: "Recettes",
+      real: report.comparison.revenue.real,
+      estimated:
+        report.comparison.revenue.estimated,
+    },
+    {
+      label: "Dépenses",
+      real: report.comparison.expenses.real,
+      estimated:
+        report.comparison.expenses.estimated,
+    },
+    {
+      label: "Résultat",
+      real: Math.max(
+        0,
+        report.comparison.result.real
+      ),
+      estimated: Math.max(
+        0,
+        report.comparison.result.estimated
+      ),
+    },
+  ];
+
+  const maximum = Math.max(
+    1,
+    ...data.flatMap((item) => [
+      item.real,
+      item.estimated,
+    ])
+  );
+
+  return (
+    <View style={styles.comparisonCard}>
+      <View style={styles.chart}>
+        {data.map((item) => {
+          const realHeight = Math.max(
+            8,
+            (item.real / maximum) * 150
+          );
+          const estimatedHeight = Math.max(
+            8,
+            (item.estimated / maximum) * 150
+          );
+
+          return (
+            <View
+              key={item.label}
+              style={styles.chartGroup}
+            >
+              <View style={styles.chartBars}>
+                <View
+                  style={[
+                    styles.realBar,
+                    {
+                      height: realHeight,
+                    },
+                  ]}
+                />
+
+                <View
+                  style={[
+                    styles.estimatedBar,
+                    {
+                      height: estimatedHeight,
+                    },
+                  ]}
+                />
+              </View>
+
+              <Text style={styles.chartLabel}>
+                {item.label}
+              </Text>
+            </View>
+          );
+        })}
+      </View>
+
+      <View style={styles.chartLegend}>
+        <View style={styles.legendItem}>
+          <View style={styles.realLegendSquare} />
+          <Text style={styles.legendText}>
+            Réalisé
+          </Text>
+        </View>
+
+        <View style={styles.legendItem}>
+          <View
+            style={styles.estimatedLegendSquare}
+          />
+          <Text style={styles.legendText}>
+            Estimé
+          </Text>
+        </View>
+      </View>
+
+      <ComparisonRow
+        label="Recettes"
+        indicator={report.comparison.revenue}
+        kind="revenue"
+      />
+      <ComparisonRow
+        label="Dépenses"
+        indicator={report.comparison.expenses}
+        kind="expense"
+      />
+      <ComparisonRow
+        label="Résultat"
+        indicator={report.comparison.result}
+        kind="result"
+      />
+
+      <Text style={styles.comparisonBasis}>
+        {report.comparison.basisLabel}
+      </Text>
+    </View>
+  );
+}
+
+export default function AccountingReportsScreen() {
+  const currentDates = useMemo(
+    () => getCurrentMonthDates(),
+    []
+  );
+
+  const [periodType, setPeriodType] =
+    useState<PeriodType>("Ce mois");
+  const [startDate, setStartDate] = useState(
+    currentDates.startDate
+  );
+  const [endDate, setEndDate] = useState(
+    currentDates.endDate
+  );
+  const [dateTarget, setDateTarget] = useState<
+    "start" | "end" | null
+  >(null);
+
+  const [report, setReport] =
+    useState<AccountingReportResponse | null>(null);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [exporting, setExporting] = useState(false);
+  const [refreshing, setRefreshing] =
+    useState(false);
 
-  const canLoadReport =
-    periodType !== "Personnalisé" ||
-    (startDate.trim().length > 0 && endDate.trim().length > 0);
-
-  const forecast = useMemo(() => {
-    return {
-      serviceSales: report?.comparison?.revenue.serviceSales.forecast ?? 0,
-      productSales: report?.comparison?.revenue.productSales.forecast ?? 0,
-      expenses: report?.forecast?.kpis.quarterExpenses ?? 0,
-      netResult: report?.comparison?.netResult.forecast ?? 0,
-    };
-  }, [report]);
-
-  const real = useMemo(() => {
-    const serviceSales = report?.incomeStatement.revenue.serviceSales ?? 0;
-    const productSales = report?.incomeStatement.revenue.productSales ?? 0;
-    const totalRevenue =
-      report?.incomeStatement.revenue.total ?? serviceSales + productSales;
-    const totalExpenses = report?.incomeStatement.expenses.total ?? 0;
-    const netResult =
-      report?.incomeStatement.netResult ?? totalRevenue - totalExpenses;
-
-    return {
-      serviceSales,
-      productSales,
-      totalRevenue,
-      totalExpenses,
-      netResult,
-      expenses: report?.incomeStatement.expenses.byCategory ?? [],
-    };
-  }, [report]);
-
-  const loadReport = async () => {
-    if (!canLoadReport) {
-      return;
-    }
-
+  const loadReport = async (
+    nextPeriod = periodType
+  ) => {
     const data = await getAccountingReport({
-      reportType: "compte-resultat",
-      periodType,
-      startDate: periodType === "Personnalisé" ? startDate.trim() : undefined,
-      endDate: periodType === "Personnalisé" ? endDate.trim() : undefined,
+      periodType: nextPeriod,
+      startDate:
+        nextPeriod === "Choisir"
+          ? startDate
+          : undefined,
+      endDate:
+        nextPeriod === "Choisir"
+          ? endDate
+          : undefined,
     });
 
     setReport(data);
   };
 
-  const initialLoad = async () => {
-    try {
-      setLoading(true);
-      await loadReport();
-    } catch (error) {
-      console.error("Accounting report load error:", error);
-      Alert.alert(
-        "Chargement impossible",
-        error instanceof Error ? error.message : "Une erreur est survenue.",
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
+  useEffect(() => {
+    const initialLoad = async () => {
+      try {
+        setLoading(true);
+        await loadReport();
+      } catch (error) {
+        Alert.alert(
+          "Chargement impossible",
+          error instanceof Error
+            ? error.message
+            : "Une erreur est survenue."
+        );
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    void initialLoad();
+  }, []);
 
   const onRefresh = async () => {
     try {
       setRefreshing(true);
       await loadReport();
     } catch (error) {
-      console.error("Accounting report refresh error:", error);
       Alert.alert(
         "Actualisation impossible",
-        error instanceof Error ? error.message : "Une erreur est survenue.",
+        error instanceof Error
+          ? error.message
+          : "Une erreur est survenue."
       );
     } finally {
       setRefreshing(false);
     }
   };
 
-  useEffect(() => {
-    initialLoad();
-  }, []);
+  const selectPeriod = async (
+    nextPeriod: PeriodType
+  ) => {
+    setPeriodType(nextPeriod);
 
-  useEffect(() => {
-    if (!loading && canLoadReport) {
-      loadReport().catch((error) => {
-        console.error("Accounting report reload error:", error);
-        Alert.alert(
-          "Chargement impossible",
-          error instanceof Error ? error.message : "Une erreur est survenue.",
-        );
-      });
+    if (nextPeriod === "Choisir") {
+      return;
     }
-  }, [periodType]);
 
-  const handleChangePeriod = (period: PeriodType) => {
-    setPeriodType(period);
-
-    if (period === "Personnalisé" && (!startDate.trim() || !endDate.trim())) {
-      const dates = getCurrentMonthDates();
-      setStartDate(dates.startDate);
-      setEndDate(dates.endDate);
+    try {
+      setRefreshing(true);
+      const data = await getAccountingReport({
+        periodType: nextPeriod,
+      });
+      setReport(data);
+    } catch (error) {
+      Alert.alert(
+        "Chargement impossible",
+        error instanceof Error
+          ? error.message
+          : "Une erreur est survenue."
+      );
+    } finally {
+      setRefreshing(false);
     }
   };
 
-  const handleApplyCustomPeriod = async () => {
-    if (!startDate.trim() || !endDate.trim()) {
+  const applyCustomPeriod = async () => {
+    if (parseYmd(startDate) > parseYmd(endDate)) {
       Alert.alert(
-        "Période incomplète",
-        "Veuillez renseigner une date de début et une date de fin.",
+        "Période invalide",
+        "La date de début doit précéder la date de fin."
       );
       return;
     }
 
     try {
       setRefreshing(true);
-      await loadReport();
+      await loadReport("Choisir");
     } catch (error) {
-      console.error("Accounting custom period error:", error);
       Alert.alert(
         "Chargement impossible",
-        error instanceof Error ? error.message : "Une erreur est survenue.",
+        error instanceof Error
+          ? error.message
+          : "Une erreur est survenue."
       );
     } finally {
       setRefreshing(false);
     }
   };
 
-  const handleExportExcel = async () => {
-    if (periodType === "Personnalisé" && (!startDate.trim() || !endDate.trim())) {
-      Alert.alert(
-        "Période incomplète",
-        "Veuillez renseigner une date de début et une date de fin avant l’export.",
-      );
+  const onDateChange = (
+    event: DateTimePickerEvent,
+    selectedDate?: Date
+  ) => {
+    if (Platform.OS === "android") {
+      setDateTarget(null);
+    }
+
+    if (
+      event.type === "dismissed" ||
+      !selectedDate ||
+      !dateTarget
+    ) {
       return;
     }
 
-    try {
-      setExporting(true);
+    const value = toYmd(selectedDate);
 
-      const url = await getAccountingReportExportUrl({
-        reportType: "compte-resultat",
-        periodType,
-        startDate:
-          periodType === "Personnalisé" ? startDate.trim() : undefined,
-        endDate: periodType === "Personnalisé" ? endDate.trim() : undefined,
-      });
-
-      await Linking.openURL(url);
-    } catch (error) {
-      Alert.alert(
-        "Export impossible",
-        error instanceof Error ? error.message : "Une erreur est survenue.",
-      );
-    } finally {
-      setExporting(false);
+    if (dateTarget === "start") {
+      setStartDate(value);
+    } else {
+      setEndDate(value);
     }
   };
+
+  const openExport = () => {
+    router.push({
+      pathname:
+        "/(professional)/accounting-report-export",
+      params: {
+        periodType,
+        startDate:
+          periodType === "Choisir"
+            ? startDate
+            : "",
+        endDate:
+          periodType === "Choisir"
+            ? endDate
+            : "",
+      },
+    });
+  };
+
+  if (loading) {
+    return (
+      <View style={styles.container}>
+        <ProHeader
+          title="Registre de gestion"
+          subtitle="Vue simplifiée de votre activité"
+          backTo="/(professional)/dashboard"
+        />
+
+        <View style={styles.loader}>
+          <ActivityIndicator
+            size="large"
+            color={COLORS.brand}
+          />
+          <Text style={styles.loaderText}>
+            Chargement du registre...
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (!report) {
+    return (
+      <View style={styles.container}>
+        <ProHeader
+          title="Registre de gestion"
+          subtitle="Vue simplifiée de votre activité"
+          backTo="/(professional)/dashboard"
+        />
+
+        <View style={styles.loader}>
+          <Text style={styles.loaderText}>
+            Le registre n'est pas disponible.
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  const topExpenses =
+    report.expenses.byCategory.slice(0, 5);
+  const remainingExpenses =
+    report.expenses.byCategory.slice(5);
+  const remainingTotal = remainingExpenses.reduce(
+    (sum, expense) => sum + expense.amount,
+    0
+  );
 
   return (
     <View style={styles.container}>
       <ProHeader
-        title="Comptabilité & Rapports Prévisionnels"
-        subtitle="Normes SYSCOHADA - Prévisions et analyses"
+        title="Registre de gestion"
+        subtitle="Vue simplifiée de votre activité"
         backTo="/(professional)/dashboard"
       />
 
-      {loading ? (
-        <View style={styles.loaderWrap}>
-          <ActivityIndicator size="large" color={COLORS.primary} />
-          <Text style={styles.loaderText}>Chargement du rapport...</Text>
-        </View>
-      ) : (
-        <ScrollView
-          contentContainerStyle={styles.content}
-          showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-          }
-        >
-          <InfoBox />
+      <ScrollView
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+          />
+        }
+      >
+        <View style={styles.periodCard}>
+          <Text style={styles.sectionEyebrow}>
+            PÉRIODE
+          </Text>
 
-          <View style={styles.tabs}>
-            <ModeTab
-              label="Comparaison"
-              active={viewMode === "comparaison"}
-              onPress={() => setViewMode("comparaison")}
-            />
-            <ModeTab
-              label="Prévisionnel"
-              active={viewMode === "previsionnel"}
-              onPress={() => setViewMode("previsionnel")}
-              info
-            />
-            <ModeTab
-              label="Réel"
-              active={viewMode === "reel"}
-              onPress={() => setViewMode("reel")}
-            />
-          </View>
+          <View style={styles.periodGrid}>
+            {PERIODS.map((period) => {
+              const active = periodType === period;
 
-          <View style={styles.card}>
-            <Text style={styles.label}>Période</Text>
-
-            <View style={styles.periodGrid}>
-              {(
-                [
-                  "Ce mois",
-                  "Mois dernier",
-                  "Cette année",
-                  "Personnalisé",
-                ] as const
-              ).map((p) => (
+              return (
                 <Pressable
-                  key={p}
-                  onPress={() => handleChangePeriod(p)}
+                  key={period}
                   style={[
-                    styles.periodOption,
-                    periodType === p && styles.periodOptionActive,
+                    styles.periodButton,
+                    active &&
+                      styles.periodButtonActive,
                   ]}
+                  onPress={() =>
+                    void selectPeriod(period)
+                  }
                 >
                   <Text
                     style={[
-                      styles.periodOptionText,
-                      periodType === p && styles.periodOptionTextActive,
+                      styles.periodButtonText,
+                      active &&
+                        styles.periodButtonTextActive,
                     ]}
                   >
-                    {p}
+                    {period}
                   </Text>
                 </Pressable>
-              ))}
-            </View>
+              );
+            })}
+          </View>
 
-            {periodType === "Personnalisé" ? (
-              <>
-                <View style={styles.dateRow}>
-                  <TextInput
-                    value={startDate}
-                    onChangeText={setStartDate}
-                    placeholder="Début YYYY-MM-DD"
-                    autoCapitalize="none"
-                    style={styles.input}
-                  />
-                  <TextInput
-                    value={endDate}
-                    onChangeText={setEndDate}
-                    placeholder="Fin YYYY-MM-DD"
-                    autoCapitalize="none"
-                    style={styles.input}
-                  />
-                </View>
+          {periodType === "Choisir" && (
+            <View style={styles.customPeriod}>
+              <View style={styles.dateButtons}>
+                <Pressable
+                  style={styles.dateButton}
+                  onPress={() =>
+                    setDateTarget("start")
+                  }
+                >
+                  <Text style={styles.dateCaption}>
+                    Du
+                  </Text>
+                  <Text style={styles.dateValue}>
+                    {formatDisplayDate(startDate)}
+                  </Text>
+                </Pressable>
 
                 <Pressable
-                  onPress={handleApplyCustomPeriod}
-                  disabled={!startDate.trim() || !endDate.trim()}
-                  style={[
-                    styles.applyPeriodBtn,
-                    (!startDate.trim() || !endDate.trim()) && { opacity: 0.5 },
-                  ]}
+                  style={styles.dateButton}
+                  onPress={() =>
+                    setDateTarget("end")
+                  }
                 >
-                  <Text style={styles.applyPeriodBtnText}>
-                    Appliquer la période
+                  <Text style={styles.dateCaption}>
+                    Au
+                  </Text>
+                  <Text style={styles.dateValue}>
+                    {formatDisplayDate(endDate)}
                   </Text>
                 </Pressable>
-              </>
-            ) : null}
-          </View>
+              </View>
 
-          {viewMode === "comparaison" ? (
-            <ComparisonView
-              real={real}
-              forecast={forecast}
-              comparison={report?.comparison}
-              chartData={report?.charts?.realVsForecast ?? []}
-            />
-          ) : null}
+              <Pressable
+                style={styles.applyButton}
+                onPress={applyCustomPeriod}
+              >
+                <Text style={styles.applyButtonText}>
+                  Appliquer
+                </Text>
+              </Pressable>
+            </View>
+          )}
 
-          {viewMode === "previsionnel" ? (
-            <ForecastView
-              months={report?.forecast?.months ?? []}
-              kpis={report?.forecast?.kpis}
-            />
-          ) : null}
+          <Text style={styles.periodSummary}>
+            {report.period.label}
+          </Text>
+        </View>
 
-          {viewMode === "reel" ? (
-            <RealView
-              real={real}
-              trend={report?.summary.trendPercent ?? 0}
-              chartData={report?.charts?.realMonthly ?? []}
-            />
-          ) : null}
+        <View style={styles.registerCard}>
+          <Text style={styles.blockTitle}>
+            RECETTES
+          </Text>
 
-          <View style={styles.exportRow}>
-            <Pressable style={[styles.exportBtn, { backgroundColor: "#DC2626" }]}>
-              <Ionicons name="download-outline" size={18} color="#FFF" />
-              <Text style={styles.exportText}>PDF</Text>
-            </Pressable>
-
-            <Pressable
-              onPress={handleExportExcel}
-              disabled={exporting}
-              style={[
-                styles.exportBtn,
-                { backgroundColor: "#16A34A", opacity: exporting ? 0.7 : 1 },
-              ]}
-            >
-              <Ionicons name="download-outline" size={18} color="#FFF" />
-              <Text style={styles.exportText}>
-                {exporting ? "Export..." : "Excel"}
+          <View style={styles.heroAmountRow}>
+            <View>
+              <Text style={styles.heroLabel}>
+                RECETTES
               </Text>
-            </Pressable>
+              <Text style={styles.heroSubtitle}>
+                Encaissements de la période · montants TTC
+              </Text>
+            </View>
+
+            <Text style={styles.heroAmount}>
+              {formatMoney(report.revenue.total)}
+              <Text style={styles.heroCurrency}>
+                {" "}F
+              </Text>
+            </Text>
           </View>
 
-          <View style={{ height: 30 }} />
-        </ScrollView>
-      )}
-    </View>
-  );
-}
+          <View style={styles.separator} />
 
-function InfoBox() {
-  return (
-    <View style={styles.infoBox}>
-      <View style={styles.infoIcon}>
-        <Text style={styles.infoIconText}>i</Text>
-      </View>
-
-      <View style={{ flex: 1 }}>
-        <Text style={styles.infoTitle}>
-          Comment fonctionne la comptabilité prévisionnelle ?
-        </Text>
-
-        <Text style={styles.infoText}>
-          <Text style={styles.bold}>• Comparaison :</Text> Compare vos chiffres
-          réels avec vos prévisions pour identifier les écarts et ajuster votre
-          stratégie.
-        </Text>
-        <Text style={styles.infoText}>
-          <Text style={styles.bold}>• Prévisionnel :</Text> Affiche les
-          projections pour les 3 prochains mois basées sur votre historique.
-        </Text>
-        <Text style={styles.infoText}>
-          <Text style={styles.bold}>• Réel :</Text> Montre vos résultats
-          conformes aux normes SYSCOHADA.
-        </Text>
-        <Text style={styles.infoText}>
-          <Text style={styles.bold}>• Dépenses :</Text> Les charges affichées
-          proviennent des dépenses enregistrées dans la page Dépenses.
-        </Text>
-      </View>
-    </View>
-  );
-}
-
-function ModeTab({
-  label,
-  active,
-  onPress,
-  info,
-}: {
-  label: string;
-  active: boolean;
-  onPress: () => void;
-  info?: boolean;
-}) {
-  return (
-    <Pressable onPress={onPress} style={[styles.tab, active && styles.tabActive]}>
-      <View style={styles.tabContent}>
-        <Text style={[styles.tabText, active && styles.tabTextActive]}>
-          {label}
-        </Text>
-        {info ? (
-          <Ionicons
-            name="information-circle-outline"
-            size={16}
-            color={active ? "#FFF" : "#3B82F6"}
+          <SummaryRow
+            label="Prestations"
+            value={report.revenue.services}
           />
-        ) : null}
-      </View>
-    </Pressable>
-  );
-}
-
-function ComparisonView({
-  real,
-  forecast,
-  comparison,
-  chartData,
-}: {
-  real: {
-    serviceSales: number;
-    productSales: number;
-    totalRevenue: number;
-    totalExpenses: number;
-    netResult: number;
-    expenses: { category: string; amount: number }[];
-  };
-  forecast: {
-    serviceSales: number;
-    productSales: number;
-    expenses: number;
-    netResult: number;
-  };
-  comparison?: AccountingReportResponse["comparison"];
-  chartData: Array<{
-    label: string;
-    real: number;
-    forecast: number;
-  }>;
-}) {
-  const fallbackExpenses = real.expenses.length
-    ? real.expenses
-    : [{ category: "Aucune dépense enregistrée", amount: 0 }];
-
-  const maxChartValue = Math.max(
-    ...chartData.map((d) => Math.max(d.real, d.forecast)),
-    1,
-  );
-
-  return (
-    <>
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>
-          Compte de Résultat - {currentMonthTitle()}
-        </Text>
-
-        <Text style={styles.smallLabel}>Classe 7 - Revenus</Text>
-
-        <ComparisonLine
-          label="Ventes de services"
-          real={comparison?.revenue.serviceSales.real ?? real.serviceSales}
-          forecast={
-            comparison?.revenue.serviceSales.forecast ?? forecast.serviceSales
-          }
-          diffPercent={comparison?.revenue.serviceSales.diffPercent}
-          kind="revenue"
-        />
-
-        <ComparisonLine
-          label="Produits vendus"
-          real={comparison?.revenue.productSales.real ?? real.productSales}
-          forecast={
-            comparison?.revenue.productSales.forecast ?? forecast.productSales
-          }
-          diffPercent={comparison?.revenue.productSales.diffPercent}
-          kind="revenue"
-        />
-
-        <Text style={[styles.smallLabel, { marginTop: 16 }]}>
-          Classe 6 - Dépenses issues de la page Dépenses
-        </Text>
-
-        {(comparison?.expenses.length ? comparison.expenses : fallbackExpenses)
-          .slice(0, 6)
-          .map((expense, index) => (
-            <ComparisonLine
-              key={`${expense.category}-${index}`}
-              label={expense.category}
-              real={"real" in expense ? expense.real : expense.amount}
-              forecast={
-                "forecast" in expense
-                  ? expense.forecast
-                  : Math.round(expense.amount * 0.92)
-              }
-              diffPercent={
-                "diffPercent" in expense ? expense.diffPercent : undefined
-              }
-              kind="expense"
-            />
-          ))}
-
-        <View style={styles.separator} />
-
-        <ComparisonLine
-          label="Résultat Net"
-          real={comparison?.netResult.real ?? real.netResult}
-          forecast={comparison?.netResult.forecast ?? forecast.netResult}
-          diffPercent={comparison?.netResult.diffPercent}
-          kind="result"
-          large
-        />
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.chartTitle}>
-          Évolution Réel vs Prévisionnel
-        </Text>
-
-        <View style={styles.chart}>
-          {chartData.length > 0 ? (
-            chartData.map((item, index) => {
-              const realHeight = Math.max(6, (item.real / maxChartValue) * 100);
-              const forecastHeight = Math.max(
-                6,
-                (item.forecast / maxChartValue) * 100,
-              );
-
-              return (
-                <View key={`${item.label}-${index}`} style={styles.chartPair}>
-                  <View
-                    style={[
-                      styles.bar,
-                      {
-                        height: `${realHeight}%`,
-                        backgroundColor: "#22C55E",
-                      },
-                    ]}
-                  />
-                  <View
-                    style={[
-                      styles.bar,
-                      {
-                        height: `${forecastHeight}%`,
-                        backgroundColor: "#3B82F6",
-                      },
-                    ]}
-                  />
-                </View>
-              );
-            })
-          ) : (
-            <Text style={styles.emptyChartText}>Aucune donnée disponible.</Text>
-          )}
-        </View>
-
-        <View style={styles.legend}>
-          <Legend color="#22C55E" label="Réel" />
-          <Legend color="#3B82F6" label="Prévisionnel" />
-        </View>
-
-        <View style={styles.chartFooter}>
-          <Text style={styles.chartDate}>{chartData[0]?.label ?? "-"}</Text>
-          <Text style={styles.chartDate}>
-            {chartData[chartData.length - 1]?.label ?? "-"}
-          </Text>
-        </View>
-      </View>
-    </>
-  );
-}
-
-function ComparisonLine({
-  label,
-  real,
-  forecast,
-  diffPercent: backendDiffPercent,
-  kind,
-  large,
-}: {
-  label: string;
-  real: number;
-  forecast: number;
-  diffPercent?: number;
-  kind: "revenue" | "expense" | "result";
-  large?: boolean;
-}) {
-  const percent = backendDiffPercent ?? diffPercent(real, forecast);
-  const positive = percent >= 0;
-
-  return (
-    <View
-      style={[
-        styles.comparisonLine,
-        kind === "expense"
-          ? styles.expenseGradient
-          : kind === "result"
-            ? styles.resultGradient
-            : styles.revenueGradient,
-      ]}
-    >
-      <Text style={[styles.lineTitle, large && { fontSize: 16 }]}>
-        {label}
-      </Text>
-
-      <View style={styles.comparisonBottom}>
-        <View style={{ flex: 1 }}>
-          <MoneyRow
-            label="Réel"
-            value={real}
-            color={
-              kind === "expense"
-                ? COLORS.red
-                : kind === "result"
-                  ? COLORS.gold
-                  : COLORS.green
-            }
+          <SummaryRow
+            label="Ventes de produits"
+            value={report.revenue.products}
           />
-          <MoneyRow label="Prévisionnel" value={forecast} color={COLORS.blue} />
-        </View>
 
-        <View
-          style={[
-            styles.percentBadge,
-            { backgroundColor: positive ? "#DCFCE7" : "#FFEDD5" },
-          ]}
-        >
-          <Text
-            style={[
-              styles.percentText,
-              { color: positive ? "#15803D" : "#EA580C" },
-            ]}
-          >
-            {positive ? "+" : ""}
-            {percent}%
+          <View style={styles.separator} />
+
+          <SummaryRow
+            label="Total"
+            value={report.revenue.total}
+          />
+
+          <Text style={styles.blockTitle}>
+            DÉPENSES
           </Text>
-        </View>
-      </View>
-    </View>
-  );
-}
 
-function ForecastView({
-  months,
-  kpis,
-}: {
-  months: Array<{
-    month: string;
-    revenue: number;
-    expenses: number;
-    result: number;
-  }>;
-  kpis?: NonNullable<AccountingReportResponse["forecast"]>["kpis"];
-}) {
-  const safeMonths = months.length
-    ? months
-    : [
-        { month: "Mois +1", revenue: 0, expenses: 0, result: 0 },
-        { month: "Mois +2", revenue: 0, expenses: 0, result: 0 },
-        { month: "Mois +3", revenue: 0, expenses: 0, result: 0 },
-      ];
+          <View style={styles.heroAmountRow}>
+            <View>
+              <Text style={styles.heroLabel}>
+                DÉPENSES
+              </Text>
+              <Text style={styles.heroSubtitle}>
+                Sorties enregistrées ·{" "}
+                {report.expenses.lineCount} ligne
+                {report.expenses.lineCount > 1
+                  ? "s"
+                  : ""}
+              </Text>
+            </View>
 
-  return (
-    <>
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Projections - 3 prochains mois</Text>
-        <Text style={styles.smallLabel}>
-          Basé sur l'historique des revenus et des dépenses enregistrées
-        </Text>
-
-        {safeMonths.map((month) => (
-          <View key={month.month} style={styles.forecastCard}>
-            <Text style={styles.forecastMonth}>{month.month}</Text>
-
-            <MoneyRow
-              label="Revenus prévisionnels"
-              value={month.revenue}
-              color={COLORS.green}
-            />
-            <MoneyRow
-              label="Dépenses prévisionnelles"
-              value={month.expenses}
-              color={COLORS.red}
-            />
-
-            <View style={styles.separatorLight} />
-
-            <MoneyRow
-              label="Résultat prévisionnel"
-              value={month.result}
-              color={COLORS.gold}
-              strong
-            />
+            <Text style={styles.heroAmount}>
+              {formatMoney(report.expenses.total)}
+              <Text style={styles.heroCurrency}>
+                {" "}F
+              </Text>
+            </Text>
           </View>
-        ))}
-      </View>
 
-      <View style={styles.card}>
-        <Text style={styles.chartTitle}>Indicateurs Prévisionnels Clés</Text>
+          <View style={styles.separator} />
 
-        <View style={styles.kpiGrid}>
-          <KpiBox
-            label="CA Prévisionnel T2"
-            value={formatFCFA(kpis?.quarterRevenue ?? 0)}
-            sub={`Résultat: ${formatFCFA(kpis?.quarterResult ?? 0)}`}
-            color="#15803D"
-            bg="#F0FDF4"
-          />
-          <KpiBox
-            label="Dépenses prévues"
-            value={formatFCFA(kpis?.quarterExpenses ?? 0)}
-            sub="Projection charges"
-            color="#DC2626"
-            bg="#FEF2F2"
-          />
-          <KpiBox
-            label="Marge Prévue"
-            value={`${kpis?.marginPercent ?? 0}%`}
-            sub="Objectif: 40%"
-            color="#1D4ED8"
-            bg="#EFF6FF"
-          />
-          <KpiBox
-            label="Panier Moyen"
-            value={formatFCFA(kpis?.averageBasket ?? 0)}
-            sub="Moyenne estimée"
-            color="#B45309"
-            bg="#FFFBEB"
-          />
-        </View>
-      </View>
-    </>
-  );
-}
-
-function RealView({
-  real,
-  trend,
-  chartData,
-}: {
-  real: {
-    serviceSales: number;
-    productSales: number;
-    totalRevenue: number;
-    totalExpenses: number;
-    netResult: number;
-    expenses: { category: string; amount: number }[];
-  };
-  trend: number;
-  chartData: Array<{
-    label: string;
-    value: number;
-  }>;
-}) {
-  const expenses = real.expenses.length
-    ? real.expenses
-    : [{ category: "Aucune dépense enregistrée", amount: 0 }];
-
-  const maxChartValue = Math.max(...chartData.map((d) => d.value), 1);
-
-  return (
-    <>
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>
-          Compte de Résultat Réel - {currentMonthTitle()}
-        </Text>
-
-        <Text style={styles.smallLabel}>Classe 7 - Revenus</Text>
-        <View style={[styles.statementBox, { backgroundColor: "#ECFDF5" }]}>
-          <MoneyRow
-            label="Ventes de services"
-            value={real.serviceSales}
-            color={COLORS.green}
-          />
-          <MoneyRow
-            label="Produits vendus"
-            value={real.productSales}
-            color={COLORS.green}
-          />
-          <View style={styles.separatorLight} />
-          <MoneyRow
-            label="Total Revenus"
-            value={real.totalRevenue}
-            color={COLORS.green}
-            strong
-          />
-        </View>
-
-        <Text style={[styles.smallLabel, { marginTop: 16 }]}>
-          Classe 6 - Dépenses enregistrées
-        </Text>
-        <View style={[styles.statementBox, { backgroundColor: "#FEF2F2" }]}>
-          {expenses.map((item, index) => (
-            <MoneyRow
-              key={`${item.category}-${index}`}
-              label={item.category}
-              value={item.amount}
-              color={COLORS.red}
-            />
-          ))}
-          <View style={styles.separatorLight} />
-          <MoneyRow
-            label="Total dépenses enregistrées"
-            value={real.totalExpenses}
-            color={COLORS.red}
-            strong
-          />
-        </View>
-
-        <View style={styles.separator} />
-
-        <View style={styles.resultBox}>
-          <MoneyRow
-            label="Résultat Net"
-            value={real.netResult}
-            color={COLORS.gold}
-            strong
-          />
-          <Text
-            style={[
-              styles.trendText,
-              { color: trend >= 0 ? "#16A34A" : "#DC2626" },
-            ]}
-          >
-            {trend >= 0 ? "+" : ""}
-            {trend}% vs période précédente
-          </Text>
-        </View>
-      </View>
-
-      <View style={styles.card}>
-        <Text style={styles.chartTitle}>Évolution Mensuelle Réelle</Text>
-
-        <View style={styles.chart}>
-          {chartData.length > 0 ? (
-            chartData.map((item, index) => {
-              const height = Math.max(6, (item.value / maxChartValue) * 100);
-
-              return (
-                <View
-                  key={`${item.label}-${index}`}
-                  style={[
-                    styles.singleBar,
-                    {
-                      height: `${height}%`,
-                    },
-                  ]}
-                />
-              );
-            })
+          {topExpenses.length === 0 ? (
+            <Text style={styles.noExpenseText}>
+              Aucune dépense enregistrée · 0 FCFA
+            </Text>
           ) : (
-            <Text style={styles.emptyChartText}>Aucune donnée disponible.</Text>
+            topExpenses.map((expense) => (
+              <SummaryRow
+                key={expense.category}
+                label={expense.category}
+                value={expense.amount}
+              />
+            ))
           )}
+
+          {remainingExpenses.length > 0 && (
+            <SummaryRow
+              label={`${remainingExpenses.length} autres postes`}
+              value={remainingTotal}
+              muted
+            />
+          )}
+
+          <View style={styles.resultCard}>
+            <Text style={styles.resultLabel}>
+              RÉSULTAT DE LA PÉRIODE
+            </Text>
+
+            <Text style={styles.resultAmount}>
+              {formatMoney(report.result)}
+              <Text style={styles.resultCurrency}>
+                {" "}F
+              </Text>
+            </Text>
+
+            <Text style={styles.resultHint}>
+              Avant impôts et usure du matériel
+            </Text>
+          </View>
         </View>
 
-        <View style={styles.chartFooter}>
-          <Text style={styles.chartDate}>{chartData[0]?.label ?? "-"}</Text>
-          <Text style={styles.chartDate}>
-            {chartData[chartData.length - 1]?.label ?? "-"}
+        <Text style={styles.sectionEyebrowOutside}>
+          EN DEHORS DU RÉSULTAT
+        </Text>
+
+        <View style={styles.investmentCard}>
+          <View style={styles.investmentHeader}>
+            <Text style={styles.investmentTitle}>
+              Investissements
+            </Text>
+
+            <Text style={styles.investmentAmount}>
+              {formatMoney(
+                report.investments.total
+              )}{" "}
+              F
+            </Text>
+          </View>
+
+          <Text style={styles.investmentText}>
+            Matériel acheté sur la période. Il sert
+            plusieurs années, donc il n'est pas retiré
+            du résultat — votre comptable l'étalera sur
+            sa durée d'usage.
           </Text>
         </View>
-      </View>
-    </>
-  );
-}
 
-function MoneyRow({
-  label,
-  value,
-  color,
-  strong,
-}: {
-  label: string;
-  value: number;
-  color: string;
-  strong?: boolean;
-}) {
-  return (
-    <View style={styles.moneyRow}>
-      <Text style={[styles.moneyLabel, strong && { fontWeight: "900" }]}>
-        {label}
-      </Text>
-      <Text style={[styles.moneyValue, { color }, strong && { fontSize: 14 }]}>
-        {formatFCFA(value)}
-      </Text>
-    </View>
-  );
-}
+        <Text style={styles.sectionEyebrowOutside}>
+          COMPARAISON AVEC VOS MOIS PRÉCÉDENTS
+        </Text>
 
-function Legend({ color, label }: { color: string; label: string }) {
-  return (
-    <View style={styles.legendItem}>
-      <View style={[styles.legendDot, { backgroundColor: color }]} />
-      <Text style={styles.legendText}>{label}</Text>
-    </View>
-  );
-}
+        <ComparisonChart report={report} />
 
-function KpiBox({
-  label,
-  value,
-  sub,
-  color,
-  bg,
-}: {
-  label: string;
-  value: string;
-  sub: string;
-  color: string;
-  bg: string;
-}) {
-  return (
-    <View style={[styles.kpiBox, { backgroundColor: bg }]}>
-      <Text style={styles.kpiLabel}>{label}</Text>
-      <Text style={[styles.kpiValue, { color }]}>{value}</Text>
-      <Text style={[styles.kpiSub, { color }]}>{sub}</Text>
+        <View style={styles.disclaimerCard}>
+          <Text style={styles.disclaimerTitle}>
+            Un repère, pas une comptabilité
+          </Text>
+
+          <Text style={styles.disclaimerText}>
+            Ce registre vous aide à piloter votre
+            activité au quotidien. Il ne tient pas
+            compte des impôts, de l'usure du matériel
+            ni des règles fiscales, et ne remplace pas
+            votre comptable.
+          </Text>
+        </View>
+
+        <Text style={styles.sectionEyebrowOutside}>
+          EXPORTER LE REGISTRE
+        </Text>
+
+        <View style={styles.exportButtons}>
+          <Pressable
+            style={styles.exportButton}
+            onPress={openExport}
+          >
+            <Ionicons
+              name="document-text-outline"
+              size={28}
+              color={COLORS.brand}
+            />
+            <Text style={styles.exportButtonText}>
+              Excel
+            </Text>
+          </Pressable>
+
+          <Pressable
+            style={styles.exportButton}
+            onPress={openExport}
+          >
+            <Ionicons
+              name="document-outline"
+              size={28}
+              color={COLORS.brand}
+            />
+            <Text style={styles.exportButtonText}>
+              PDF
+            </Text>
+          </Pressable>
+        </View>
+
+        <Text style={styles.exportHint}>
+          Excel pour retravailler les chiffres, PDF
+          pour transmettre.
+        </Text>
+      </ScrollView>
+
+      <Modal
+        transparent
+        visible={dateTarget !== null}
+        animationType="fade"
+        onRequestClose={() => setDateTarget(null)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.calendarModal}>
+            <Text style={styles.calendarTitle}>
+              {dateTarget === "start"
+                ? "Date de début"
+                : "Date de fin"}
+            </Text>
+
+            {dateTarget && (
+              <DateTimePicker
+                value={parseYmd(
+                  dateTarget === "start"
+                    ? startDate
+                    : endDate
+                )}
+                mode="date"
+                display={
+                  Platform.OS === "ios"
+                    ? "inline"
+                    : "calendar"
+                }
+                maximumDate={new Date()}
+                onChange={onDateChange}
+                locale="fr-FR"
+                themeVariant="light"
+                accentColor={COLORS.brand}
+              />
+            )}
+
+            {Platform.OS === "ios" && (
+              <Pressable
+                style={styles.calendarDone}
+                onPress={() => setDateTarget(null)}
+              >
+                <Text style={styles.calendarDoneText}>
+                  Terminé
+                </Text>
+              </Pressable>
+            )}
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.bg },
-  content: { padding: 14, paddingBottom: 32, gap: 14 },
-
-  loaderWrap: {
+  container: {
     flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 12,
+    backgroundColor: COLORS.background,
   },
-  loaderText: { color: COLORS.primary, fontWeight: "700" },
-
-  infoBox: {
-    backgroundColor: "#EFF6FF",
-    borderWidth: 1,
-    borderColor: "#BFDBFE",
-    borderRadius: 18,
-    padding: 14,
-    flexDirection: "row",
-    gap: 12,
-  },
-  infoIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: "#3B82F6",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  infoIconText: { color: "#FFF", fontWeight: "900" },
-  infoTitle: { color: "#1E3A8A", fontWeight: "900", marginBottom: 8 },
-  infoText: {
-    color: "#1D4ED8",
-    fontSize: 12,
-    lineHeight: 18,
-    marginBottom: 4,
-  },
-  bold: { fontWeight: "900" },
-
-  tabs: { flexDirection: "row", gap: 8 },
-  tab: {
-    flex: 1,
-    backgroundColor: "#FFF",
-    borderWidth: 1,
-    borderColor: "rgba(107,39,55,0.2)",
-    borderRadius: 999,
-    paddingVertical: 12,
-    alignItems: "center",
-  },
-  tabActive: { backgroundColor: COLORS.primary, borderColor: COLORS.primary },
-  tabContent: { flexDirection: "row", alignItems: "center", gap: 4 },
-  tabText: { color: COLORS.text, fontSize: 13, fontWeight: "800" },
-  tabTextActive: { color: "#FFF" },
-
-  card: {
-    backgroundColor: "#FFF",
-    borderRadius: 18,
+  content: {
     padding: 16,
-    shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 1,
+    paddingBottom: 42,
   },
-
-  label: { color: COLORS.text, fontWeight: "900", marginBottom: 10 },
-  periodGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  periodOption: {
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 999,
-    backgroundColor: COLORS.bg,
-    borderWidth: 1,
-    borderColor: "rgba(107,39,55,0.16)",
-  },
-  periodOptionActive: {
-    backgroundColor: COLORS.primary,
-    borderColor: COLORS.primary,
-  },
-  periodOptionText: { color: COLORS.text, fontWeight: "800", fontSize: 12 },
-  periodOptionTextActive: { color: "#FFF" },
-  dateRow: { flexDirection: "row", gap: 8, marginTop: 12 },
-  input: {
+  loader: {
     flex: 1,
-    backgroundColor: COLORS.bg,
-    borderRadius: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderWidth: 1,
-    borderColor: "rgba(107,39,55,0.2)",
-  },
-
-  applyPeriodBtn: {
-    marginTop: 12,
-    backgroundColor: COLORS.primary,
-    borderRadius: 999,
-    paddingVertical: 12,
     alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
   },
-  applyPeriodBtnText: {
-    color: "#FFF",
-    fontWeight: "900",
+  loaderText: {
+    color: COLORS.muted,
   },
-
-  sectionTitle: {
-    color: COLORS.primary,
-    fontSize: 17,
-    fontWeight: "900",
-    marginBottom: 18,
-  },
-  smallLabel: {
-    color: "rgba(58,58,58,0.62)",
-    fontSize: 13,
-    fontWeight: "800",
-    marginBottom: 10,
-  },
-
-  comparisonLine: {
-    borderRadius: 14,
-    padding: 12,
-    marginBottom: 10,
-  },
-  revenueGradient: { backgroundColor: "#ECFDF5" },
-  expenseGradient: { backgroundColor: "#FEF2F2" },
-  resultGradient: { backgroundColor: "#FEFCE8" },
-  lineTitle: {
-    color: COLORS.text,
-    fontSize: 14,
-    fontWeight: "800",
-    marginBottom: 8,
-  },
-  comparisonBottom: { flexDirection: "row", alignItems: "center", gap: 12 },
-  percentBadge: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999 },
-  percentText: { fontWeight: "900", fontSize: 12 },
-
-  moneyRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    gap: 12,
-    marginBottom: 7,
-  },
-  moneyLabel: {
-    flex: 1,
-    color: "rgba(58,58,58,0.68)",
-    fontSize: 12,
-    fontWeight: "700",
-  },
-  moneyValue: {
-    color: COLORS.primary,
-    fontSize: 12,
-    fontWeight: "900",
-    textAlign: "right",
-  },
-
-  separator: {
-    height: 2,
-    backgroundColor: "rgba(107,39,55,0.18)",
-    marginVertical: 14,
-  },
-  separatorLight: {
-    height: 1,
-    backgroundColor: "rgba(107,39,55,0.12)",
-    marginVertical: 8,
-  },
-
-  chartTitle: {
-    color: COLORS.text,
-    fontWeight: "900",
-    fontSize: 15,
+  periodCard: {
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.line,
+    borderRadius: 20,
+    padding: 16,
     marginBottom: 16,
   },
-  chart: {
-    height: 150,
-    flexDirection: "row",
-    alignItems: "flex-end",
-    gap: 6,
+  sectionEyebrow: {
+    color: COLORS.muted,
+    fontSize: 13,
+    fontWeight: "900",
+    letterSpacing: 2,
     marginBottom: 12,
   },
-  chartPair: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "flex-end",
-    gap: 2,
-  },
-  bar: {
-    flex: 1,
-    borderTopLeftRadius: 8,
-    borderTopRightRadius: 8,
-    opacity: 0.75,
-  },
-  singleBar: {
-    flex: 1,
-    backgroundColor: COLORS.primary,
-    borderTopLeftRadius: 8,
-    borderTopRightRadius: 8,
-    opacity: 0.82,
-  },
-  emptyChartText: {
-    color: "rgba(58,58,58,0.55)",
-    fontWeight: "700",
-    fontSize: 12,
-    alignSelf: "center",
-    textAlign: "center",
-    flex: 1,
-  },
-  legend: {
-    flexDirection: "row",
-    justifyContent: "center",
-    gap: 18,
-    marginTop: 4,
-  },
-  legendItem: { flexDirection: "row", alignItems: "center", gap: 6 },
-  legendDot: { width: 12, height: 12, borderRadius: 3 },
-  legendText: { color: "rgba(58,58,58,0.6)", fontSize: 12 },
-  chartFooter: {
-    marginTop: 8,
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
-  chartDate: { color: "rgba(58,58,58,0.4)", fontSize: 12 },
-
-  forecastCard: {
-    backgroundColor: "#F3F4FF",
-    borderRadius: 14,
-    padding: 14,
-    marginTop: 12,
-  },
-  forecastMonth: {
-    color: COLORS.text,
-    fontWeight: "900",
+  sectionEyebrowOutside: {
+    color: COLORS.muted,
     fontSize: 14,
+    fontWeight: "900",
+    letterSpacing: 2,
+    marginTop: 22,
     marginBottom: 10,
   },
-
-  kpiGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  kpiBox: {
-    width: "48%",
-    borderRadius: 14,
-    padding: 12,
+  periodGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
   },
-  kpiLabel: {
-    color: "rgba(58,58,58,0.6)",
-    fontSize: 11,
-    fontWeight: "700",
-  },
-  kpiValue: {
-    fontSize: 18,
-    fontWeight: "900",
-    marginTop: 4,
-  },
-  kpiSub: {
-    fontSize: 11,
-    fontWeight: "800",
-    marginTop: 4,
-  },
-
-  statementBox: {
-    borderRadius: 14,
-    padding: 12,
-  },
-  resultBox: {
-    backgroundColor: "#FEFCE8",
-    borderRadius: 14,
-    padding: 14,
-  },
-  trendText: {
-    textAlign: "right",
-    fontSize: 12,
-    fontWeight: "900",
-    marginTop: 4,
-  },
-
-  exportRow: { flexDirection: "row", gap: 12 },
-  exportBtn: {
-    flex: 1,
-    borderRadius: 999,
-    paddingVertical: 14,
+  periodButton: {
+    flexGrow: 1,
+    minWidth: "46%",
+    borderWidth: 1.5,
+    borderColor: COLORS.line,
+    borderRadius: 12,
+    paddingVertical: 12,
     alignItems: "center",
-    justifyContent: "center",
+  },
+  periodButtonActive: {
+    backgroundColor: COLORS.brand,
+    borderColor: COLORS.brand,
+  },
+  periodButtonText: {
+    color: COLORS.text,
+    fontWeight: "800",
+  },
+  periodButtonTextActive: {
+    color: COLORS.white,
+  },
+  customPeriod: {
+    marginTop: 12,
+  },
+  dateButtons: {
     flexDirection: "row",
     gap: 8,
   },
-  exportText: { color: "#FFF", fontWeight: "900" },
+  dateButton: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: COLORS.line,
+    borderRadius: 12,
+    padding: 12,
+  },
+  dateCaption: {
+    color: COLORS.muted,
+    fontSize: 11,
+    fontWeight: "800",
+  },
+  dateValue: {
+    color: COLORS.text,
+    fontWeight: "800",
+    marginTop: 4,
+  },
+  applyButton: {
+    backgroundColor: COLORS.brand,
+    borderRadius: 12,
+    padding: 13,
+    alignItems: "center",
+    marginTop: 8,
+  },
+  applyButtonText: {
+    color: COLORS.white,
+    fontWeight: "900",
+  },
+  periodSummary: {
+    color: COLORS.muted,
+    marginTop: 12,
+    textAlign: "center",
+  },
+  registerCard: {
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.line,
+    borderRadius: 22,
+    padding: 18,
+  },
+  blockTitle: {
+    color: COLORS.muted,
+    fontWeight: "900",
+    letterSpacing: 1.6,
+    marginTop: 10,
+    marginBottom: 12,
+  },
+  heroAmountRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  heroLabel: {
+    color: COLORS.brandSoft,
+    fontWeight: "900",
+    fontSize: 15,
+  },
+  heroSubtitle: {
+    color: COLORS.muted,
+    marginTop: 5,
+    maxWidth: 220,
+  },
+  heroAmount: {
+    color: COLORS.text,
+    fontSize: 28,
+    fontWeight: "800",
+  },
+  heroCurrency: {
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  separator: {
+    height: 1,
+    backgroundColor: COLORS.line,
+    marginVertical: 14,
+  },
+  summaryRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: 14,
+    marginBottom: 12,
+  },
+  summaryLabel: {
+    color: "#59484D",
+    fontSize: 16,
+    flex: 1,
+  },
+  summaryAmount: {
+    color: COLORS.text,
+    fontSize: 16,
+    fontWeight: "800",
+  },
+  mutedText: {
+    color: COLORS.muted,
+    fontStyle: "italic",
+  },
+  noExpenseText: {
+    color: COLORS.muted,
+    marginBottom: 12,
+  },
+  resultCard: {
+    backgroundColor: COLORS.brand,
+    borderRadius: 18,
+    padding: 18,
+    marginTop: 10,
+  },
+  resultLabel: {
+    color: COLORS.gold,
+    fontWeight: "900",
+    letterSpacing: 1.2,
+  },
+  resultAmount: {
+    color: COLORS.white,
+    fontSize: 34,
+    fontWeight: "800",
+    marginTop: 12,
+  },
+  resultCurrency: {
+    fontSize: 17,
+    fontWeight: "600",
+  },
+  resultHint: {
+    color: "rgba(255,255,255,0.65)",
+    marginTop: 6,
+  },
+  investmentCard: {
+    borderWidth: 1.5,
+    borderStyle: "dashed",
+    borderColor: "#CBB5C0",
+    borderRadius: 18,
+    backgroundColor: "#F7F2F6",
+    padding: 18,
+  },
+  investmentHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  investmentTitle: {
+    color: COLORS.text,
+    fontSize: 17,
+    fontWeight: "900",
+  },
+  investmentAmount: {
+    color: "#644A60",
+    fontSize: 20,
+    fontWeight: "800",
+  },
+  investmentText: {
+    color: "#806A77",
+    lineHeight: 21,
+    marginTop: 8,
+  },
+  comparisonCard: {
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.line,
+    borderRadius: 20,
+    padding: 18,
+  },
+  chart: {
+    height: 190,
+    flexDirection: "row",
+    justifyContent: "space-around",
+    alignItems: "flex-end",
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.line,
+    paddingHorizontal: 6,
+  },
+  chartGroup: {
+    alignItems: "center",
+    width: 82,
+  },
+  chartBars: {
+    height: 155,
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: 6,
+  },
+  realBar: {
+    width: 20,
+    backgroundColor: COLORS.brandSoft,
+    borderTopLeftRadius: 5,
+    borderTopRightRadius: 5,
+  },
+  estimatedBar: {
+    width: 20,
+    backgroundColor: COLORS.goldPale,
+    borderWidth: 1,
+    borderColor: COLORS.gold,
+    borderTopLeftRadius: 5,
+    borderTopRightRadius: 5,
+  },
+  chartLabel: {
+    color: COLORS.muted,
+    fontWeight: "800",
+    marginTop: 7,
+  },
+  chartLegend: {
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 22,
+    marginVertical: 18,
+  },
+  legendItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+  },
+  realLegendSquare: {
+    width: 14,
+    height: 14,
+    borderRadius: 3,
+    backgroundColor: COLORS.brand,
+  },
+  estimatedLegendSquare: {
+    width: 14,
+    height: 14,
+    borderRadius: 3,
+    backgroundColor: COLORS.goldPale,
+    borderWidth: 1,
+    borderColor: COLORS.gold,
+  },
+  legendText: {
+    color: COLORS.muted,
+  },
+  comparisonRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 13,
+  },
+  comparisonLabel: {
+    color: "#59484D",
+    fontSize: 16,
+  },
+  comparisonRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 7,
+  },
+  comparisonPercent: {
+    color: COLORS.text,
+    fontWeight: "900",
+    fontSize: 16,
+  },
+  comparisonBadge: {
+    backgroundColor: "#F1EDEA",
+    borderRadius: 20,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+  },
+  comparisonBadgePositive: {
+    backgroundColor: COLORS.greenPale,
+  },
+  comparisonBadgeText: {
+    color: COLORS.muted,
+    fontWeight: "800",
+    fontSize: 12,
+  },
+  comparisonBadgeTextPositive: {
+    color: COLORS.green,
+  },
+  comparisonBasis: {
+    color: COLORS.muted,
+    lineHeight: 20,
+    marginTop: 8,
+  },
+  disclaimerCard: {
+    backgroundColor: "#F6EFEA",
+    borderWidth: 1,
+    borderColor: COLORS.line,
+    borderRadius: 16,
+    padding: 16,
+    marginTop: 22,
+  },
+  disclaimerTitle: {
+    color: COLORS.brand,
+    fontWeight: "900",
+    fontSize: 16,
+  },
+  disclaimerText: {
+    color: "#705C62",
+    lineHeight: 22,
+    marginTop: 8,
+  },
+  exportButtons: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  exportButton: {
+    flex: 1,
+    minHeight: 116,
+    borderWidth: 1.5,
+    borderColor: COLORS.line,
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+  },
+  exportButtonText: {
+    color: COLORS.brand,
+    fontSize: 18,
+    fontWeight: "900",
+  },
+  exportHint: {
+    color: COLORS.muted,
+    textAlign: "center",
+    marginTop: 10,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(42,27,32,0.45)",
+    justifyContent: "center",
+    padding: 18,
+  },
+  calendarModal: {
+    backgroundColor: COLORS.white,
+    borderRadius: 20,
+    padding: 16,
+  },
+  calendarTitle: {
+    color: COLORS.brand,
+    fontWeight: "900",
+    fontSize: 19,
+    marginBottom: 8,
+  },
+  calendarDone: {
+    backgroundColor: COLORS.brand,
+    borderRadius: 12,
+    padding: 12,
+    alignItems: "center",
+  },
+  calendarDoneText: {
+    color: COLORS.white,
+    fontWeight: "900",
+  },
 });

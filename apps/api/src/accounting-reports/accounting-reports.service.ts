@@ -4,145 +4,283 @@ import {
   Injectable,
   NotFoundException,
 } from "@nestjs/common";
-import { ExpenseStatus, PaymentStatus, UserRole } from "@prisma/client";
-import { PrismaService } from "../prisma/prisma.service";
-import { GetAccountingReportDto } from "./dto/get-accounting-report.dto";
+import {
+  ExpenseStatus,
+  PaymentStatus,
+  UserRole,
+} from "@prisma/client";
 import ExcelJS from "exceljs";
 import type { Response } from "express";
+import PDFDocument = require("pdfkit");
+
+import { PrismaService } from "../prisma/prisma.service";
+import { GetAccountingReportDto } from "./dto/get-accounting-report.dto";
 
 type AuthUser = {
   userId: string;
   role: UserRole;
 };
 
+type PeriodRange = {
+  start: Date;
+  end: Date;
+};
+
+type RegisterLine = {
+  id: string;
+  date: string;
+  label: string;
+  category: string;
+  amount: number;
+  receiptNumber?: string | null;
+  paymentMethod?: string | null;
+  entryDate?: string | null;
+};
+
+type RegisterReport = Awaited<
+  ReturnType<AccountingReportsService["generate"]>
+>;
+
+const DISCLAIMER =
+  "Ce registre est un outil de suivi de gestion. Il ne constitue pas un document comptable et ne remplace pas votre comptable.";
+
 @Injectable()
 export class AccountingReportsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private async getSalonIdForUser(user: AuthUser): Promise<string> {
-    if (user.role !== UserRole.PROFESSIONAL && user.role !== UserRole.ADMIN) {
-      throw new ForbiddenException("Not allowed");
+  private async getSalonForUser(user: AuthUser) {
+    if (
+      user.role !== UserRole.PROFESSIONAL &&
+      user.role !== UserRole.ADMIN
+    ) {
+      throw new ForbiddenException("Accès non autorisé.");
     }
 
-    if (user.role === UserRole.ADMIN) {
-      const salon = await this.prisma.salon.findFirst({
-        orderBy: { createdAt: "asc" },
-        select: { id: true },
-      });
-
-      if (!salon) {
-        throw new NotFoundException("Aucun salon trouvé");
-      }
-
-      return salon.id;
-    }
-
-    const salon = await this.prisma.salon.findFirst({
-      where: { ownerId: user.userId },
-      select: { id: true },
-    });
+    const salon =
+      user.role === UserRole.ADMIN
+        ? await this.prisma.salon.findFirst({
+            orderBy: {
+              createdAt: "asc",
+            },
+            select: {
+              id: true,
+              name: true,
+              city: true,
+            },
+          })
+        : await this.prisma.salon.findFirst({
+            where: {
+              ownerId: user.userId,
+            },
+            select: {
+              id: true,
+              name: true,
+              city: true,
+            },
+          });
 
     if (!salon) {
-      throw new NotFoundException("Salon introuvable pour cet utilisateur");
+      throw new NotFoundException(
+        "Salon introuvable pour cet utilisateur."
+      );
     }
 
-    return salon.id;
+    return salon;
   }
 
- private resolvePeriod(dto: GetAccountingReportDto) {
-  const now = new Date();
-  let start: Date;
-  let end: Date;
+  private resolvePeriod(dto: GetAccountingReportDto): PeriodRange {
+    const now = new Date();
 
-  if (dto.periodType === "Ce mois") {
-    start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0, 0));
-    end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0, 23, 59, 59, 999));
-  } else if (dto.periodType === "Mois dernier") {
-    start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1, 0, 0, 0, 0));
-    end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 0, 23, 59, 59, 999));
-  } else if (dto.periodType === "Trimestre en cours") {
-    const quarterStartMonth = Math.floor(now.getUTCMonth() / 3) * 3;
-    start = new Date(Date.UTC(now.getUTCFullYear(), quarterStartMonth, 1, 0, 0, 0, 0));
-    end = new Date(Date.UTC(now.getUTCFullYear(), quarterStartMonth + 3, 0, 23, 59, 59, 999));
-  } else if (dto.periodType === "Cette année") {
-    start = new Date(Date.UTC(now.getUTCFullYear(), 0, 1, 0, 0, 0, 0));
-    end = new Date(Date.UTC(now.getUTCFullYear(), 11, 31, 23, 59, 59, 999));
-  } else {
+    if (dto.periodType === "Ce mois") {
+      return {
+        start: new Date(
+          Date.UTC(
+            now.getUTCFullYear(),
+            now.getUTCMonth(),
+            1,
+            0,
+            0,
+            0,
+            0
+          )
+        ),
+        end: now,
+      };
+    }
+
+    if (dto.periodType === "Trimestre") {
+      const quarterStartMonth =
+        Math.floor(now.getUTCMonth() / 3) * 3;
+
+      return {
+        start: new Date(
+          Date.UTC(
+            now.getUTCFullYear(),
+            quarterStartMonth,
+            1,
+            0,
+            0,
+            0,
+            0
+          )
+        ),
+        end: now,
+      };
+    }
+
+    if (dto.periodType === "Année") {
+      return {
+        start: new Date(
+          Date.UTC(now.getUTCFullYear(), 0, 1, 0, 0, 0, 0)
+        ),
+        end: now,
+      };
+    }
+
     if (!dto.startDate || !dto.endDate) {
       throw new BadRequestException(
-        "startDate et endDate sont requis pour une période personnalisée",
+        "startDate et endDate sont requis pour la période Choisir."
       );
     }
 
-    start = new Date(`${dto.startDate}T00:00:00.000Z`);
-    end = new Date(`${dto.endDate}T23:59:59.999Z`);
+    const start = new Date(`${dto.startDate}T00:00:00.000Z`);
+    const requestedEnd = new Date(
+      `${dto.endDate}T23:59:59.999Z`
+    );
 
-    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-      throw new BadRequestException("Dates invalides");
+    if (
+      Number.isNaN(start.getTime()) ||
+      Number.isNaN(requestedEnd.getTime())
+    ) {
+      throw new BadRequestException("Dates invalides.");
     }
 
-    if (start > end) {
+    if (start > requestedEnd) {
       throw new BadRequestException(
-        "La date de début doit précéder la date de fin",
+        "La date de début doit précéder la date de fin."
       );
     }
-  }
 
-  return { start, end };
-}
-private formatMonthLabel(date: Date) {
-  return date.toLocaleDateString("fr-FR", {
-    month: "short",
-    year: "numeric",
-    timeZone: "UTC",
-  });
-}
-
-private addMonths(date: Date, months: number) {
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + months, 1));
-}
-
-private percentDiff(real: number, forecast: number) {
-  if (forecast <= 0) return 0;
-  return Math.round(((real - forecast) / forecast) * 1000) / 10;
-}
-
-private buildForecastFromCurrent(totalRevenue: number, totalExpenses: number) {
-  const baseRevenue = totalRevenue > 0 ? totalRevenue : 900000;
-  const baseExpenses = totalExpenses > 0 ? totalExpenses : 580000;
-
-  const now = new Date();
-
-  return [1, 2, 3].map((offset) => {
-    const monthDate = this.addMonths(now, offset);
-    const revenue = Math.round(baseRevenue * (1 + offset * 0.035));
-    const expenses = Math.round(baseExpenses * (1 + offset * 0.018));
+    const end =
+      requestedEnd.getTime() > now.getTime() ? now : requestedEnd;
 
     return {
-      month: monthDate.toLocaleDateString("fr-FR", {
-        month: "long",
-        year: "numeric",
-        timeZone: "UTC",
-      }),
-      revenue,
-      expenses,
-      result: revenue - expenses,
+      start,
+      end,
     };
-  });
-}
+  }
 
-  async generate(user: AuthUser, dto: GetAccountingReportDto) {
-    const salonId = await this.getSalonIdForUser(user);
-    const { start, end } = this.resolvePeriod(dto);
+  private formatYmd(date: Date): string {
+    return date.toISOString().slice(0, 10);
+  }
 
+  private formatDate(date: Date): string {
+    return date.toLocaleDateString("fr-FR", {
+      timeZone: "UTC",
+    });
+  }
+
+  private formatDateTime(date: Date): string {
+    return date.toLocaleString("fr-FR", {
+      timeZone: "UTC",
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }
+
+  private formatPeriodLabel(start: Date, end: Date): string {
+    return `Du ${this.formatDate(start)} au ${this.formatDate(end)}`;
+  }
+
+  private addUtcMonths(date: Date, months: number): Date {
+    return new Date(
+      Date.UTC(
+        date.getUTCFullYear(),
+        date.getUTCMonth() + months,
+        1,
+        0,
+        0,
+        0,
+        0
+      )
+    );
+  }
+
+  private getPreviousMonthRanges(
+    referenceStart: Date
+  ): PeriodRange[] {
+    const referenceMonth = new Date(
+      Date.UTC(
+        referenceStart.getUTCFullYear(),
+        referenceStart.getUTCMonth(),
+        1
+      )
+    );
+
+    return [3, 2, 1].map((monthsBack) => {
+      const start = this.addUtcMonths(
+        referenceMonth,
+        -monthsBack
+      );
+      const end = new Date(
+        Date.UTC(
+          start.getUTCFullYear(),
+          start.getUTCMonth() + 1,
+          0,
+          23,
+          59,
+          59,
+          999
+        )
+      );
+
+      return {
+        start,
+        end,
+      };
+    });
+  }
+
+  private percentDiff(
+    real: number,
+    estimated: number
+  ): number | null {
+    if (estimated === 0) {
+      return real === 0 ? null : null;
+    }
+
+    return (
+      Math.round(
+        ((real - estimated) / estimated) * 1000
+      ) / 10
+    );
+  }
+
+  private getPaymentAmount(payment: {
+    amount: number;
+    payableAmount: number | null;
+  }): number {
+    return payment.payableAmount &&
+      payment.payableAmount > 0
+      ? payment.payableAmount
+      : payment.amount;
+  }
+
+  private async getPeriodData(
+    salonId: string,
+    range: PeriodRange
+  ) {
     const [payments, expenses] = await Promise.all([
       this.prisma.paymentIntent.findMany({
         where: {
           salonId,
           status: PaymentStatus.SUCCEEDED,
           transactionDate: {
-            gte: start,
-            lte: end,
+            gte: range.start,
+            lte: range.end,
           },
         },
         select: {
@@ -153,7 +291,7 @@ private buildForecastFromCurrent(totalRevenue: number, totalExpenses: number) {
           transactionDate: true,
         },
         orderBy: {
-          transactionDate: "desc",
+          transactionDate: "asc",
         },
       }),
       this.prisma.expense.findMany({
@@ -162,8 +300,8 @@ private buildForecastFromCurrent(totalRevenue: number, totalExpenses: number) {
           status: ExpenseStatus.CONFIRMED,
           deletedAt: null,
           expenseDate: {
-            gte: start,
-            lte: end,
+            gte: range.start,
+            lte: range.end,
           },
         },
         select: {
@@ -172,306 +310,807 @@ private buildForecastFromCurrent(totalRevenue: number, totalExpenses: number) {
           description: true,
           amount: true,
           expenseDate: true,
+          createdAt: true,
+          receiptNumber: true,
+          paymentMethod: true,
+          isInvestment: true,
         },
         orderBy: {
-          expenseDate: "desc",
+          expenseDate: "asc",
         },
       }),
     ]);
 
+    const operatingExpenses = expenses.filter(
+      (expense) => !expense.isInvestment
+    );
+    const investments = expenses.filter(
+      (expense) => expense.isInvestment
+    );
+
     const totalRevenue = payments.reduce(
-      (sum, item) => sum + (item.payableAmount && item.payableAmount > 0 ? item.payableAmount : item.amount),
-      0,
+      (sum, payment) =>
+        sum + this.getPaymentAmount(payment),
+      0
     );
 
-    const totalExpenses = expenses.reduce((sum, item) => sum + item.amount, 0);
-    const netResult = totalRevenue - totalExpenses;
-
-    const expensesByCategoryMap = new Map<string, number>();
-
-    for (const expense of expenses) {
-      const key = expense.category || "Autres charges";
-      expensesByCategoryMap.set(key, (expensesByCategoryMap.get(key) ?? 0) + expense.amount);
-    }
-
-    const expensesByCategory = Array.from(expensesByCategoryMap.entries()).map(
-      ([category, amount]) => ({
-        category,
-        amount,
-      }),
+    const totalExpenses = operatingExpenses.reduce(
+      (sum, expense) => sum + expense.amount,
+      0
     );
 
-    const revenueByPaymentTypeMap = new Map<string, number>();
-
-    for (const payment of payments) {
-      const key = payment.type ?? "UNKNOWN";
-      const value =
-        payment.payableAmount && payment.payableAmount > 0
-          ? payment.payableAmount
-          : payment.amount;
-
-      revenueByPaymentTypeMap.set(key, (revenueByPaymentTypeMap.get(key) ?? 0) + value);
-    }
-
-    const revenueByPaymentType = Array.from(revenueByPaymentTypeMap.entries()).map(
-      ([type, amount]) => ({
-        type,
-        amount,
-      }),
+    const totalInvestments = investments.reduce(
+      (sum, expense) => sum + expense.amount,
+      0
     );
-
-    const previousPeriodStart = new Date(start);
-    const previousPeriodEnd = new Date(end);
-    const duration = end.getTime() - start.getTime() + 1;
-
-    previousPeriodStart.setTime(start.getTime() - duration);
-    previousPeriodEnd.setTime(end.getTime() - duration);
-
-    const previousPayments = await this.prisma.paymentIntent.findMany({
-      where: {
-        salonId,
-        status: PaymentStatus.SUCCEEDED,
-        transactionDate: {
-          gte: previousPeriodStart,
-          lte: previousPeriodEnd,
-        },
-      },
-      select: {
-        amount: true,
-        payableAmount: true,
-      },
-    });
-
-    const previousRevenue = previousPayments.reduce(
-      (sum, item) => sum + (item.payableAmount && item.payableAmount > 0 ? item.payableAmount : item.amount),
-      0,
-    );
-
-    const trendPercent =
-      previousRevenue <= 0
-        ? 0
-        : Math.round(((totalRevenue - previousRevenue) / previousRevenue) * 100);
-        const forecastServiceSales = Math.round(totalRevenue * 1.06);
-const forecastProductSales = 0;
-const forecastTotalRevenue = forecastServiceSales + forecastProductSales;
-const forecastTotalExpenses = Math.round(totalExpenses * 0.92);
-const forecastNetResult = forecastTotalRevenue - forecastTotalExpenses;
-
-const forecastExpensesByCategory = expensesByCategory.map((item) => ({
-  category: item.category,
-  amount: Math.round(item.amount * 0.92),
-}));
-
-const forecastNextMonths = this.buildForecastFromCurrent(
-  totalRevenue,
-  totalExpenses,
-);
-
-const chartMonths = Array.from({ length: 6 }).map((_, index) => {
-  const monthDate = this.addMonths(new Date(), index - 5);
-  const factor = 0.82 + index * 0.04;
-
-  const realValue = Math.round(totalRevenue * factor);
-  const forecastValue = Math.round(realValue * 1.08);
-
-  return {
-    label: this.formatMonthLabel(monthDate),
-    real: realValue,
-    forecast: forecastValue,
-  };
-});
-
-const forecastQuarterRevenue = forecastNextMonths.reduce(
-  (sum, item) => sum + item.revenue,
-  0,
-);
-const forecastQuarterExpenses = forecastNextMonths.reduce(
-  (sum, item) => sum + item.expenses,
-  0,
-);
-const forecastQuarterResult = forecastQuarterRevenue - forecastQuarterExpenses;
-const forecastMarginPercent =
-  forecastQuarterRevenue <= 0
-    ? 0
-    : Math.round((forecastQuarterResult / forecastQuarterRevenue) * 100);
 
     return {
-      reportType: dto.reportType,
-      periodType: dto.periodType,
-      period: {
-        start: start.toISOString().slice(0, 10),
-        end: end.toISOString().slice(0, 10),
-      },
-      summary: {
-        totalRevenue,
-        totalExpenses,
-        netResult,
-        trendPercent,
-      },
-      incomeStatement: {
-        revenue: {
-          serviceSales: totalRevenue,
-          productSales: 0,
-          total: totalRevenue,
-        },
-        expenses: {
-          byCategory: expensesByCategory,
-          total: totalExpenses,
-        },
-        netResult,
-      },
-      monthlyReport: {
-        revenue: totalRevenue,
-        expenses: totalExpenses,
-        result: netResult,
-      },
-      meta: {
-        paymentCount: payments.length,
-        expenseCount: expenses.length,
-        revenueByPaymentType,
-      },
-      comparison: {
-  revenue: {
-    serviceSales: {
-      real: totalRevenue,
-      forecast: forecastServiceSales,
-      diffPercent: this.percentDiff(totalRevenue, forecastServiceSales),
-    },
-    productSales: {
-      real: 0,
-      forecast: forecastProductSales,
-      diffPercent: this.percentDiff(0, forecastProductSales),
-    },
-  },
-  expenses: expensesByCategory.map((item, index) => {
-    const forecastItem = forecastExpensesByCategory[index];
-
-    return {
-      category: item.category,
-      real: item.amount,
-      forecast: forecastItem?.amount ?? 0,
-      diffPercent: this.percentDiff(item.amount, forecastItem?.amount ?? 0),
-    };
-  }),
-  netResult: {
-    real: netResult,
-    forecast: forecastNetResult,
-    diffPercent: this.percentDiff(netResult, forecastNetResult),
-  },
-},
-forecast: {
-  months: forecastNextMonths,
-  kpis: {
-    quarterRevenue: forecastQuarterRevenue,
-    quarterExpenses: forecastQuarterExpenses,
-    quarterResult: forecastQuarterResult,
-    marginPercent: forecastMarginPercent,
-    expectedClients: Math.max(0, Math.round(payments.length * 1.12)),
-    averageBasket:
-      payments.length <= 0
-        ? 0
-        : Math.round(forecastQuarterRevenue / Math.max(1, payments.length * 3)),
-  },
-},
-charts: {
-  realVsForecast: chartMonths,
-  realMonthly: chartMonths.map((item) => ({
-    label: item.label,
-    value: item.real,
-  })),
-},
+      payments,
+      operatingExpenses,
+      investments,
+      totalRevenue,
+      totalExpenses,
+      totalInvestments,
+      result: totalRevenue - totalExpenses,
     };
   }
 
-  async exportExcel(user: AuthUser, dto: GetAccountingReportDto, res: Response) {
+  private buildExpenseCategories(
+    expenses: Array<{
+      category: string;
+      amount: number;
+    }>
+  ) {
+    const totals = new Map<string, number>();
+
+    for (const expense of expenses) {
+      const category = expense.category || "Autres";
+
+      totals.set(
+        category,
+        (totals.get(category) ?? 0) + expense.amount
+      );
+    }
+
+    return Array.from(totals.entries())
+      .map(([category, amount]) => ({
+        category,
+        amount,
+      }))
+      .sort((a, b) => b.amount - a.amount);
+  }
+
+  private buildRevenueLines(
+    payments: Array<{
+      id: string;
+      amount: number;
+      payableAmount: number | null;
+      type: unknown;
+      transactionDate: Date | null;
+    }>
+  ): RegisterLine[] {
+    return payments.map((payment) => ({
+      id: payment.id,
+      date: this.formatYmd(
+        payment.transactionDate ?? new Date()
+      ),
+      label: "Prestation",
+      category: "Prestations",
+      amount: this.getPaymentAmount(payment),
+      paymentMethod: String(payment.type ?? ""),
+    }));
+  }
+
+  private buildExpenseLines(
+    expenses: Array<{
+      id: string;
+      category: string;
+      description: string | null;
+      amount: number;
+      expenseDate: Date;
+      createdAt: Date;
+      receiptNumber: string | null;
+      paymentMethod: unknown;
+    }>
+  ): RegisterLine[] {
+    return expenses.map((expense) => ({
+      id: expense.id,
+      date: this.formatYmd(expense.expenseDate),
+      label: expense.description || expense.category,
+      category: expense.category,
+      amount: expense.amount,
+      receiptNumber: expense.receiptNumber,
+      paymentMethod: expense.paymentMethod
+        ? String(expense.paymentMethod)
+        : null,
+      entryDate: expense.createdAt.toISOString(),
+    }));
+  }
+
+  async generate(
+    user: AuthUser,
+    dto: GetAccountingReportDto
+  ) {
+    const salon = await this.getSalonForUser(user);
+    const range = this.resolvePeriod(dto);
+    const data = await this.getPeriodData(
+      salon.id,
+      range
+    );
+
+    const previousRanges = this.getPreviousMonthRanges(
+      range.start
+    );
+
+    const previousData = await Promise.all(
+      previousRanges.map((previousRange) =>
+        this.getPeriodData(salon.id, previousRange)
+      )
+    );
+
+    const estimatedRevenue = Math.round(
+      previousData.reduce(
+        (sum, item) => sum + item.totalRevenue,
+        0
+      ) / previousData.length
+    );
+
+    const estimatedExpenses = Math.round(
+      previousData.reduce(
+        (sum, item) => sum + item.totalExpenses,
+        0
+      ) / previousData.length
+    );
+
+    const estimatedResult = Math.round(
+      previousData.reduce(
+        (sum, item) => sum + item.result,
+        0
+      ) / previousData.length
+    );
+
+    const expensesByCategory =
+      this.buildExpenseCategories(
+        data.operatingExpenses
+      );
+
+    const generatedAt = new Date();
+
+    return {
+      periodType: dto.periodType,
+      period: {
+        start: this.formatYmd(range.start),
+        end: this.formatYmd(range.end),
+        label: this.formatPeriodLabel(
+          range.start,
+          range.end
+        ),
+        isCurrentPeriod:
+          range.end.getTime() >=
+          generatedAt.getTime() - 60_000,
+      },
+      establishment: {
+        name: salon.name,
+        city: salon.city ?? null,
+      },
+      generatedAt: generatedAt.toISOString(),
+      revenue: {
+        services: data.totalRevenue,
+        products: 0,
+        total: data.totalRevenue,
+        lineCount: data.payments.length,
+        lines: this.buildRevenueLines(data.payments),
+      },
+      expenses: {
+        byCategory: expensesByCategory,
+        total: data.totalExpenses,
+        lineCount: data.operatingExpenses.length,
+        lines: this.buildExpenseLines(
+          data.operatingExpenses
+        ),
+      },
+      result: data.result,
+      investments: {
+        total: data.totalInvestments,
+        lineCount: data.investments.length,
+        lines: this.buildExpenseLines(
+          data.investments
+        ),
+      },
+      comparison: {
+        basisLabel: `Estimé sur vos trois derniers mois (${previousRanges
+          .map((previousRange) =>
+            previousRange.start.toLocaleDateString(
+              "fr-FR",
+              {
+                month: "short",
+                timeZone: "UTC",
+              }
+            )
+          )
+          .join(" à ")}).`,
+        revenue: {
+          real: data.totalRevenue,
+          estimated: estimatedRevenue,
+          diffPercent: this.percentDiff(
+            data.totalRevenue,
+            estimatedRevenue
+          ),
+        },
+        expenses: {
+          real: data.totalExpenses,
+          estimated: estimatedExpenses,
+          diffPercent: this.percentDiff(
+            data.totalExpenses,
+            estimatedExpenses
+          ),
+        },
+        result: {
+          real: data.result,
+          estimated: estimatedResult,
+          diffPercent: this.percentDiff(
+            data.result,
+            estimatedResult
+          ),
+        },
+      },
+    };
+  }
+
+  private sanitizeFilename(value: string): string {
+    return value
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-zA-Z0-9_-]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+  }
+
+  private buildFilename(
+    report: RegisterReport,
+    extension: "pdf" | "xlsx"
+  ): string {
+    const salonName =
+      this.sanitizeFilename(
+        report.establishment.name
+      ) || "Etablissement";
+
+    const period = report.period.start.slice(0, 7);
+
+    return `AMBYA_Registre_${salonName}_${period}.${extension}`;
+  }
+
+  async exportExcel(
+    user: AuthUser,
+    dto: GetAccountingReportDto,
+    response: Response
+  ) {
     const report = await this.generate(user, dto);
-
     const workbook = new ExcelJS.Workbook();
-    const sheet = workbook.addWorksheet("Rapport comptable");
 
-    sheet.columns = [
-      { header: "Section", key: "section", width: 28 },
-      { header: "Libellé", key: "label", width: 34 },
-      { header: "Valeur", key: "value", width: 20 },
+    workbook.creator = "AMBYA";
+    workbook.created = new Date(report.generatedAt);
+
+    const summary = workbook.addWorksheet(
+      "Récapitulatif"
+    );
+
+    summary.columns = [
+      {
+        header: "Rubrique",
+        key: "label",
+        width: 38,
+      },
+      {
+        header: "Montant TTC (FCFA)",
+        key: "amount",
+        width: 24,
+      },
     ];
 
-    sheet.getRow(1).font = { bold: true };
-    sheet.getRow(1).alignment = { horizontal: "center", vertical: "middle" };
+    summary.addRow({
+      label: "Registre de gestion",
+      amount: null,
+    });
+    summary.addRow({
+      label: "Établissement",
+      amount: report.establishment.name,
+    });
+    summary.addRow({
+      label: "Période",
+      amount: report.period.label,
+    });
+    summary.addRow({
+      label: "Généré le",
+      amount: this.formatDateTime(
+        new Date(report.generatedAt)
+      ),
+    });
+    summary.addRow({});
 
-    sheet.addRow({
-      section: "Rapport",
-      label: "Type",
-      value: report.reportType,
+    summary.addRow({
+      label: "RECETTES",
+      amount: null,
     });
-    sheet.addRow({
-      section: "Période",
-      label: "Du",
-      value: report.period.start,
+    summary.addRow({
+      label: "Prestations",
+      amount: report.revenue.services,
     });
-    sheet.addRow({
-      section: "Période",
-      label: "Au",
-      value: report.period.end,
+    summary.addRow({
+      label: "Ventes de produits",
+      amount: report.revenue.products,
     });
-
-    sheet.addRow({});
-    sheet.addRow({
-      section: "Résumé",
-      label: "Chiffre d'affaires",
-      value: report.summary.totalRevenue,
-    });
-    sheet.addRow({
-      section: "Résumé",
-      label: "Charges",
-      value: report.summary.totalExpenses,
-    });
-    sheet.addRow({
-      section: "Résumé",
-      label: "Résultat net",
-      value: report.summary.netResult,
-    });
-    sheet.addRow({
-      section: "Résumé",
-      label: "Tendance (%)",
-      value: report.summary.trendPercent,
+    summary.addRow({
+      label: "Total recettes",
+      amount: report.revenue.total,
     });
 
-    sheet.addRow({});
-    sheet.addRow({
-      section: "Classe 7",
-      label: "Ventes de services",
-      value: report.incomeStatement.revenue.serviceSales,
+    summary.addRow({});
+    summary.addRow({
+      label: "DÉPENSES",
+      amount: null,
     });
 
-    for (const item of report.incomeStatement.expenses.byCategory) {
-      sheet.addRow({
-        section: "Classe 6",
-        label: item.category,
-        value: item.amount,
+    for (const expense of report.expenses.byCategory) {
+      summary.addRow({
+        label: expense.category,
+        amount: expense.amount,
       });
     }
 
-    sheet.eachRow((row, rowNumber) => {
-      if (rowNumber > 1) {
-        const cell = row.getCell(3);
-        if (typeof cell.value === "number") {
-          cell.numFmt = '#,##0 "FCFA"';
-        }
+    summary.addRow({
+      label: "Total dépenses",
+      amount: report.expenses.total,
+    });
+    summary.addRow({
+      label: "RÉSULTAT DE LA PÉRIODE",
+      amount: report.result,
+    });
+    summary.addRow({});
+    summary.addRow({
+      label: "Investissements — hors résultat",
+      amount: report.investments.total,
+    });
+    summary.addRow({});
+    summary.addRow({
+      label: "Réalisé — recettes",
+      amount: report.comparison.revenue.real,
+    });
+    summary.addRow({
+      label: "Estimé — recettes",
+      amount: report.comparison.revenue.estimated,
+    });
+    summary.addRow({
+      label: "Réalisé — dépenses",
+      amount: report.comparison.expenses.real,
+    });
+    summary.addRow({
+      label: "Estimé — dépenses",
+      amount: report.comparison.expenses.estimated,
+    });
+    summary.addRow({
+      label: "Réalisé — résultat",
+      amount: report.comparison.result.real,
+    });
+    summary.addRow({
+      label: "Estimé — résultat",
+      amount: report.comparison.result.estimated,
+    });
+    summary.addRow({});
+    summary.addRow({
+      label: DISCLAIMER,
+      amount: null,
+    });
+
+    summary.getRow(1).font = {
+      bold: true,
+      size: 16,
+      color: {
+        argb: "FF6B2737",
+      },
+    };
+
+    summary.eachRow((row) => {
+      const amountCell = row.getCell(2);
+
+      if (typeof amountCell.value === "number") {
+        amountCell.numFmt = '#,##0 "FCFA"';
       }
     });
 
-    const filename = `accounting-report-${report.reportType}-${report.period.start}-${report.period.end}.xlsx`;
+    const detail = workbook.addWorksheet("Détail");
 
-    res.setHeader(
+    detail.columns = [
+      {
+        header: "Type",
+        key: "type",
+        width: 18,
+      },
+      {
+        header: "Date",
+        key: "date",
+        width: 14,
+      },
+      {
+        header: "Libellé",
+        key: "label",
+        width: 36,
+      },
+      {
+        header: "Catégorie",
+        key: "category",
+        width: 32,
+      },
+      {
+        header: "Montant TTC (FCFA)",
+        key: "amount",
+        width: 22,
+      },
+      {
+        header: "Mode de paiement",
+        key: "paymentMethod",
+        width: 22,
+      },
+      {
+        header: "N° reçu",
+        key: "receiptNumber",
+        width: 20,
+      },
+      {
+        header: "Date de saisie",
+        key: "entryDate",
+        width: 20,
+      },
+    ];
+
+    const appendLine = (
+      type: string,
+      line: RegisterLine
+    ) => {
+      detail.addRow({
+        type,
+        date: new Date(`${line.date}T00:00:00.000Z`),
+        label: line.label,
+        category: line.category,
+        amount: line.amount,
+        paymentMethod: line.paymentMethod ?? "",
+        receiptNumber: line.receiptNumber ?? "",
+        entryDate: line.entryDate
+          ? new Date(line.entryDate)
+          : "",
+      });
+    };
+
+    report.revenue.lines.forEach((line) =>
+      appendLine("Recette", line)
+    );
+    report.expenses.lines.forEach((line) =>
+      appendLine("Dépense", line)
+    );
+    report.investments.lines.forEach((line) =>
+      appendLine("Investissement", line)
+    );
+
+    detail.getRow(1).font = {
+      bold: true,
+    };
+    detail.getColumn("date").numFmt = "dd/mm/yyyy";
+    detail.getColumn("amount").numFmt =
+      '#,##0 "FCFA"';
+    detail.getColumn("entryDate").numFmt =
+      "dd/mm/yyyy hh:mm";
+
+    const filename = this.buildFilename(
+      report,
+      "xlsx"
+    );
+
+    response.setHeader(
       "Content-Type",
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     );
-    res.setHeader(
+    response.setHeader(
       "Content-Disposition",
-      `attachment; filename="${filename}"`,
+      `attachment; filename="${filename}"`
     );
 
-    await workbook.xlsx.write(res);
-    res.end();
+    await workbook.xlsx.write(response);
+    response.end();
+  }
+
+  async exportPdf(
+    user: AuthUser,
+    dto: GetAccountingReportDto,
+    response: Response
+  ) {
+    const report = await this.generate(user, dto);
+    const filename = this.buildFilename(
+      report,
+      "pdf"
+    );
+
+    response.setHeader(
+      "Content-Type",
+      "application/pdf"
+    );
+    response.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${filename}"`
+    );
+
+    const document = new PDFDocument({
+      size: "A4",
+      margin: 46,
+      info: {
+        Title: "AMBYA — Registre de gestion",
+        Author: "AMBYA",
+      },
+    });
+
+    document.pipe(response);
+
+    const brand = "#6B2737";
+    const gold = "#D4AF6A";
+    const text = "#2A1B20";
+    const muted = "#8A7A7E";
+
+    const money = (value: number) =>
+      `${new Intl.NumberFormat("fr-FR").format(
+        value
+      )} FCFA`;
+
+    const row = (
+      label: string,
+      value: number,
+      bold = false
+    ) => {
+      document
+        .font(bold ? "Helvetica-Bold" : "Helvetica")
+        .fillColor(text)
+        .fontSize(10.5)
+        .text(label, {
+          continued: true,
+        })
+        .text(money(value), {
+          align: "right",
+        });
+    };
+
+    const section = (title: string) => {
+      document
+        .moveDown(0.8)
+        .font("Helvetica-Bold")
+        .fillColor(muted)
+        .fontSize(10)
+        .text(title.toUpperCase(), {
+          characterSpacing: 1.2,
+        })
+        .moveDown(0.5);
+    };
+
+    document
+      .font("Helvetica-Bold")
+      .fillColor(gold)
+      .fontSize(11)
+      .text("A M B Y A", {
+        align: "center",
+        characterSpacing: 4,
+      });
+
+    document
+      .moveDown(0.4)
+      .fillColor(brand)
+      .font("Helvetica-Bold")
+      .fontSize(22)
+      .text("Registre de gestion", {
+        align: "center",
+      });
+
+    document
+      .moveDown(0.3)
+      .font("Helvetica")
+      .fillColor(muted)
+      .fontSize(10)
+      .text(
+        `${report.establishment.name}${
+          report.establishment.city
+            ? ` · ${report.establishment.city}`
+            : ""
+        }`,
+        {
+          align: "center",
+        }
+      )
+      .text(report.period.label, {
+        align: "center",
+      })
+      .text(
+        `Document généré le ${this.formatDateTime(
+          new Date(report.generatedAt)
+        )}`,
+        {
+          align: "center",
+        }
+      );
+
+    document
+      .moveDown(0.8)
+      .strokeColor(gold)
+      .lineWidth(1)
+      .moveTo(46, document.y)
+      .lineTo(549, document.y)
+      .stroke();
+
+    section("Recettes");
+    row("Prestations", report.revenue.services);
+    row(
+      "Ventes de produits",
+      report.revenue.products
+    );
+    row("Total", report.revenue.total, true);
+
+    document
+      .font("Helvetica-Oblique")
+      .fillColor(muted)
+      .fontSize(9)
+      .text(
+        "Encaissements de la période · montants TTC"
+      );
+
+    section("Dépenses");
+
+    if (report.expenses.byCategory.length === 0) {
+      document
+        .font("Helvetica")
+        .fillColor(muted)
+        .fontSize(10.5)
+        .text("Aucune dépense enregistrée");
+    } else {
+      report.expenses.byCategory.forEach(
+        (expense) =>
+          row(expense.category, expense.amount)
+      );
+    }
+
+    row("Total", report.expenses.total, true);
+
+    document
+      .moveDown(0.8)
+      .roundedRect(46, document.y, 503, 54, 8)
+      .fill(brand);
+
+    const resultY = document.y - 42;
+
+    document
+      .fillColor(gold)
+      .font("Helvetica-Bold")
+      .fontSize(11)
+      .text("RÉSULTAT DE LA PÉRIODE", 62, resultY, {
+        continued: true,
+      })
+      .fillColor("#FFFFFF")
+      .fontSize(17)
+      .text(money(report.result), {
+        align: "right",
+      });
+
+    document.y = resultY + 58;
+
+    section("En dehors du résultat");
+    row(
+      "Investissements",
+      report.investments.total,
+      true
+    );
+
+    section("Comparaison avec vos mois précédents");
+    row(
+      "Recettes — réalisé",
+      report.comparison.revenue.real
+    );
+    row(
+      "Recettes — estimé",
+      report.comparison.revenue.estimated
+    );
+    row(
+      "Dépenses — réalisé",
+      report.comparison.expenses.real
+    );
+    row(
+      "Dépenses — estimé",
+      report.comparison.expenses.estimated
+    );
+    row(
+      "Résultat — réalisé",
+      report.comparison.result.real
+    );
+    row(
+      "Résultat — estimé",
+      report.comparison.result.estimated
+    );
+
+    document
+      .moveDown(0.4)
+      .font("Helvetica-Oblique")
+      .fillColor(muted)
+      .fontSize(9)
+      .text(report.comparison.basisLabel);
+
+    section("Détail ligne par ligne");
+
+    const writeDetail = (
+      title: string,
+      lines: RegisterLine[]
+    ) => {
+      document
+        .font("Helvetica-Bold")
+        .fillColor(brand)
+        .fontSize(10)
+        .text(title);
+
+      if (lines.length === 0) {
+        document
+          .font("Helvetica")
+          .fillColor(muted)
+          .text("Aucune ligne.");
+        return;
+      }
+
+      for (const line of lines) {
+        document
+          .font("Helvetica")
+          .fillColor(text)
+          .fontSize(8.5)
+          .text(
+            `${line.date} · ${line.label} · ${line.category} · ${money(
+              line.amount
+            )}${
+              line.receiptNumber
+                ? ` · Reçu ${line.receiptNumber}`
+                : ""
+            }`
+          );
+      }
+
+      document.moveDown(0.4);
+    };
+
+    writeDetail(
+      "Recettes",
+      report.revenue.lines
+    );
+    writeDetail(
+      "Dépenses",
+      report.expenses.lines
+    );
+    writeDetail(
+      "Investissements",
+      report.investments.lines
+    );
+
+    document
+      .moveDown(1)
+      .strokeColor("#D8C6CE")
+      .dash(3, {
+        space: 3,
+      })
+      .moveTo(46, document.y)
+      .lineTo(549, document.y)
+      .stroke()
+      .undash();
+
+    document
+      .moveDown(0.8)
+      .font("Helvetica-Oblique")
+      .fillColor(muted)
+      .fontSize(9)
+      .text(
+        `Montants TTC. ${DISCLAIMER}`
+      )
+      .moveDown(0.4)
+      .text(
+        "Les justificatifs ne sont pas joints. Conservez vos reçus papier."
+      );
+
+    document.end();
   }
 }

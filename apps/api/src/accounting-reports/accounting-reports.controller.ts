@@ -5,24 +5,25 @@ import {
   Res,
   UseGuards,
 } from "@nestjs/common";
-import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import type { Response } from "express";
+
 import { CurrentUser } from "../auth/decorators/current-user.decorator";
 import type { JwtUser } from "../auth/decorators/current-user.decorator";
+import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { AccountingReportsService } from "./accounting-reports.service";
 import { GetAccountingReportDto } from "./dto/get-accounting-report.dto";
-import type { Response } from "express";
 
 @Controller("pro/accounting-reports")
 @UseGuards(JwtAuthGuard)
 export class AccountingReportsController {
   constructor(
-    private readonly accountingReportsService: AccountingReportsService,
+    private readonly accountingReportsService: AccountingReportsService
   ) {}
 
   @Get()
   getReport(
     @CurrentUser() user: JwtUser,
-    @Query() dto: GetAccountingReportDto,
+    @Query() dto: GetAccountingReportDto
   ) {
     return this.accountingReportsService.generate(user, dto);
   }
@@ -31,14 +32,26 @@ export class AccountingReportsController {
   exportReport(
     @CurrentUser() user: JwtUser,
     @Query() dto: GetAccountingReportDto,
-    @Res() res: Response,
+    @Res() response: Response
   ) {
-    if (dto.format !== "excel") {
-      return res.status(400).json({
-        message: "Seul le format excel est supporté pour le moment",
-      });
+    if (dto.format === "pdf") {
+      return this.accountingReportsService.exportPdf(
+        user,
+        dto,
+        response
+      );
     }
 
-    return this.accountingReportsService.exportExcel(user, dto, res);
+    if (dto.format === "excel") {
+      return this.accountingReportsService.exportExcel(
+        user,
+        dto,
+        response
+      );
+    }
+
+    return response.status(400).json({
+      message: "Le format doit être pdf ou excel.",
+    });
   }
 }
