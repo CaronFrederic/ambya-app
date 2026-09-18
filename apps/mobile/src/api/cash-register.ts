@@ -24,10 +24,17 @@ export type CashRegisterResponse = {
     card: number;
     cash: number;
   };
+  shares: {
+    salonPercentage: number;
+    salonAmount: number;
+    ambyaPercentage: number;
+    ambyaAmount: number;
+  };
   transactions: CashRegisterTransaction[];
   breakdown: {
     name: string;
     value: number;
+    amount: number;
     color: string;
   }[];
   meta: {
@@ -40,7 +47,7 @@ export type CashRegisterResponse = {
 
 export function getCashRegister(
   token: string,
-  params: { date: string; method?: CashMethod }
+  params: { date: string; method?: CashMethod },
 ) {
   const search = new URLSearchParams();
   search.set("date", params.date);
@@ -51,6 +58,6 @@ export function getCashRegister(
     {
       method: "GET",
       token,
-    }
+    },
   );
 }

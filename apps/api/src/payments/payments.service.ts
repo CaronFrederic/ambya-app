@@ -338,134 +338,163 @@ export class PaymentsService {
   }
 
   async getCashRegister(
-  user: { userId: string; role: UserRole },
-  date?: string,
-  method?: string,
-) {
-  if (!['PROFESSIONAL', 'ADMIN'].includes(user.role)) {
-    throw new ForbiddenException('Not allowed');
-  }
+    user: { userId: string; role: UserRole },
+    date?: string,
+    method?: string,
+  ) {
+    if (!['PROFESSIONAL', 'ADMIN'].includes(user.role)) {
+      throw new ForbiddenException('Not allowed');
+    }
 
-  // 1. récupérer salons
-  const salonIds =
-    user.role === 'ADMIN'
-      ? (await this.prisma.salon.findMany({ select: { id: true } })).map(s => s.id)
-      : (await this.prisma.salon.findMany({
-          where: { ownerId: user.userId },
-          select: { id: true },
-        })).map(s => s.id);
+    const salonIds =
+      user.role === 'ADMIN'
+        ? (await this.prisma.salon.findMany({ select: { id: true } })).map(
+            (salon) => salon.id,
+          )
+        : (
+            await this.prisma.salon.findMany({
+              where: { ownerId: user.userId },
+              select: { id: true },
+            })
+          ).map((salon) => salon.id);
 
-  if (!salonIds.length) {
-    return {
-      date: date ?? new Date().toISOString().slice(0, 10),
+    const requestedDate = date ?? new Date().toISOString().slice(0, 10);
+    const targetDate = new Date(`${requestedDate}T12:00:00`);
+
+    if (Number.isNaN(targetDate.getTime())) {
+      throw new BadRequestException('Invalid date');
+    }
+
+    const start = new Date(targetDate);
+    start.setHours(0, 0, 0, 0);
+
+    const end = new Date(targetDate);
+    end.setHours(23, 59, 59, 999);
+
+    const emptyResponse = {
+      date: requestedDate,
       totals: { total: 0, mobileMoney: 0, card: 0, cash: 0 },
+      shares: {
+        salonPercentage: 85,
+        salonAmount: 0,
+        ambyaPercentage: 15,
+        ambyaAmount: 0,
+      },
       transactions: [],
       breakdown: [
-        { name: 'Part salon', value: 65, color: '#6B2737' },
-        { name: 'Commission AMBYA', value: 15, color: '#D4AF6A' },
-        { name: 'Frais transaction', value: 5, color: '#8B8B8B' },
+        { name: 'Part salon', value: 85, amount: 0, color: '#6B2737' },
+        { name: 'Commission AMBYA', value: 15, amount: 0, color: '#D4AF6A' },
       ],
       meta: { count: 0, paidCount: 0, pendingCount: 0, paidTotal: 0 },
     };
-  }
 
-  // 2. date bounds
-  const targetDate = date ? new Date(date) : new Date();
-  if (Number.isNaN(targetDate.getTime())) {
-    throw new BadRequestException('Invalid date');
-  }
+    if (!salonIds.length) {
+      return emptyResponse;
+    }
 
-  const start = new Date(targetDate);
-  start.setHours(0, 0, 0, 0);
-
-  const end = new Date(targetDate);
-  end.setHours(23, 59, 59, 999);
-
-  // 3. récupérer intents
-  const intents = await this.prisma.paymentIntent.findMany({
-    where: {
-      salonId: { in: salonIds },
-      createdAt: {
-        gte: start,
-        lte: end,
-      },
-    },
-    include: {
-      appointment: {
-        include: {
-          client: {
-            include: { clientProfile: true },
-          },
-          service: true,
-          employee: true,
+    const intents = await this.prisma.paymentIntent.findMany({
+      where: {
+        salonId: { in: salonIds },
+        transactionDate: {
+          gte: start,
+          lte: end,
         },
       },
-    },
-    orderBy: { createdAt: 'desc' },
-  });
+      include: {
+        appointment: {
+          include: {
+            client: {
+              include: { clientProfile: true },
+            },
+            service: true,
+            employee: true,
+          },
+        },
+      },
+      orderBy: { transactionDate: 'desc' },
+    });
 
-  // 4. mapping
-  const transactions = intents.map((intent) => {
-    const appointment = intent.appointment;
+    const transactions = intents.map((intent) => {
+      const appointment = intent.appointment;
+      const client =
+        appointment?.client?.clientProfile?.nickname ||
+        appointment?.client?.email ||
+        appointment?.client?.phone ||
+        'Client';
 
-    const client =
-      appointment?.client?.clientProfile?.nickname ||
-      appointment?.client?.email ||
-      appointment?.client?.phone ||
-      'Client';
+      return {
+        id: intent.id,
+        date: intent.transactionDate.toISOString(),
+        client,
+        clientId: appointment?.clientId ?? null,
+        services: appointment?.service?.name ?? 'Service',
+        employee: appointment?.employee?.displayName ?? 'Non assigné',
+        amount:
+          intent.payableAmount && intent.payableAmount > 0
+            ? intent.payableAmount
+            : intent.amount,
+        method: this.inferMethodFromProvider(intent.provider),
+        status: intent.status === PaymentStatus.SUCCEEDED ? 'paid' : 'pending',
+        provider: intent.provider ?? null,
+      };
+    });
 
-    const methodMapped = this.inferMethodFromProvider(intent.provider);
+    // Les totaux représentent toujours toute la journée sélectionnée.
+    // Le filtre de moyen de paiement ne modifie que la liste des transactions.
+    const paidTransactions = transactions.filter((tx) => tx.status === 'paid');
+
+    const totals = paidTransactions.reduce(
+      (acc, tx) => {
+        acc.total += tx.amount;
+        if (tx.method === 'mobile-money') acc.mobileMoney += tx.amount;
+        if (tx.method === 'card') acc.card += tx.amount;
+        if (tx.method === 'cash') acc.cash += tx.amount;
+        return acc;
+      },
+      { total: 0, mobileMoney: 0, card: 0, cash: 0 },
+    );
+
+    const filteredTransactions =
+      method && method !== 'all'
+        ? transactions.filter((tx) => tx.method === method)
+        : transactions;
+
+    const ambyaAmount = Math.round(totals.total * 0.15);
+    const salonAmount = totals.total - ambyaAmount;
 
     return {
-      id: intent.id,
-      date: intent.createdAt.toISOString(),
-      client,
-      clientId: appointment?.clientId ?? null,
-      services: appointment?.service?.name ?? 'Service',
-      employee: appointment?.employee?.displayName ?? 'Non assigné',
-      amount: intent.payableAmount || intent.amount,
-      method: methodMapped,
-      status: intent.status === 'SUCCEEDED' ? 'paid' : 'pending',
-      provider: intent.provider ?? null,
+      date: requestedDate,
+      totals,
+      shares: {
+        salonPercentage: 85,
+        salonAmount,
+        ambyaPercentage: 15,
+        ambyaAmount,
+      },
+      transactions: filteredTransactions,
+      breakdown: [
+        {
+          name: 'Part salon',
+          value: 85,
+          amount: salonAmount,
+          color: '#6B2737',
+        },
+        {
+          name: 'Commission AMBYA',
+          value: 15,
+          amount: ambyaAmount,
+          color: '#D4AF6A',
+        },
+      ],
+      meta: {
+        count: filteredTransactions.length,
+        paidCount: filteredTransactions.filter((tx) => tx.status === 'paid').length,
+        pendingCount: filteredTransactions.filter((tx) => tx.status === 'pending')
+          .length,
+        paidTotal: totals.total,
+      },
     };
-  });
-
-  // 5. filtre méthode (front)
-  const filtered =
-    method && method !== 'all'
-      ? transactions.filter((t) => t.method === method)
-      : transactions;
-
-  const paidTransactions = filtered.filter((t) => t.status === 'paid');
-
-  const totals = paidTransactions.reduce(
-    (acc, tx) => {
-      acc.total += tx.amount;
-      if (tx.method === 'mobile-money') acc.mobileMoney += tx.amount;
-      if (tx.method === 'card') acc.card += tx.amount;
-      if (tx.method === 'cash') acc.cash += tx.amount;
-      return acc;
-    },
-    { total: 0, mobileMoney: 0, card: 0, cash: 0 },
-  );
-
-  return {
-    date: date ?? targetDate.toISOString().slice(0, 10),
-    totals,
-    transactions: filtered,
-    breakdown: [
-      { name: 'Part salon', value: 65, color: '#6B2737' },
-      { name: 'Commission AMBYA', value: 15, color: '#D4AF6A' },
-      { name: 'Frais transaction', value: 5, color: '#8B8B8B' },
-    ],
-    meta: {
-      count: filtered.length,
-      paidCount: filtered.filter((t) => t.status === 'paid').length,
-      pendingCount: filtered.filter((t) => t.status === 'pending').length,
-      paidTotal: totals.total,
-    },
-  };
-}
+  }
 
   private assertCanUpdateIntent(
     user: { userId: string; role: UserRole },

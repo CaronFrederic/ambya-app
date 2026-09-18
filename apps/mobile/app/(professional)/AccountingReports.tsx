@@ -13,6 +13,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import DateTimePicker, {
@@ -23,8 +24,12 @@ import { router } from "expo-router";
 
 import { ProHeader } from "./components/ProHeader";
 import {
+  createManualProductSale,
+  deleteManualProductSale,
   getAccountingReport,
+  updateManualProductSale,
   type AccountingReportResponse,
+  type ManualProductSale,
   type ComparisonIndicator,
   type PeriodType,
 } from "../../src/api/accounting-reports";
@@ -348,6 +353,15 @@ export default function AccountingReportsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] =
     useState(false);
+  const [saleModalVisible, setSaleModalVisible] =
+    useState(false);
+  const [editingSale, setEditingSale] =
+    useState<ManualProductSale | null>(null);
+  const [saleAmount, setSaleAmount] = useState("");
+  const [saleDate, setSaleDate] = useState(toYmd(new Date()));
+  const [saleDatePickerVisible, setSaleDatePickerVisible] =
+    useState(false);
+  const [savingSale, setSavingSale] = useState(false);
 
   const loadReport = async (
     nextPeriod = periodType
@@ -477,6 +491,99 @@ export default function AccountingReportsScreen() {
     } else {
       setEndDate(value);
     }
+  };
+
+  const openCreateSale = () => {
+    setEditingSale(null);
+    setSaleAmount("");
+    setSaleDate(toYmd(new Date()));
+    setSaleModalVisible(true);
+  };
+
+  const openEditSale = (sale: ManualProductSale) => {
+    setEditingSale(sale);
+    setSaleAmount(String(sale.amount));
+    setSaleDate(sale.saleDate);
+    setSaleModalVisible(true);
+  };
+
+  const closeSaleModal = () => {
+    if (savingSale) {
+      return;
+    }
+
+    setSaleDatePickerVisible(false);
+    setSaleModalVisible(false);
+    setEditingSale(null);
+  };
+
+  const saveProductSale = async () => {
+    const amount = Number(saleAmount.replace(/\s/g, ""));
+
+    if (!Number.isInteger(amount) || amount <= 0) {
+      Alert.alert(
+        "Montant invalide",
+        "Saisissez un montant supérieur à 0 FCFA."
+      );
+      return;
+    }
+
+    try {
+      setSavingSale(true);
+
+      if (editingSale) {
+        await updateManualProductSale(editingSale.id, {
+          amount,
+          saleDate,
+        });
+      } else {
+        await createManualProductSale({ amount, saleDate });
+      }
+
+      setSaleModalVisible(false);
+      setEditingSale(null);
+      await loadReport();
+    } catch (error) {
+      Alert.alert(
+        "Enregistrement impossible",
+        error instanceof Error
+          ? error.message
+          : "Une erreur est survenue."
+      );
+    } finally {
+      setSavingSale(false);
+    }
+  };
+
+  const confirmDeleteSale = (sale: ManualProductSale) => {
+    Alert.alert(
+      "Supprimer la vente",
+      `Supprimer la vente de ${formatMoney(sale.amount)} FCFA du ${formatDisplayDate(
+        sale.saleDate
+      )} ?`,
+      [
+        { text: "Annuler", style: "cancel" },
+        {
+          text: "Supprimer",
+          style: "destructive",
+          onPress: () => {
+            void (async () => {
+              try {
+                await deleteManualProductSale(sale.id);
+                await loadReport();
+              } catch (error) {
+                Alert.alert(
+                  "Suppression impossible",
+                  error instanceof Error
+                    ? error.message
+                    : "Une erreur est survenue."
+                );
+              }
+            })();
+          },
+        },
+      ]
+    );
   };
 
   const openExport = () => {
@@ -676,10 +783,76 @@ export default function AccountingReportsScreen() {
             label="Prestations"
             value={report.revenue.services}
           />
-          <SummaryRow
-            label="Ventes de produits"
-            value={report.revenue.products}
-          />
+          <View style={styles.productSalesHeader}>
+            <View style={styles.productSalesLabelWrap}>
+              <Text style={styles.summaryLabel}>
+                Ventes de produits
+              </Text>
+              <Text style={styles.productSalesHint}>
+                Saisie manuelle · {report.revenue.productLineCount} vente
+                {report.revenue.productLineCount > 1 ? "s" : ""}
+              </Text>
+            </View>
+
+            <View style={styles.productSalesRight}>
+              <Text style={styles.summaryAmount}>
+                {formatMoney(report.revenue.products)} F
+              </Text>
+              <Pressable
+                style={styles.addSaleButton}
+                onPress={openCreateSale}
+              >
+                <Ionicons
+                  name="add"
+                  size={16}
+                  color={COLORS.white}
+                />
+                <Text style={styles.addSaleButtonText}>
+                  Ajouter
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+
+          {report.revenue.productSales.length > 0 && (
+            <View style={styles.productSalesList}>
+              {report.revenue.productSales.map((sale) => (
+                <View key={sale.id} style={styles.productSaleItem}>
+                  <View>
+                    <Text style={styles.productSaleDate}>
+                      {formatDisplayDate(sale.saleDate)}
+                    </Text>
+                    <Text style={styles.productSaleAmount}>
+                      {formatMoney(sale.amount)} FCFA
+                    </Text>
+                  </View>
+
+                  <View style={styles.productSaleActions}>
+                    <Pressable
+                      style={styles.iconAction}
+                      onPress={() => openEditSale(sale)}
+                    >
+                      <Ionicons
+                        name="pencil-outline"
+                        size={18}
+                        color={COLORS.brand}
+                      />
+                    </Pressable>
+                    <Pressable
+                      style={styles.iconAction}
+                      onPress={() => confirmDeleteSale(sale)}
+                    >
+                      <Ionicons
+                        name="trash-outline"
+                        size={18}
+                        color="#B91C1C"
+                      />
+                    </Pressable>
+                  </View>
+                </View>
+              ))}
+            </View>
+          )}
 
           <View style={styles.separator} />
 
@@ -841,6 +1014,120 @@ export default function AccountingReportsScreen() {
           pour transmettre.
         </Text>
       </ScrollView>
+
+      <Modal
+        transparent
+        visible={saleModalVisible}
+        animationType="fade"
+        onRequestClose={closeSaleModal}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.saleModal}>
+            <Text style={styles.calendarTitle}>
+              {editingSale
+                ? "Modifier la vente de produits"
+                : "Ajouter une vente de produits"}
+            </Text>
+
+            <Text style={styles.inputLabel}>Montant</Text>
+            <View style={styles.amountInputWrap}>
+              <TextInput
+                value={saleAmount}
+                onChangeText={(value) =>
+                  setSaleAmount(value.replace(/[^0-9]/g, ""))
+                }
+                keyboardType="number-pad"
+                placeholder="Ex. 25000"
+                placeholderTextColor={COLORS.muted}
+                style={styles.amountInput}
+              />
+              <Text style={styles.inputCurrency}>FCFA</Text>
+            </View>
+
+            <Text style={styles.inputLabel}>Date de la vente</Text>
+            <Pressable
+              style={styles.saleDateButton}
+              onPress={() => setSaleDatePickerVisible(true)}
+            >
+              <Ionicons
+                name="calendar-outline"
+                size={20}
+                color={COLORS.brand}
+              />
+              <Text style={styles.saleDateButtonText}>
+                {formatDisplayDate(saleDate)}
+              </Text>
+            </Pressable>
+
+            {saleDatePickerVisible && (
+              <View style={styles.saleDatePickerWrap}>
+                <DateTimePicker
+                  value={parseYmd(saleDate)}
+                  mode="date"
+                  display={
+                    Platform.OS === "ios" ? "inline" : "calendar"
+                  }
+                  maximumDate={new Date()}
+                  onChange={(event, selectedDate) => {
+                    if (Platform.OS === "android") {
+                      setSaleDatePickerVisible(false);
+                    }
+
+                    if (event.type === "dismissed" || !selectedDate) {
+                      return;
+                    }
+
+                    setSaleDate(toYmd(selectedDate));
+                  }}
+                  locale="fr-FR"
+                  themeVariant="light"
+                  accentColor={COLORS.brand}
+                />
+
+                {Platform.OS === "ios" && (
+                  <Pressable
+                    style={styles.calendarDone}
+                    onPress={() => setSaleDatePickerVisible(false)}
+                  >
+                    <Text style={styles.calendarDoneText}>
+                      Terminé
+                    </Text>
+                  </Pressable>
+                )}
+              </View>
+            )}
+
+            <View style={styles.saleModalActions}>
+              <Pressable
+                style={styles.cancelSaleButton}
+                onPress={closeSaleModal}
+                disabled={savingSale}
+              >
+                <Text style={styles.cancelSaleButtonText}>
+                  Annuler
+                </Text>
+              </Pressable>
+
+              <Pressable
+                style={[
+                  styles.saveSaleButton,
+                  savingSale && styles.disabledButton,
+                ]}
+                onPress={() => void saveProductSale()}
+                disabled={savingSale}
+              >
+                {savingSale ? (
+                  <ActivityIndicator size="small" color={COLORS.white} />
+                ) : (
+                  <Text style={styles.saveSaleButtonText}>
+                    Enregistrer
+                  </Text>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       <Modal
         transparent
@@ -1305,5 +1592,162 @@ const styles = StyleSheet.create({
   calendarDoneText: {
     color: COLORS.white,
     fontWeight: "900",
+  },
+  productSalesHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 12,
+    paddingVertical: 8,
+  },
+  productSalesLabelWrap: {
+    flex: 1,
+  },
+  productSalesHint: {
+    marginTop: 3,
+    color: COLORS.muted,
+    fontSize: 11,
+  },
+  productSalesRight: {
+    alignItems: "flex-end",
+    gap: 7,
+  },
+  addSaleButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: COLORS.brand,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  addSaleButtonText: {
+    color: COLORS.white,
+    fontSize: 11,
+    fontWeight: "800",
+  },
+  productSalesList: {
+    marginTop: 8,
+    gap: 8,
+  },
+  productSaleItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: 10,
+    borderRadius: 12,
+    backgroundColor: COLORS.background,
+  },
+  productSaleDate: {
+    color: COLORS.muted,
+    fontSize: 11,
+    fontWeight: "700",
+  },
+  productSaleAmount: {
+    marginTop: 2,
+    color: COLORS.text,
+    fontSize: 13,
+    fontWeight: "800",
+  },
+  productSaleActions: {
+    flexDirection: "row",
+    gap: 6,
+  },
+  iconAction: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.line,
+  },
+  saleModal: {
+    width: "92%",
+    maxWidth: 460,
+    maxHeight: "90%",
+    backgroundColor: COLORS.white,
+    borderRadius: 22,
+    padding: 20,
+  },
+  inputLabel: {
+    marginTop: 16,
+    marginBottom: 7,
+    color: COLORS.text,
+    fontSize: 12,
+    fontWeight: "800",
+  },
+  amountInputWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: COLORS.line,
+    borderRadius: 14,
+    backgroundColor: COLORS.background,
+    paddingHorizontal: 14,
+  },
+  amountInput: {
+    flex: 1,
+    minHeight: 48,
+    color: COLORS.text,
+    fontSize: 16,
+    fontWeight: "800",
+  },
+  inputCurrency: {
+    color: COLORS.brand,
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  saleDateButton: {
+    minHeight: 48,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: COLORS.line,
+    borderRadius: 14,
+    backgroundColor: COLORS.background,
+  },
+  saleDateButtonText: {
+    color: COLORS.text,
+    fontWeight: "800",
+  },
+  saleDatePickerWrap: {
+    marginTop: 10,
+  },
+  saleModalActions: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 20,
+  },
+  cancelSaleButton: {
+    flex: 1,
+    minHeight: 46,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: COLORS.line,
+  },
+  cancelSaleButtonText: {
+    color: COLORS.brand,
+    fontWeight: "800",
+  },
+  saveSaleButton: {
+    flex: 1,
+    minHeight: 46,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 14,
+    backgroundColor: COLORS.brand,
+  },
+  saveSaleButtonText: {
+    color: COLORS.white,
+    fontWeight: "900",
+  },
+  disabledButton: {
+    opacity: 0.65,
   },
 });

@@ -16,6 +16,19 @@ export type ManagementRegisterLine = {
   entryDate?: string | null;
 };
 
+
+export type ManualProductSale = {
+  id: string;
+  amount: number;
+  saleDate: string;
+  createdAt: string;
+};
+
+export type ManualProductSalePayload = {
+  amount: number;
+  saleDate: string;
+};
+
 export type ComparisonIndicator = {
   real: number;
   estimated: number;
@@ -40,6 +53,9 @@ export type AccountingReportResponse = {
     products: number;
     total: number;
     lineCount: number;
+    serviceLineCount: number;
+    productLineCount: number;
+    productSales: ManualProductSale[];
     lines: ManagementRegisterLine[];
   };
   expenses: {
@@ -130,4 +146,41 @@ export async function getAccountingReportExportUrl(
   }
 
   return `${API_BASE_URL}/api/pro/accounting-reports/export?${search.toString()}`;
+}
+
+
+export function createManualProductSale(
+  payload: ManualProductSalePayload
+): Promise<ManualProductSale> {
+  return apiFetch<ManualProductSale>(
+    "/pro/accounting-reports/product-sales",
+    {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }
+  );
+}
+
+export function updateManualProductSale(
+  saleId: string,
+  payload: ManualProductSalePayload
+): Promise<ManualProductSale> {
+  return apiFetch<ManualProductSale>(
+    `/pro/accounting-reports/product-sales/${saleId}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }
+  );
+}
+
+export function deleteManualProductSale(
+  saleId: string
+): Promise<{ success: true }> {
+  return apiFetch<{ success: true }>(
+    `/pro/accounting-reports/product-sales/${saleId}`,
+    {
+      method: "DELETE",
+    }
+  );
 }

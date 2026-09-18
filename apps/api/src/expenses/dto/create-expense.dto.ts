@@ -1,15 +1,35 @@
-import { IsBoolean, IsDateString, IsIn, IsInt, IsOptional, IsString, Min, ValidateIf } from 'class-validator';
+import {
+  IsBoolean,
+  IsDateString,
+  IsEnum,
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsString,
+  Min,
+} from 'class-validator';
+import { ExpensePaymentMethod } from '@prisma/client';
 
 export const EXPENSE_CATEGORIES = [
-  'Produits & consommables', 'Marchandises revendues', 'Charges de personnel',
-  'Honoraires & prestataires externes', 'Loyer & charges du local',
-  "Location d’espace ou d’équipement", 'Eau & électricité', 'Téléphone & internet',
-  'Abonnements & licences', 'Transport & déplacements', 'Entretien & réparations',
-  'Blanchisserie', 'Publicité & communication', 'Formation & certification',
-  'Assurance', 'Frais bancaires & commissions', 'Impôts & taxes', 'Autres',
+  'Produits & consommables',
+  'Marchandises revendues',
+  'Charges de personnel',
+  'Honoraires & prestataires externes',
+  'Loyer & charges du local',
+  'Location d’espace ou d’équipement',
+  'Eau & électricité',
+  'Téléphone & internet',
+  'Abonnements & licences',
+  'Transport & déplacements',
+  'Entretien & réparations',
+  'Blanchisserie',
+  'Publicité & communication',
+  'Formation & certification',
+  'Assurance',
+  'Frais bancaires & commissions',
+  'Impôts & taxes',
+  'Autres',
 ] as const;
-
-export const EXPENSE_PAYMENT_METHODS = ['CASH', 'MOBILE_MONEY', 'CARD', 'BANK_TRANSFER'] as const;
 
 export class CreateExpenseDto {
   @IsString()
@@ -18,7 +38,6 @@ export class CreateExpenseDto {
 
   @IsOptional()
   @IsString()
-  @ValidateIf((o) => o.category === 'Autres')
   description?: string;
 
   @IsInt()
@@ -28,12 +47,12 @@ export class CreateExpenseDto {
   @IsDateString()
   expenseDate!: string;
 
-  @IsIn(EXPENSE_PAYMENT_METHODS)
-  paymentMethod!: 'CASH' | 'MOBILE_MONEY' | 'CARD' | 'BANK_TRANSFER';
-
   @IsOptional()
   @IsString()
   receiptNumber?: string;
+
+  @IsEnum(ExpensePaymentMethod)
+  paymentMethod!: ExpensePaymentMethod;
 
   @IsOptional()
   @IsBoolean()
@@ -42,4 +61,8 @@ export class CreateExpenseDto {
   @IsOptional()
   @IsBoolean()
   isInvestment?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  isDurableEquipment?: boolean;
 }

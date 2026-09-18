@@ -5,9 +5,10 @@ import {
   ScrollView,
   Pressable,
   StyleSheet,
-  TextInput,
   ActivityIndicator,
   RefreshControl,
+  Modal,
+  Platform,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import Svg, { Circle } from "react-native-svg";
@@ -19,6 +20,7 @@ import {
   type CashRegisterResponse,
 } from "../../src/api/cash-register";
 import * as SecureStore from "expo-secure-store";
+import DateTimePicker from "@react-native-community/datetimepicker";
 const COLORS = {
   bg: "#FAF7F2",
   text: "#3A3A3A",
@@ -97,10 +99,15 @@ const EMPTY_DATA: CashRegisterResponse = {
   },
   transactions: [],
   breakdown: [
-    { name: "Part salon", value: 65, color: "#6B2737" },
-    { name: "Commission AMBYA", value: 15, color: "#D4AF6A" },
-    { name: "Frais transaction", value: 5, color: "#8B8B8B" },
+    { name: "Part salon", value: 85, amount: 0, color: "#6B2737" },
+    { name: "Commission AMBYA", value: 15, amount: 0, color: "#D4AF6A" },
   ],
+  shares: {
+    salonPercentage: 85,
+    salonAmount: 0,
+    ambyaPercentage: 15,
+    ambyaAmount: 0,
+  },
   meta: {
     count: 0,
     paidCount: 0,
@@ -111,7 +118,10 @@ const EMPTY_DATA: CashRegisterResponse = {
 
 export default function CashRegisterScreen() {
   const [activeFilter, setActiveFilter] = useState<CashMethod>("all");
-  const [selectedDate, setSelectedDate] = useState("2026-01-07");
+  const [selectedDate, setSelectedDate] = useState(() =>
+    new Date().toISOString().slice(0, 10),
+  );
+  const [showDatePicker, setShowDatePicker] = useState(false);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -178,20 +188,91 @@ export default function CashRegisterScreen() {
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
           }
         >
-          <Text style={styles.label}>Filtrer par date</Text>
-          <TextInput
-            value={selectedDate}
-            onChangeText={setSelectedDate}
-            placeholder="YYYY-MM-DD"
-            placeholderTextColor="rgba(58,58,58,0.4)"
-            style={styles.input}
-          />
+          <Text style={styles.label}>Date de la caisse</Text>
+          <Pressable
+            style={styles.dateSelector}
+            onPress={() => setShowDatePicker(true)}
+          >
+            <View>
+              <Text style={styles.dateSelectorLabel}>Journée sélectionnée</Text>
+              <Text style={styles.dateSelectorValue}>
+                {formatDateFR(selectedDate)}
+              </Text>
+            </View>
+            <Ionicons name="calendar-outline" size={22} color={COLORS.primary} />
+          </Pressable>
+
+          {showDatePicker && Platform.OS === "android" && (
+            <DateTimePicker
+              value={new Date(`${selectedDate}T12:00:00`)}
+              mode="date"
+              maximumDate={new Date()}
+              onChange={(_, date) => {
+                setShowDatePicker(false);
+                if (date) {
+                  const year = date.getFullYear();
+                  const month = String(date.getMonth() + 1).padStart(2, "0");
+                  const day = String(date.getDate()).padStart(2, "0");
+                  setSelectedDate(`${year}-${month}-${day}`);
+                }
+              }}
+            />
+          )}
+
+          <Modal
+            visible={showDatePicker && Platform.OS === "ios"}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setShowDatePicker(false)}
+          >
+            <View style={styles.modalOverlay}>
+              <View style={styles.calendarCard}>
+                <Text style={styles.calendarTitle}>Choisir une date</Text>
+                <DateTimePicker
+                  value={new Date(`${selectedDate}T12:00:00`)}
+                  mode="date"
+                  display="inline"
+                  maximumDate={new Date()}
+                  onChange={(_, date) => {
+                    if (date) {
+                      const year = date.getFullYear();
+                      const month = String(date.getMonth() + 1).padStart(2, "0");
+                      const day = String(date.getDate()).padStart(2, "0");
+                      setSelectedDate(`${year}-${month}-${day}`);
+                    }
+                  }}
+                />
+                <Pressable
+                  style={styles.calendarDoneButton}
+                  onPress={() => setShowDatePicker(false)}
+                >
+                  <Text style={styles.calendarDoneText}>Terminé</Text>
+                </Pressable>
+              </View>
+            </View>
+          </Modal>
 
           <View style={styles.hero}>
             <Text style={styles.heroSub}>
               Total encaissé le {formatDateFR(selectedDate)}
             </Text>
             <Text style={styles.heroTitle}>{formatFCFA(data.totals.total)}</Text>
+
+            <View style={styles.shareSummary}>
+              <View style={styles.shareSummaryItem}>
+                <Text style={styles.shareSummaryLabel}>Part salon · 85 %</Text>
+                <Text style={styles.shareSummaryValue}>
+                  {formatFCFA(data.shares.salonAmount)}
+                </Text>
+              </View>
+              <View style={styles.shareDivider} />
+              <View style={styles.shareSummaryItem}>
+                <Text style={styles.shareSummaryLabel}>Commission AMBYA · 15 %</Text>
+                <Text style={styles.shareSummaryValue}>
+                  {formatFCFA(data.shares.ambyaAmount)}
+                </Text>
+              </View>
+            </View>
           </View>
 
           <View style={styles.statRow}>
@@ -235,7 +316,7 @@ export default function CashRegisterScreen() {
                   <View style={[styles.legendDot, { backgroundColor: item.color }]} />
                   <View style={{ flex: 1 }}>
                     <Text style={styles.legendLabel}>{item.name}</Text>
-                    <Text style={styles.legendValue}>{item.value}%</Text>
+                    <Text style={styles.legendValue}>{item.value}% · {formatFCFA(item.amount)}</Text>
                   </View>
                 </View>
               ))}
@@ -368,6 +449,58 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     marginBottom: 8,
   },
+  dateSelector: {
+    backgroundColor: "#FFF",
+    borderWidth: 2,
+    borderColor: "rgba(107,39,55,0.2)",
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  dateSelectorLabel: {
+    color: "rgba(58,58,58,0.55)",
+    fontSize: 11,
+    marginBottom: 3,
+  },
+  dateSelectorValue: {
+    color: COLORS.text,
+    fontSize: 15,
+    fontWeight: "800",
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.35)",
+    justifyContent: "center",
+    padding: 20,
+  },
+  calendarCard: {
+  backgroundColor: "#FAF7F2",
+  borderRadius: 24,
+  padding: 18,
+  width: "92%",
+  overflow: "hidden",
+},
+  calendarTitle: {
+    color: COLORS.text,
+    fontSize: 16,
+    fontWeight: "800",
+    marginBottom: 8,
+  },
+  calendarDoneButton: {
+    backgroundColor: COLORS.primary,
+    borderRadius: 14,
+    paddingVertical: 12,
+    alignItems: "center",
+    marginTop: 8,
+  },
+  calendarDoneText: {
+    color: "#FFF",
+    fontWeight: "800",
+  },
+
   input: {
     backgroundColor: "#FFF",
     borderWidth: 2,
@@ -385,6 +518,25 @@ const styles = StyleSheet.create({
   },
   heroSub: { color: "rgba(255,255,255,0.9)", fontSize: 12, marginBottom: 6 },
   heroTitle: { color: "#FFF", fontSize: 26, fontWeight: "800" },
+  shareSummary: {
+    flexDirection: "row",
+    marginTop: 16,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(255,255,255,0.2)",
+  },
+  shareSummaryItem: { flex: 1 },
+  shareSummaryLabel: {
+    color: "rgba(255,255,255,0.75)",
+    fontSize: 11,
+    marginBottom: 4,
+  },
+  shareSummaryValue: { color: "#FFF", fontSize: 14, fontWeight: "800" },
+  shareDivider: {
+    width: 1,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    marginHorizontal: 12,
+  },
 
   statRow: { flexDirection: "row", gap: 10, marginTop: 12 },
   statCard: { flex: 1, backgroundColor: "#FFF", borderRadius: 18, padding: 12 },

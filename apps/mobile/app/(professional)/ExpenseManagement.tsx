@@ -112,6 +112,7 @@ type ExpenseForm = {
   paymentMethod: ExpensePaymentMethod;
   isRecurring: boolean;
   isInvestment: boolean;
+  isDurableEquipment: boolean;
   receiptNumber: string;
 };
 
@@ -243,6 +244,7 @@ function createEmptyForm(date = new Date()): ExpenseForm {
     paymentMethod: "CASH",
     isRecurring: false,
     isInvestment: false,
+    isDurableEquipment: false,
     receiptNumber: "",
   };
 }
@@ -602,6 +604,7 @@ export default function ExpenseManagementScreen() {
         paymentMethod: form.paymentMethod,
         isRecurring: form.isRecurring,
         isInvestment: form.isInvestment,
+        isDurableEquipment: form.isDurableEquipment,
         receiptNumber: form.receiptNumber.trim() || undefined,
       });
 
@@ -972,6 +975,18 @@ export default function ExpenseManagementScreen() {
                               ↻ Récurrent
                             </Text>
                           )}
+                          {expense.isDurableEquipment && (
+                            <View style={styles.durableBadge}>
+                              <Ionicons
+                                name="construct-outline"
+                                size={12}
+                                color="#5B4356"
+                              />
+                              <Text style={styles.durableBadgeText}>
+                                Matériel durable
+                              </Text>
+                            </View>
+                          )}
                         </View>
 
                         <Text
@@ -1000,11 +1015,22 @@ export default function ExpenseManagementScreen() {
                         )}
                       </View>
 
-                      <Text
-                        style={styles.expenseAmount}
-                      >
-                        {formatAmount(expense.amount)} F
-                      </Text>
+                      <View style={styles.expenseActions}>
+                        <Text style={styles.expenseAmount}>
+                          {formatAmount(expense.amount)} F
+                        </Text>
+                        <Pressable
+                          hitSlop={10}
+                          style={styles.deleteIconButton}
+                          onPress={() => deleteExpenseItem(expense)}
+                        >
+                          <Ionicons
+                            name="trash-outline"
+                            size={18}
+                            color="#A94A5A"
+                          />
+                        </Pressable>
+                      </View>
                     </Pressable>
                   );
                 })}
@@ -1061,11 +1087,22 @@ export default function ExpenseManagementScreen() {
                     expense.category}
                 </Text>
 
-                <Text
-                  style={styles.investmentLineAmount}
-                >
-                  {formatAmount(expense.amount)} F
-                </Text>
+                <View style={styles.investmentActions}>
+                  <Text style={styles.investmentLineAmount}>
+                    {formatAmount(expense.amount)} F
+                  </Text>
+                  <Pressable
+                    hitSlop={10}
+                    style={styles.deleteIconButton}
+                    onPress={() => deleteExpenseItem(expense)}
+                  >
+                    <Ionicons
+                      name="trash-outline"
+                      size={18}
+                      color="#A94A5A"
+                    />
+                  </Pressable>
+                </View>
               </Pressable>
             ))
           )}
@@ -1364,6 +1401,44 @@ export default function ExpenseManagementScreen() {
                     onPress={() =>
                       setForm((previous) => ({
                         ...previous,
+                        isDurableEquipment:
+                          !previous.isDurableEquipment,
+                      }))
+                    }
+                  >
+                    <View
+                      style={[
+                        styles.customSwitch,
+                        form.isDurableEquipment &&
+                          styles.customSwitchEnabled,
+                      ]}
+                    >
+                      <View
+                        style={[
+                          styles.customSwitchThumb,
+                          form.isDurableEquipment &&
+                            styles.customSwitchThumbEnabled,
+                        ]}
+                      />
+                    </View>
+
+                    <View style={styles.toggleContent}>
+                      <Text style={styles.toggleTitle}>
+                        Matériel durable
+                      </Text>
+                      <Text style={styles.toggleSubtitle}>
+                        Fauteuil, climatiseur, machine ou mobilier.
+                        Cette option ajoute uniquement un indicateur
+                        visuel à la dépense.
+                      </Text>
+                    </View>
+                  </Pressable>
+
+                  <Pressable
+                    style={styles.toggleRow}
+                    onPress={() =>
+                      setForm((previous) => ({
+                        ...previous,
                         isInvestment:
                           !previous.isInvestment,
                       }))
@@ -1387,26 +1462,20 @@ export default function ExpenseManagementScreen() {
 
                     <View style={styles.toggleContent}>
                       <Text style={styles.toggleTitle}>
-                        Achat de matériel durable
+                        Investissement
                       </Text>
                       <Text style={styles.toggleSubtitle}>
-                        Fauteuil, climatiseur, machine,
-                        mobilier — tout ce qui sert plus
-                        d’un an.
+                        Activez cette option uniquement si vous souhaitez
+                        classer cette dépense dans les investissements.
                       </Text>
                     </View>
                   </Pressable>
 
                   {form.isInvestment && (
                     <View style={styles.investmentAlert}>
-                      <Text
-                        style={
-                          styles.investmentAlertText
-                        }
-                      >
-                        Cette dépense sera affichée dans
-                        Investissements et exclue du total
-                        mensuel.
+                      <Text style={styles.investmentAlertText}>
+                        Cette dépense sera affichée dans Investissements
+                        et exclue du total mensuel des dépenses courantes.
                       </Text>
                     </View>
                   )}
@@ -1764,6 +1833,20 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     fontSize: 11,
   },
+  durableBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "#F0EBF2",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  durableBadgeText: {
+    color: "#5B4356",
+    fontWeight: "800",
+    fontSize: 11,
+  },
   paymentText: {
     color: COLORS.muted,
     marginTop: 7,
@@ -1776,6 +1859,18 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     marginTop: 6,
     alignSelf: "flex-start",
+  },
+  expenseActions: {
+    alignItems: "flex-end",
+    gap: 8,
+  },
+  deleteIconButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    backgroundColor: "#FFF1F2",
+    alignItems: "center",
+    justifyContent: "center",
   },
   expenseAmount: {
     fontSize: 17,
@@ -1851,6 +1946,11 @@ const styles = StyleSheet.create({
   investmentLineAmount: {
     fontWeight: "900",
     color: "#5B4356",
+  },
+  investmentActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
   },
   modalOverlay: {
     flex: 1,

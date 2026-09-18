@@ -5,6 +5,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import {
+  AppointmentStatus,
   ExpenseStatus,
   PaymentStatus,
   UserRole,
@@ -273,12 +274,43 @@ export class AccountingReportsService {
     salonId: string,
     range: PeriodRange
   ) {
-    const [payments, expenses] = await Promise.all([
-      this.prisma.paymentIntent.findMany({
+    const [appointments, productSales, expenses] = await Promise.all([
+      this.prisma.appointment.findMany({
         where: {
           salonId,
-          status: PaymentStatus.SUCCEEDED,
-          transactionDate: {
+          status: AppointmentStatus.COMPLETED,
+          startAt: {
+            gte: range.start,
+            lte: range.end,
+          },
+        },
+        select: {
+          id: true,
+          startAt: true,
+          service: {
+            select: {
+              name: true,
+            },
+          },
+          paymentIntents: {
+            orderBy: { createdAt: "desc" },
+            select: {
+              id: true,
+              status: true,
+              amount: true,
+              payableAmount: true,
+              type: true,
+              transactionDate: true,
+              createdAt: true,
+            },
+          },
+        },
+        orderBy: { startAt: "asc" },
+      }),
+      this.prisma.manualProductSale.findMany({
+        where: {
+          salonId,
+          saleDate: {
             gte: range.start,
             lte: range.end,
           },
@@ -286,13 +318,10 @@ export class AccountingReportsService {
         select: {
           id: true,
           amount: true,
-          payableAmount: true,
-          type: true,
-          transactionDate: true,
+          saleDate: true,
+          createdAt: true,
         },
-        orderBy: {
-          transactionDate: "asc",
-        },
+        orderBy: { saleDate: "asc" },
       }),
       this.prisma.expense.findMany({
         where: {
@@ -315,11 +344,31 @@ export class AccountingReportsService {
           paymentMethod: true,
           isInvestment: true,
         },
-        orderBy: {
-          expenseDate: "asc",
-        },
+        orderBy: { expenseDate: "asc" },
       }),
     ]);
+
+    // Une prestation n'entre dans les recettes que si le rendez-vous est
+    // honoré (COMPLETED) et possède au moins un paiement encore SUCCEEDED.
+    // Un PaymentIntent passé à REFUNDED n'est donc jamais comptabilisé.
+    // Si plusieurs tentatives ont réussi, on retient la plus récente afin
+    // d'éviter de compter deux fois le même rendez-vous.
+    const paidAppointments = appointments.flatMap((appointment) => {
+      const payment = appointment.paymentIntents.find(
+        (intent) => intent.status === PaymentStatus.SUCCEEDED
+      );
+
+      return payment
+        ? [
+            {
+              appointmentId: appointment.id,
+              startAt: appointment.startAt,
+              serviceName: appointment.service.name,
+              payment,
+            },
+          ]
+        : [];
+    });
 
     const operatingExpenses = expenses.filter(
       (expense) => !expense.isInvestment
@@ -328,11 +377,17 @@ export class AccountingReportsService {
       (expense) => expense.isInvestment
     );
 
-    const totalRevenue = payments.reduce(
-      (sum, payment) =>
-        sum + this.getPaymentAmount(payment),
+    const serviceRevenue = paidAppointments.reduce(
+      (sum, item) => sum + this.getPaymentAmount(item.payment),
       0
     );
+
+    const productRevenue = productSales.reduce(
+      (sum, sale) => sum + sale.amount,
+      0
+    );
+
+    const totalRevenue = serviceRevenue + productRevenue;
 
     const totalExpenses = operatingExpenses.reduce(
       (sum, expense) => sum + expense.amount,
@@ -345,9 +400,12 @@ export class AccountingReportsService {
     );
 
     return {
-      payments,
+      paidAppointments,
+      productSales,
       operatingExpenses,
       investments,
+      serviceRevenue,
+      productRevenue,
       totalRevenue,
       totalExpenses,
       totalInvestments,
@@ -381,24 +439,44 @@ export class AccountingReportsService {
   }
 
   private buildRevenueLines(
-    payments: Array<{
+    paidAppointments: Array<{
+      appointmentId: string;
+      startAt: Date;
+      serviceName: string;
+      payment: {
+        amount: number;
+        payableAmount: number | null;
+        type: unknown;
+      };
+    }>,
+    productSales: Array<{
       id: string;
       amount: number;
-      payableAmount: number | null;
-      type: unknown;
-      transactionDate: Date | null;
+      saleDate: Date;
+      createdAt: Date;
     }>
   ): RegisterLine[] {
-    return payments.map((payment) => ({
-      id: payment.id,
-      date: this.formatYmd(
-        payment.transactionDate ?? new Date()
-      ),
-      label: "Prestation",
+    const serviceLines: RegisterLine[] = paidAppointments.map((item) => ({
+      id: item.appointmentId,
+      date: this.formatYmd(item.startAt),
+      label: item.serviceName || "Prestation",
       category: "Prestations",
-      amount: this.getPaymentAmount(payment),
-      paymentMethod: String(payment.type ?? ""),
+      amount: this.getPaymentAmount(item.payment),
+      paymentMethod: String(item.payment.type ?? ""),
     }));
+
+    const productLines: RegisterLine[] = productSales.map((sale) => ({
+      id: sale.id,
+      date: this.formatYmd(sale.saleDate),
+      label: "Vente de produits",
+      category: "Ventes de produits",
+      amount: sale.amount,
+      entryDate: sale.createdAt.toISOString(),
+    }));
+
+    return [...serviceLines, ...productLines].sort((a, b) =>
+      a.date.localeCompare(b.date)
+    );
   }
 
   private buildExpenseLines(
@@ -495,11 +573,23 @@ export class AccountingReportsService {
       },
       generatedAt: generatedAt.toISOString(),
       revenue: {
-        services: data.totalRevenue,
-        products: 0,
+        services: data.serviceRevenue,
+        products: data.productRevenue,
         total: data.totalRevenue,
-        lineCount: data.payments.length,
-        lines: this.buildRevenueLines(data.payments),
+        lineCount:
+          data.paidAppointments.length + data.productSales.length,
+        serviceLineCount: data.paidAppointments.length,
+        productLineCount: data.productSales.length,
+        productSales: data.productSales.map((sale) => ({
+          id: sale.id,
+          amount: sale.amount,
+          saleDate: this.formatYmd(sale.saleDate),
+          createdAt: sale.createdAt.toISOString(),
+        })),
+        lines: this.buildRevenueLines(
+          data.paidAppointments,
+          data.productSales
+        ),
       },
       expenses: {
         byCategory: expensesByCategory,
@@ -555,6 +645,85 @@ export class AccountingReportsService {
         },
       },
     };
+  }
+
+  private parseManualSaleDate(value: string): Date {
+    const date = new Date(`${value}T12:00:00.000Z`);
+
+    if (Number.isNaN(date.getTime())) {
+      throw new BadRequestException("Date de vente invalide.");
+    }
+
+    const today = new Date().toISOString().slice(0, 10);
+
+    if (value > today) {
+      throw new BadRequestException(
+        "La date de vente ne peut pas être dans le futur."
+      );
+    }
+
+    return date;
+  }
+
+  async createManualProductSale(
+    user: AuthUser,
+    dto: { amount: number; saleDate: string }
+  ) {
+    const salon = await this.getSalonForUser(user);
+
+    return this.prisma.manualProductSale.create({
+      data: {
+        salonId: salon.id,
+        amount: dto.amount,
+        saleDate: this.parseManualSaleDate(dto.saleDate),
+        createdById: user.userId,
+      },
+    });
+  }
+
+  async updateManualProductSale(
+    user: AuthUser,
+    saleId: string,
+    dto: { amount: number; saleDate: string }
+  ) {
+    const salon = await this.getSalonForUser(user);
+    const existing = await this.prisma.manualProductSale.findFirst({
+      where: { id: saleId, salonId: salon.id },
+      select: { id: true },
+    });
+
+    if (!existing) {
+      throw new NotFoundException("Vente de produits introuvable.");
+    }
+
+    return this.prisma.manualProductSale.update({
+      where: { id: saleId },
+      data: {
+        amount: dto.amount,
+        saleDate: this.parseManualSaleDate(dto.saleDate),
+      },
+    });
+  }
+
+  async deleteManualProductSale(
+    user: AuthUser,
+    saleId: string
+  ) {
+    const salon = await this.getSalonForUser(user);
+    const existing = await this.prisma.manualProductSale.findFirst({
+      where: { id: saleId, salonId: salon.id },
+      select: { id: true },
+    });
+
+    if (!existing) {
+      throw new NotFoundException("Vente de produits introuvable.");
+    }
+
+    await this.prisma.manualProductSale.delete({
+      where: { id: saleId },
+    });
+
+    return { success: true };
   }
 
   private sanitizeFilename(value: string): string {
