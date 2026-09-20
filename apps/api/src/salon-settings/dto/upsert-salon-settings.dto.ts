@@ -64,22 +64,6 @@ class PaymentSettingsDto {
   @Min(0)
   @Max(168)
   cancelPolicyHours?: number;
-
-  @IsOptional()
-  @IsIn(['FREE', 'PRO', 'BUSINESS'])
-  subscriptionPlan?: 'FREE' | 'PRO' | 'BUSINESS';
-
-  @IsOptional()
-  @IsIn(['ACTIVE', 'CANCELLED'])
-  subscriptionStatus?: 'ACTIVE' | 'CANCELLED';
-
-  @IsOptional()
-  @IsString()
-  subscriptionStartedAt?: string | null;
-
-  @IsOptional()
-  @IsString()
-  subscriptionCancelledAt?: string | null;
 }
 
 export class UpsertSalonSettingsDto {

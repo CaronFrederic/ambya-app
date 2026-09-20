@@ -30,9 +30,10 @@ import {
   type ExpensePaymentMethod,
 } from "../../src/api/expenses";
 import {
-  getSalonSettings,
-  type SubscriptionPlan,
-} from "../../src/api/salon-settings";
+  getCurrentSubscription,
+  type CurrentSubscription,
+} from "../../src/api/subscriptions";
+import { getSubscriptionEntitlements } from "../../src/subscription/subscription-entitlements";
 
 const COLORS = {
   background: "#FAF7F2",
@@ -211,28 +212,10 @@ function isLateEntry(expense: ApiExpense): boolean {
   return entryDate.getTime() >= nextMonthStart;
 }
 
-function getSubscriptionPrice(plan: SubscriptionPlan): number {
-  if (plan === "PRO") {
-    return 15_000;
-  }
-
-  if (plan === "BUSINESS") {
-    return 30_000;
-  }
-
-  return 0;
-}
-
-function getSubscriptionName(plan: SubscriptionPlan): string {
-  if (plan === "PRO") {
-    return "AMBYA Pro";
-  }
-
-  if (plan === "BUSINESS") {
-    return "AMBYA Business";
-  }
-
-  return "Sans abonnement";
+function getSubscriptionPaymentLabel(subscription: CurrentSubscription | null) {
+  if (!subscription) return "Abonnement";
+  if (subscription.plan === "DISCOVERY") return "Découverte";
+  return subscription.planName;
 }
 
 function createEmptyForm(date = new Date()): ExpenseForm {
@@ -287,12 +270,8 @@ export default function ExpenseManagementScreen() {
 
   const [form, setForm] = useState<ExpenseForm>(() => createEmptyForm());
 
-  const [subscriptionPlan, setSubscriptionPlan] =
-    useState<SubscriptionPlan>("FREE");
-  const [subscriptionStatus, setSubscriptionStatus] = useState("ACTIVE");
-  const [subscriptionStartedAt, setSubscriptionStartedAt] = useState<
-    string | null
-  >(null);
+  const [subscription, setSubscription] =
+    useState<CurrentSubscription | null>(null);
 
   const currentMonth = getMonthKey(new Date());
   const selectedMonth = getMonthKey(cursor);
@@ -424,6 +403,18 @@ export default function ExpenseManagementScreen() {
   const loadExpenses = async () => {
     const accessToken = await getAccessToken();
 
+    const subscriptionData = await getCurrentSubscription(accessToken);
+    const currentSubscription = subscriptionData.subscription;
+    const entitlements = getSubscriptionEntitlements(currentSubscription.plan);
+
+    if (!entitlements.expenses) {
+      throw new Error(
+        "La gestion des dépenses est disponible avec les offres Essentiel et Premium."
+      );
+    }
+
+    setSubscription(currentSubscription);
+
     const currentExpenses = await getExpenses(accessToken, {
       month: selectedMonth,
     });
@@ -447,23 +438,6 @@ export default function ExpenseManagementScreen() {
     }
 
     setPreviousMonths(previous);
-
-    try {
-      const salonSettings = await getSalonSettings(accessToken);
-
-      setSubscriptionPlan(
-        salonSettings.paymentSettings.subscriptionPlan
-      );
-      setSubscriptionStatus(
-        salonSettings.paymentSettings.subscriptionStatus
-      );
-      setSubscriptionStartedAt(
-        salonSettings.paymentSettings.subscriptionStartedAt
-      );
-    } catch {
-      // Les dépenses restent utilisables même si les paramètres du salon
-      // ne peuvent pas être chargés.
-    }
   };
 
   useEffect(() => {
@@ -865,18 +839,16 @@ export default function ExpenseManagementScreen() {
 
           <View style={styles.subscriptionContent}>
             <Text style={styles.subscriptionTitle}>
-              {getSubscriptionName(subscriptionPlan)}
+              {getSubscriptionPaymentLabel(subscription)}
             </Text>
 
             <Text style={styles.subscriptionStatus}>
-              {subscriptionStatus === "ACTIVE"
+              {subscription?.status === "ACTIVE"
                 ? "Abonnement actif"
-                : "Abonnement annulé"}
-              {subscriptionStartedAt
-                ? ` depuis le ${new Intl.DateTimeFormat(
-                    "fr-FR"
-                  ).format(
-                    new Date(subscriptionStartedAt)
+                : "Abonnement en attente"}
+              {subscription?.currentPeriodStart
+                ? ` depuis le ${new Intl.DateTimeFormat("fr-FR").format(
+                    new Date(subscription.currentPeriodStart)
                   )}`
                 : ""}
             </Text>
@@ -884,7 +856,7 @@ export default function ExpenseManagementScreen() {
 
           <Text style={styles.subscriptionPrice}>
             {formatAmount(
-              getSubscriptionPrice(subscriptionPlan)
+              subscription?.price ?? 0
             )}{" "}
             F
           </Text>

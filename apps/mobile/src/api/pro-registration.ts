@@ -9,6 +9,10 @@ export type CountryCode = "+241";
 export type LoginMethod = "phone" | "email";
 export type PaymentMethod = "mobile-money" | "bank";
 export type ServiceType = "individual" | "group";
+export type RegistrationSubscriptionPlan =
+  | "DISCOVERY"
+  | "ESSENTIAL"
+  | "PREMIUM";
 
 export type TimeSlotPayload = {
   start: string;
@@ -86,6 +90,8 @@ export type RegisterProfessionalPayload = {
   acceptNotifications?: boolean;
   acceptNewsletter?: boolean;
 
+  subscriptionPlan: RegistrationSubscriptionPlan;
+
   // compat ancien flux
   salonName?: string;
 };
@@ -123,21 +129,16 @@ export type RegisterProfessionalResponse = {
     coverImageUrl?: string | null;
     galleryImageUrls?: string[];
   };
+  subscription?: {
+    plan: RegistrationSubscriptionPlan;
+    status: "ACTIVE";
+    currentPeriodStart?: string | null;
+    currentPeriodEnd?: string | null;
+  };
   verificationRequired: boolean;
   verificationChannel: "sms" | "email" | "none";
   otpDebugCode?: string | null;
 };
-
-function guessMimeType(fileName?: string | null) {
-  const name = (fileName ?? "").toLowerCase();
-
-  if (name.endsWith(".png")) return "image/png";
-  if (name.endsWith(".webp")) return "image/webp";
-  if (name.endsWith(".heic")) return "image/heic";
-  if (name.endsWith(".heif")) return "image/heif";
-
-  return "image/jpeg";
-}
 
 export async function uploadProfessionalRegistrationPhoto(
   image: ProfessionalRegistrationPhoto,
@@ -147,10 +148,6 @@ export async function uploadProfessionalRegistrationPhoto(
   }
 
   const formData = new FormData();
-
-  // SDK 57 utilise l'implémentation WinterCG de fetch/FormData.
-  // L'ancien objet React Native { uri, name, type } n'est plus accepté
-  // comme FormDataPart. expo-file-system fournit un vrai File/Blob compatible.
   const file = new File(image.uri);
 
   if (!file.exists) {

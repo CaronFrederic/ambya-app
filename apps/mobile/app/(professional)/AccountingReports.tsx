@@ -21,6 +21,7 @@ import DateTimePicker, {
 } from "@react-native-community/datetimepicker";
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
+import * as SecureStore from "expo-secure-store";
 
 import { ProHeader } from "./components/ProHeader";
 import {
@@ -33,6 +34,8 @@ import {
   type ComparisonIndicator,
   type PeriodType,
 } from "../../src/api/accounting-reports";
+import { getCurrentSubscription } from "../../src/api/subscriptions";
+import { getSubscriptionEntitlements } from "../../src/subscription/subscription-entitlements";
 
 const COLORS = {
   background: "#FAF7F2",
@@ -385,6 +388,32 @@ export default function AccountingReportsScreen() {
     const initialLoad = async () => {
       try {
         setLoading(true);
+
+        const token = await SecureStore.getItemAsync("accessToken");
+        if (!token) {
+          throw new Error("Utilisateur non authentifié.");
+        }
+
+        const current = await getCurrentSubscription(token);
+        const entitlements = getSubscriptionEntitlements(
+          current.subscription.plan
+        );
+
+        if (!entitlements.managementRegister) {
+          Alert.alert(
+            "Fonctionnalité Premium",
+            "Le Registre de gestion est réservé à l’offre Premium.",
+            [
+              {
+                text: "Retour au dashboard",
+                onPress: () => router.replace("/(professional)/dashboard"),
+              },
+            ]
+          );
+          router.replace("/(professional)/dashboard");
+          return;
+        }
+
         await loadReport();
       } catch (error) {
         Alert.alert(

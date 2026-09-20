@@ -11,8 +11,11 @@ import {
   Image,
   ActivityIndicator,
   RefreshControl,
+  Alert,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { router } from "expo-router";
+import * as SecureStore from "expo-secure-store";
 import DateTimePicker, { type DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import { ProHeader } from "./components/ProHeader";
 import {
@@ -28,6 +31,8 @@ import {
   type ApiEmployee,
   type ApiLeaveRequest,
 } from "../../src/api/pro-employees";
+import { getCurrentSubscription } from "../../src/api/subscriptions";
+import { getSubscriptionEntitlements } from "../../src/subscription/subscription-entitlements";
 
 type EmployeeStatus = "active" | "leave" | "absent";
 
@@ -225,6 +230,32 @@ export default function TeamManagementScreen() {
   const initialLoad = async () => {
     try {
       setLoading(true);
+
+      const token = await SecureStore.getItemAsync("accessToken");
+      if (!token) {
+        throw new Error("Utilisateur non authentifié.");
+      }
+
+      const current = await getCurrentSubscription(token);
+      const entitlements = getSubscriptionEntitlements(
+        current.subscription.plan
+      );
+
+      if (!entitlements.employees) {
+        Alert.alert(
+          "Fonctionnalité Essentiel",
+          "La gestion des employés est disponible avec les offres Essentiel et Premium.",
+          [
+            {
+              text: "Retour au dashboard",
+              onPress: () => router.replace("/(professional)/dashboard"),
+            },
+          ]
+        );
+        router.replace("/(professional)/dashboard");
+        return;
+      }
+
       await Promise.all([loadEmployees(), loadLeaveRequests()]);
     } catch (error) {
       toast(error instanceof Error ? error.message : "Erreur de chargement.");

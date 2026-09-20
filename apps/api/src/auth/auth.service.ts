@@ -8,7 +8,7 @@ import { randomUUID } from 'crypto';
 import { promises as fs } from 'fs';
 import { extname, join } from 'path';
 import * as bcrypt from 'bcryptjs';
-import { Prisma, UserRole } from '@prisma/client';
+import { Prisma, SubscriptionPlan, SubscriptionStatus, UserRole } from '@prisma/client';
 
 import { PrismaService } from '../prisma/prisma.service';
 import { LoginDto } from './dto/login.dto';
@@ -288,10 +288,17 @@ export class AuthService {
         : dto.establishmentType?.trim() || undefined;
 
     const categories = Array.isArray(dto.categories)
-  ? dto.categories
-      .map((category) => category.trim())
-      .filter(Boolean)
-  : [];
+      ? dto.categories
+          .map((category) => category.trim())
+          .filter(Boolean)
+      : [];
+
+    const initialSubscriptionPlan =
+      dto.subscriptionPlan === 'ESSENTIAL'
+        ? SubscriptionPlan.ESSENTIAL
+        : dto.subscriptionPlan === 'PREMIUM'
+          ? SubscriptionPlan.PREMIUM
+          : SubscriptionPlan.DISCOVERY;
 
     const result = await this.prisma.$transaction(async (tx) => {
       const user = await tx.user.create({
@@ -386,6 +393,42 @@ export class AuthService {
         },
       });
 
+      const subscriptionPeriodStart =
+        initialSubscriptionPlan === SubscriptionPlan.DISCOVERY
+          ? null
+          : new Date();
+
+      const subscriptionPeriodEnd =
+        subscriptionPeriodStart == null
+          ? null
+          : new Date(
+              subscriptionPeriodStart.getFullYear(),
+              subscriptionPeriodStart.getMonth() + 1,
+              subscriptionPeriodStart.getDate(),
+              subscriptionPeriodStart.getHours(),
+              subscriptionPeriodStart.getMinutes(),
+              subscriptionPeriodStart.getSeconds(),
+              subscriptionPeriodStart.getMilliseconds(),
+            );
+
+      const subscription = await tx.salonSubscription.create({
+        data: {
+          salonId: salon.id,
+          plan: initialSubscriptionPlan,
+          status: SubscriptionStatus.ACTIVE,
+          currentPeriodStart: subscriptionPeriodStart,
+          currentPeriodEnd: subscriptionPeriodEnd,
+          autoRenew: false,
+          cancelAtPeriodEnd: false,
+        },
+        select: {
+          plan: true,
+          status: true,
+          currentPeriodStart: true,
+          currentPeriodEnd: true,
+        },
+      });
+
       if (dto.schedule) {
         const dayMap: Record<string, number> = {
           lundi: 1,
@@ -440,7 +483,7 @@ export class AuthService {
         }
       }
 
-      return { user, salon };
+      return { user, salon, subscription };
     });
 
     const accessToken = await this.signAccessToken({
@@ -456,6 +499,7 @@ export class AuthService {
       accessToken,
       user: result.user,
       salon: result.salon,
+      subscription: result.subscription,
       verificationRequired: loginMethod === 'PHONE',
       verificationChannel: loginMethod === 'PHONE' ? 'sms' : 'email',
       ...(this.shouldExposeOtpDebugCode()

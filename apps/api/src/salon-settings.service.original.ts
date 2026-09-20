@@ -178,6 +178,28 @@ export class SalonSettingsService {
         ? rawPaymentSettings.scheduleType
         : 'standard';
 
+    const rawSubscriptionPlan = getStringValue(
+      rawPaymentSettings,
+      'subscriptionPlan',
+      'FREE',
+    );
+    const subscriptionPlan = ['FREE', 'PRO', 'BUSINESS'].includes(
+      rawSubscriptionPlan,
+    )
+      ? rawSubscriptionPlan
+      : 'FREE';
+
+    const rawSubscriptionStatus = getStringValue(
+      rawPaymentSettings,
+      'subscriptionStatus',
+      'ACTIVE',
+    );
+    const subscriptionStatus = ['ACTIVE', 'CANCELLED'].includes(
+      rawSubscriptionStatus,
+    )
+      ? rawSubscriptionStatus
+      : 'ACTIVE';
+
     return {
       id: salon.id,
       name: salon.name ?? '',
@@ -220,6 +242,16 @@ export class SalonSettingsService {
           typeof rawPaymentSettings.cancelPolicyHours === 'number'
             ? rawPaymentSettings.cancelPolicyHours
             : 12,
+        subscriptionPlan,
+        subscriptionStatus,
+        subscriptionStartedAt:
+          typeof rawPaymentSettings.subscriptionStartedAt === 'string'
+            ? rawPaymentSettings.subscriptionStartedAt
+            : null,
+        subscriptionCancelledAt:
+          typeof rawPaymentSettings.subscriptionCancelledAt === 'string'
+            ? rawPaymentSettings.subscriptionCancelledAt
+            : null,
       },
 
       depositEnabled: salon.depositEnabled,
@@ -237,6 +269,22 @@ export class SalonSettingsService {
         ? (salon.paymentSettings as Prisma.JsonObject)
         : {};
 
+    const subscriptionPlan =
+      dto.paymentSettings.subscriptionPlan ??
+      (['FREE', 'PRO', 'BUSINESS'].includes(
+        getStringValue(rawPaymentSettings, 'subscriptionPlan', 'FREE'),
+      )
+        ? getStringValue(rawPaymentSettings, 'subscriptionPlan', 'FREE')
+        : 'FREE');
+
+    const subscriptionStatus =
+      dto.paymentSettings.subscriptionStatus ??
+      (['ACTIVE', 'CANCELLED'].includes(
+        getStringValue(rawPaymentSettings, 'subscriptionStatus', 'ACTIVE'),
+      )
+        ? getStringValue(rawPaymentSettings, 'subscriptionStatus', 'ACTIVE')
+        : 'ACTIVE');
+
     const paymentSettings: Prisma.InputJsonObject = {
       payMobileMoney: dto.paymentSettings.payMobileMoney,
       payCard: dto.paymentSettings.payCard,
@@ -249,6 +297,14 @@ export class SalonSettingsService {
       bankOwner: dto.paymentSettings.bankOwner ?? '',
       cancelPolicyHours: dto.paymentSettings.cancelPolicyHours ?? 12,
       scheduleType: dto.scheduleType,
+      subscriptionPlan,
+      subscriptionStatus,
+      subscriptionStartedAt:
+        dto.paymentSettings.subscriptionStartedAt ??
+        getStringValue(rawPaymentSettings, 'subscriptionStartedAt'),
+      subscriptionCancelledAt:
+        dto.paymentSettings.subscriptionCancelledAt ??
+        getStringValue(rawPaymentSettings, 'subscriptionCancelledAt'),
     };
 
     const scheduleRows =

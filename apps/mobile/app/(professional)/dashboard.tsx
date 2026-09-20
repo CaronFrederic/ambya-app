@@ -20,6 +20,14 @@ import {
   type DashboardSummary,
 } from "../../src/api/dashboard";
 import { createProBlockedSlot } from "../../src/api/appointments";
+import {
+  getCurrentSubscription,
+  type SubscriptionPlan,
+} from "../../src/api/subscriptions";
+import {
+  getSubscriptionEntitlements,
+  type SubscriptionEntitlements,
+} from "../../src/subscription/subscription-entitlements";
 
 const today = new Date().toLocaleDateString("fr-FR", {
   weekday: "long",
@@ -65,6 +73,7 @@ type DashboardTile = {
   icon: keyof typeof Ionicons.glyphMap;
   href: Href;
   color?: string;
+  requires?: keyof SubscriptionEntitlements;
 };
 
 const EMPTY_SUMMARY: DashboardSummary = {
@@ -85,17 +94,20 @@ const dashboardTiles: DashboardTile[] = [
     title: "Employés",
     icon: "people-outline",
     href: "/(professional)/team-management" as Href,
+    requires: "employees",
   },
   {
     title: "Dépenses",
     icon: "trending-down-outline",
     href: "/(professional)/ExpenseManagement" as Href,
     color: COLORS.red,
+    requires: "expenses",
   },
   {
-    title: "Comptabilité",
+    title: "Registre de gestion",
     icon: "newspaper-outline",
     href: "/(professional)/AccountingReports" as Href,
+    requires: "managementRegister",
   },
   {
     title: "Caisse",
@@ -175,7 +187,11 @@ function KPI({ icon, iconColor, bgColor, label, value }: KPIProps) {
   );
 }
 
-function QuickActions() {
+function QuickActions({
+  canManageEmployees,
+}: {
+  canManageEmployees: boolean;
+}) {
   const [isOpen, setIsOpen] = useState(false);
   const [showBlockModal, setShowBlockModal] = useState(false);
   const [blocking, setBlocking] = useState(false);
@@ -219,15 +235,19 @@ function QuickActions() {
   };
 
   const actions: QuickActionItem[] = [
-    {
-      label: "Ajouter un employé",
-      icon: "add-outline",
-      onPress: () => {
-        setIsOpen(false);
-        router.push("/(professional)/team-management" as Href);
-      },
-      withBorder: true,
-    },
+    ...(canManageEmployees
+      ? [
+          {
+            label: "Ajouter un employé",
+            icon: "add-outline" as const,
+            onPress: () => {
+              setIsOpen(false);
+              router.push("/(professional)/team-management" as Href);
+            },
+            withBorder: true,
+          },
+        ]
+      : []),
     {
       label: "Ajouter un service",
       icon: "add-outline",
@@ -408,6 +428,8 @@ export default function ProDashboard() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [subscriptionPlan, setSubscriptionPlan] =
+    useState<SubscriptionPlan>("DISCOVERY");
 
   const loadDashboard = async () => {
     const token = await getAccessToken();
@@ -418,7 +440,12 @@ export default function ProDashboard() {
       return;
     }
 
-    const data = await getDashboardSummary(token);
+    const [data, subscriptionData] = await Promise.all([
+      getDashboardSummary(token),
+      getCurrentSubscription(token),
+    ]);
+
+    setSubscriptionPlan(subscriptionData.subscription.plan);
 
     setSummary({
       todayAppointments: data?.todayAppointments ?? 0,
@@ -459,6 +486,19 @@ export default function ProDashboard() {
   useEffect(() => {
     initialLoad();
   }, []);
+
+  const entitlements = useMemo(
+    () => getSubscriptionEntitlements(subscriptionPlan),
+    [subscriptionPlan]
+  );
+
+  const visibleDashboardTiles = useMemo(
+    () =>
+      dashboardTiles.filter(
+        (item) => !item.requires || entitlements[item.requires]
+      ),
+    [entitlements]
+  );
 
   const kpis = useMemo(
     () => [
@@ -550,10 +590,12 @@ export default function ProDashboard() {
             ))}
           </View>
 
-          <QuickActions />
+          <QuickActions
+            canManageEmployees={entitlements.employees}
+          />
 
           <View style={styles.tileGrid}>
-            {dashboardTiles.map((item) => (
+            {visibleDashboardTiles.map((item) => (
               <DashboardTileCard key={item.title} item={item} />
             ))}
           </View>

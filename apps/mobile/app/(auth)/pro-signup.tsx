@@ -41,6 +41,7 @@ type RegistrationStep =
   | "step2"
   | "step3"
   | "step4"
+  | "step5"
   | "success";
 
 type TimeSlot = {
@@ -57,6 +58,7 @@ type ServiceType = "individual" | "group";
 type LoginMethod = "phone" | "email";
 type PaymentMethod = "mobile-money" | "bank";
 type MobileMoneyOperator = "" | "airtel" | "moov";
+type SubscriptionPlan = "DISCOVERY" | "ESSENTIAL" | "PREMIUM";
 
 type RegistrationPhoto = ProfessionalRegistrationPhoto & {
   id: string;
@@ -116,6 +118,8 @@ type FormData = {
   acceptTerms: boolean;
   acceptNotifications: boolean;
   acceptNewsletter: boolean;
+
+  subscriptionPlan: SubscriptionPlan;
 };
 
 type StepBaseProps = {
@@ -155,7 +159,7 @@ type Step4Props = {
   formData: FormData;
   setFormData: React.Dispatch<React.SetStateAction<FormData>>;
   onBack: () => void;
-  onComplete: () => void;
+  onNext: () => void;
   isValid: boolean;
   passwordValidation: {
     length: boolean;
@@ -168,6 +172,13 @@ type Step4Props = {
   showConfirmPassword: boolean;
   setShowPassword: React.Dispatch<React.SetStateAction<boolean>>;
   setShowConfirmPassword: React.Dispatch<React.SetStateAction<boolean>>;
+};
+
+type Step5Props = {
+  formData: FormData;
+  setFormData: React.Dispatch<React.SetStateAction<FormData>>;
+  onBack: () => void;
+  onComplete: () => void;
   submitting: boolean;
 };
 
@@ -325,6 +336,8 @@ export default function ProSignup() {
     acceptTerms: false,
     acceptNotifications: false,
     acceptNewsletter: false,
+
+    subscriptionPlan: "DISCOVERY",
   });
 
   const passwordValidation = {
@@ -422,7 +435,9 @@ export default function ProSignup() {
           ? 3
           : step === "step4"
             ? 4
-            : 0;
+            : step === "step5"
+              ? 5
+              : 0;
 
   const onSubmit = async () => {
     const normalizedPhone = normalizePhone(formData.phoneNumber);
@@ -494,6 +509,8 @@ export default function ProSignup() {
       acceptTerms: formData.acceptTerms,
       acceptNotifications: formData.acceptNotifications,
       acceptNewsletter: formData.acceptNewsletter,
+
+      subscriptionPlan: formData.subscriptionPlan,
 
       salonName: formData.establishmentName.trim() || undefined,
       photos: photoUrls,
@@ -789,6 +806,15 @@ export default function ProSignup() {
               setShowPassword={setShowPassword}
               setShowConfirmPassword={setShowConfirmPassword}
               onBack={() => setStep("step3")}
+              onNext={() => setStep("step5")}
+            />
+          ) : null}
+
+          {step === "step5" ? (
+            <Step5
+              formData={formData}
+              setFormData={setFormData}
+              onBack={() => setStep("step4")}
               onComplete={onSubmit}
               submitting={submitting}
             />
@@ -860,12 +886,12 @@ function LandingSection({ onStart }: { onStart: () => void }) {
 }
 
 function ProgressHeader({ currentStep }: { currentStep: number }) {
-  const labels = ["Informations", "Horaires", "Services", "Compte"];
+  const labels = ["Informations", "Horaires", "Services", "Compte", "Offre"];
 
   return (
     <View style={styles.progressWrap}>
       <View style={styles.progressRow}>
-        {[1, 2, 3, 4].map((item, index) => {
+        {[1, 2, 3, 4, 5].map((item, index) => {
           const isActive = currentStep === item;
           const isDone = currentStep > item;
 
@@ -888,7 +914,7 @@ function ProgressHeader({ currentStep }: { currentStep: number }) {
                 </Text>
               </View>
 
-              {index < 3 ? (
+              {index < 4 ? (
                 <View
                   style={[
                     styles.progressLine,
@@ -974,7 +1000,7 @@ function Step1({
 
   return (
     <StepCard
-      title="ÉTAPE 1/4 : INFORMATIONS DE L'ÉTABLISSEMENT"
+      title="ÉTAPE 1/5 : INFORMATIONS DE L'ÉTABLISSEMENT"
       onBack={onBack}
       onNext={onNext}
       isValid={isValid}
@@ -1251,7 +1277,7 @@ function Step2({
 
   return (
     <StepCard
-      title="ÉTAPE 2/4 : HORAIRES & ÉQUIPE"
+      title="ÉTAPE 2/5 : HORAIRES & ÉQUIPE"
       onBack={onBack}
       onNext={onNext}
       isValid={isValid}
@@ -1418,7 +1444,7 @@ function Step3({
 
   return (
     <StepCard
-      title="ÉTAPE 3/4 : VOS SERVICES"
+      title="ÉTAPE 3/5 : VOS SERVICES"
       subtitle="Ajoutez les prestations que vous proposez à vos clients"
       onBack={onBack}
       onNext={onNext}
@@ -1723,7 +1749,7 @@ function Step4({
   formData,
   setFormData,
   onBack,
-  onComplete,
+  onNext,
   isValid,
   passwordValidation,
   passwordStrength,
@@ -1731,16 +1757,15 @@ function Step4({
   showConfirmPassword,
   setShowPassword,
   setShowConfirmPassword,
-  submitting,
 }: Step4Props) {
   return (
     <StepCard
-      title="ÉTAPE 4/4 : COMPTE & SÉCURITÉ"
-      subtitle="Dernière étape ! Sécurisez votre compte"
+      title="ÉTAPE 4/5 : COMPTE & SÉCURITÉ"
+      subtitle="Sécurisez votre compte avant de choisir votre offre"
       onBack={onBack}
-      onNext={onComplete}
+      onNext={onNext}
       isValid={isValid}
-      nextLabel={submitting ? "Création..." : "Créer mon compte"}
+      nextLabel="Choisir mon offre"
     >
       <SectionTitle title="Authentification" />
 
@@ -1942,6 +1967,158 @@ function Step4({
             ...prev,
             acceptNewsletter: !prev.acceptNewsletter,
           }))
+        }
+      />
+    </StepCard>
+  );
+}
+
+
+const SUBSCRIPTION_OFFERS: {
+  id: SubscriptionPlan;
+  name: string;
+  price: string;
+  commission: string;
+  recommended?: boolean;
+  features: string[];
+}[] = [
+  {
+    id: "DISCOVERY",
+    name: "Découverte",
+    price: "0 FCFA / mois",
+    commission: "12% de commission par réservation",
+    features: [
+      "Profil professionnel visible sur AMBYA",
+      "Réservations illimitées",
+      "Agenda & gestion des RDV",
+      "Caisse & transactions",
+      "Fiche client avec historique",
+      "Promotions & offres spéciales",
+    ],
+  },
+  {
+    id: "ESSENTIAL",
+    name: "Essentiel",
+    price: "12 900 FCFA / mois",
+    commission: "Sans commission",
+    recommended: true,
+    features: [
+      "Tout le plan Découverte",
+      "Gestion des employés & congés",
+      "Gestion des dépenses & caisse",
+      "Fiche client avec historique",
+      "Statistiques & tableau de bord",
+    ],
+  },
+  {
+    id: "PREMIUM",
+    name: "Premium",
+    price: "24 900 FCFA / mois",
+    commission: "Sans commission",
+    features: [
+      "Tout le plan Essentiel",
+      "Registre de gestion",
+      "Espace dédié aux employés",
+    ],
+  },
+];
+
+function Step5({
+  formData,
+  setFormData,
+  onBack,
+  onComplete,
+  submitting,
+}: Step5Props) {
+  return (
+    <StepCard
+      title="ÉTAPE 5/5 : CHOISISSEZ VOTRE OFFRE"
+      subtitle="Sélectionnez l'offre de départ de votre salon"
+      onBack={onBack}
+      onNext={onComplete}
+      isValid={!submitting}
+      nextLabel={submitting ? "Création..." : "Créer mon compte"}
+    >
+      <InfoBox
+        tone="info"
+        text="Votre choix n'est pas définitif : vous pourrez changer d'offre à tout moment depuis Paramètres > Abonnement."
+      />
+
+      <View style={styles.subscriptionOfferList}>
+        {SUBSCRIPTION_OFFERS.map((offer) => {
+          const selected = formData.subscriptionPlan === offer.id;
+
+          return (
+            <Pressable
+              key={offer.id}
+              onPress={() =>
+                setFormData((prev) => ({
+                  ...prev,
+                  subscriptionPlan: offer.id,
+                }))
+              }
+              disabled={submitting}
+              style={[
+                styles.subscriptionOfferCard,
+                selected && styles.subscriptionOfferCardSelected,
+              ]}
+            >
+              <View style={styles.subscriptionOfferHeader}>
+                <View style={styles.flex1}>
+                  <View style={styles.subscriptionOfferTitleRow}>
+                    <Text style={styles.subscriptionOfferName}>{offer.name}</Text>
+                    {offer.recommended ? (
+                      <View style={styles.subscriptionRecommendedBadge}>
+                        <Text style={styles.subscriptionRecommendedText}>
+                          RECOMMANDÉ
+                        </Text>
+                      </View>
+                    ) : null}
+                  </View>
+                  <Text style={styles.subscriptionOfferPrice}>{offer.price}</Text>
+                  <Text style={styles.subscriptionOfferCommission}>
+                    {offer.commission}
+                  </Text>
+                </View>
+
+                <View
+                  style={[
+                    styles.subscriptionRadio,
+                    selected && styles.subscriptionRadioSelected,
+                  ]}
+                >
+                  {selected ? (
+                    <View style={styles.subscriptionRadioDot} />
+                  ) : null}
+                </View>
+              </View>
+
+              <View style={styles.subscriptionFeatureList}>
+                {offer.features.map((feature) => (
+                  <Text key={feature} style={styles.subscriptionFeatureText}>
+                    ✓ {feature}
+                  </Text>
+                ))}
+              </View>
+
+              {selected ? (
+                <View style={styles.subscriptionSelectedBadge}>
+                  <Text style={styles.subscriptionSelectedText}>
+                    Offre sélectionnée
+                  </Text>
+                </View>
+              ) : null}
+            </Pressable>
+          );
+        })}
+      </View>
+
+      <InfoBox
+        tone="purple"
+        text={
+          formData.subscriptionPlan === "DISCOVERY"
+            ? "Découverte : 0 FCFA/mois avec 12% de commission par réservation."
+            : "Pendant la bêta, l'offre payante choisie est activée à la création du salon. Le paiement réel sera raccordé ultérieurement."
         }
       />
     </StepCard>
@@ -3365,6 +3542,116 @@ const styles = StyleSheet.create({
     color: colors.brand,
     fontWeight: "700",
     fontSize: 12,
+  },
+
+
+  subscriptionOfferList: {
+    gap: spacing.md,
+  },
+
+  subscriptionOfferCard: {
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    borderRadius: radius.xl,
+    backgroundColor: colors.card,
+    padding: spacing.lg,
+    gap: spacing.md,
+  },
+
+  subscriptionOfferCardSelected: {
+    borderColor: colors.brand,
+    backgroundColor: overlays.brand05,
+  },
+
+  subscriptionOfferHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing.md,
+  },
+
+  subscriptionOfferTitleRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+
+  subscriptionOfferName: {
+    color: colors.brand,
+    fontSize: 22,
+    fontWeight: "800",
+  },
+
+  subscriptionOfferPrice: {
+    color: colors.text,
+    fontSize: 18,
+    fontWeight: "800",
+    marginTop: 4,
+  },
+
+  subscriptionOfferCommission: {
+    color: colors.textMuted,
+    fontSize: 13,
+    marginTop: 4,
+  },
+
+  subscriptionRecommendedBadge: {
+    backgroundColor: colors.gold,
+    borderRadius: radius.full,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+  },
+
+  subscriptionRecommendedText: {
+    color: colors.brand,
+    fontSize: 10,
+    fontWeight: "900",
+  },
+
+  subscriptionRadio: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: overlays.brand20,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 2,
+  },
+
+  subscriptionRadioSelected: {
+    borderColor: colors.brand,
+  },
+
+  subscriptionRadioDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: colors.brand,
+  },
+
+  subscriptionFeatureList: {
+    gap: 7,
+  },
+
+  subscriptionFeatureText: {
+    color: colors.text,
+    fontSize: 14,
+    lineHeight: 20,
+  },
+
+  subscriptionSelectedBadge: {
+    alignSelf: "flex-start",
+    backgroundColor: colors.brand,
+    borderRadius: radius.full,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 7,
+  },
+
+  subscriptionSelectedText: {
+    color: colors.brandForeground,
+    fontSize: 12,
+    fontWeight: "800",
   },
 
   navRow: {

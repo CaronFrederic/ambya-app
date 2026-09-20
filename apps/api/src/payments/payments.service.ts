@@ -7,8 +7,22 @@ import { UpdateIntentStatusDto } from './dto/update-intent-status.dto'
 export class PaymentsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  // règle bêta simple : commission fixe en %
-  private readonly platformFeePct = 10 // 10%
+  private async getPlatformFeePctForSalon(salonId?: string | null): Promise<number> {
+    if (!salonId) return 12;
+
+    const subscription = await this.prisma.salonSubscription.findUnique({
+      where: { salonId },
+      select: { plan: true, status: true, currentPeriodEnd: true },
+    });
+
+    const paidPlanIsActive =
+      subscription?.status === 'ACTIVE' &&
+      (subscription.plan === 'ESSENTIAL' || subscription.plan === 'PREMIUM') &&
+      !!subscription.currentPeriodEnd &&
+      subscription.currentPeriodEnd > new Date();
+
+    return paidPlanIsActive ? 0 : 12;
+  }
 
   listMyIntents(userId: string) {
     return this.prisma.paymentIntent.findMany({
@@ -45,8 +59,8 @@ export class PaymentsService {
       pm = { provider: found.provider }
     }
 
-    // commission calculation (simple)
-    const platformFeeAmount = Math.floor((payableAmount * this.platformFeePct) / 100)
+    const platformFeePct = await this.getPlatformFeePctForSalon(dto.salonId);
+    const platformFeeAmount = Math.floor((payableAmount * platformFeePct) / 100)
     const providerFeeAmount = 0
     const netAmount = Math.max(0, payableAmount - platformFeeAmount - providerFeeAmount)
 
@@ -358,6 +372,11 @@ export class PaymentsService {
             })
           ).map((salon) => salon.id);
 
+    const commissionPct = salonIds.length
+      ? await this.getPlatformFeePctForSalon(salonIds[0])
+      : 12;
+    const salonPct = 100 - commissionPct;
+
     const requestedDate = date ?? new Date().toISOString().slice(0, 10);
     const targetDate = new Date(`${requestedDate}T12:00:00`);
 
@@ -375,15 +394,15 @@ export class PaymentsService {
       date: requestedDate,
       totals: { total: 0, mobileMoney: 0, card: 0, cash: 0 },
       shares: {
-        salonPercentage: 85,
+        salonPercentage: salonPct,
         salonAmount: 0,
-        ambyaPercentage: 15,
+        ambyaPercentage: commissionPct,
         ambyaAmount: 0,
       },
       transactions: [],
       breakdown: [
-        { name: 'Part salon', value: 85, amount: 0, color: '#6B2737' },
-        { name: 'Commission AMBYA', value: 15, amount: 0, color: '#D4AF6A' },
+        { name: 'Part salon', value: salonPct, amount: 0, color: '#6B2737' },
+        { name: 'Commission AMBYA', value: commissionPct, amount: 0, color: '#D4AF6A' },
       ],
       meta: { count: 0, paidCount: 0, pendingCount: 0, paidTotal: 0 },
     };
@@ -459,29 +478,29 @@ export class PaymentsService {
         ? transactions.filter((tx) => tx.method === method)
         : transactions;
 
-    const ambyaAmount = Math.round(totals.total * 0.15);
+    const ambyaAmount = Math.round((totals.total * commissionPct) / 100);
     const salonAmount = totals.total - ambyaAmount;
 
     return {
       date: requestedDate,
       totals,
       shares: {
-        salonPercentage: 85,
+        salonPercentage: salonPct,
         salonAmount,
-        ambyaPercentage: 15,
+        ambyaPercentage: commissionPct,
         ambyaAmount,
       },
       transactions: filteredTransactions,
       breakdown: [
         {
           name: 'Part salon',
-          value: 85,
+          value: salonPct,
           amount: salonAmount,
           color: '#6B2737',
         },
         {
           name: 'Commission AMBYA',
-          value: 15,
+          value: commissionPct,
           amount: ambyaAmount,
           color: '#D4AF6A',
         },

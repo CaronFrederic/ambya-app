@@ -45,32 +45,31 @@ export class AppointmentsService {
   private async getPlatformFeePctForSalon(salonId: string): Promise<number> {
     const salon = await this.prisma.salon.findUnique({
       where: { id: salonId },
-      select: { paymentSettings: true },
+      select: {
+        id: true,
+        subscription: {
+          select: {
+            plan: true,
+            status: true,
+            currentPeriodEnd: true,
+          },
+        },
+      },
     });
 
     if (!salon) {
       throw new BadRequestException('Salon not found');
     }
 
-    const paymentSettings =
-      salon.paymentSettings && typeof salon.paymentSettings === 'object'
-        ? (salon.paymentSettings as Prisma.JsonObject)
-        : {};
+    const subscription = salon.subscription;
+    const paidPlanIsActive =
+      subscription?.status === 'ACTIVE' &&
+      (subscription.plan === 'ESSENTIAL' || subscription.plan === 'PREMIUM') &&
+      !!subscription.currentPeriodEnd &&
+      subscription.currentPeriodEnd > new Date();
 
-    const subscriptionPlan =
-      typeof paymentSettings.subscriptionPlan === 'string'
-        ? paymentSettings.subscriptionPlan
-        : 'FREE';
-    const subscriptionStatus =
-      typeof paymentSettings.subscriptionStatus === 'string'
-        ? paymentSettings.subscriptionStatus
-        : 'ACTIVE';
-
-    const hasActiveSubscription =
-      subscriptionStatus === 'ACTIVE' &&
-      (subscriptionPlan === 'PRO' || subscriptionPlan === 'BUSINESS');
-
-    return hasActiveSubscription ? 0 : 10;
+    // Tarification officielle AMBYA : Découverte 12 %, Essentiel/Premium 0 %.
+    return paidPlanIsActive ? 0 : 12;
   }
 
   async listForUser(

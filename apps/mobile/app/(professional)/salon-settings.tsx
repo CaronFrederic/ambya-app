@@ -21,9 +21,17 @@ import {
   getSalonSettings,
   updateSalonSettings,
   uploadSalonPhoto,
-  type SubscriptionPlan,
-  type SubscriptionStatus,
 } from "../../src/api/salon-settings";
+import {
+  cancelSubscription as cancelSalonSubscription,
+  confirmSubscriptionPaymentForBeta,
+  getCurrentSubscription,
+  subscribeToPlan,
+  type CurrentSubscription,
+  type SubscriptionPayment,
+  type SubscriptionPaymentMethod,
+  type SubscriptionPlan,
+} from "../../src/api/subscriptions";
 import { useAuthRefresh } from "../../src/providers/AuthRefreshProvider";
 
 const COLORS = {
@@ -36,9 +44,10 @@ const COLORS = {
 type TabId = "infos" | "photos" | "horaires" | "paiements" | "acompte" | "abonnement";
 
 type SubscriptionOffer = {
-  id: Exclude<SubscriptionPlan, "FREE">;
+  id: SubscriptionPlan;
   name: string;
   price: number;
+  commissionPct: number;
   description: string;
   features: string[];
   recommended?: boolean;
@@ -46,31 +55,54 @@ type SubscriptionOffer = {
 
 const SUBSCRIPTION_OFFERS: SubscriptionOffer[] = [
   {
-    id: "PRO",
-    name: "AMBYA Pro",
-    price: 15000,
-    description: "Pour les indépendants et petits salons qui utilisent AMBYA régulièrement.",
+    id: "DISCOVERY",
+    name: "Découverte",
+    price: 0,
+    commissionPct: 12,
+    description: "Pour démarrer sans risque.",
     features: [
-      "0 % de commission AMBYA",
-      "Gestion des employés",
-      "Promotions et fidélisation",
-      "Statistiques essentielles",
+      "Profil professionnel visible sur AMBYA",
+      "Réservations illimitées",
+      "Agenda & gestion des RDV",
+      "Caisse & transactions",
+      "Fiche client avec historique",
+      "Promotions & offres spéciales",
+    ],
+  },
+  {
+    id: "ESSENTIAL",
+    name: "Essentiel",
+    price: 12900,
+    commissionPct: 0,
+    description: "Pour les activités actives.",
+    features: [
+      "Tout le plan Découverte",
+      "Gestion des employés & congés",
+      "Gestion des dépenses & caisse",
+      "Fiche client avec historique",
+      "Statistiques & tableau de bord",
     ],
     recommended: true,
   },
   {
-    id: "BUSINESS",
-    name: "AMBYA Business",
-    price: 30000,
-    description: "Pour les salons avec une équipe et un volume de réservations plus important.",
+    id: "PREMIUM",
+    name: "Premium",
+    price: 24900,
+    commissionPct: 0,
+    description: "Pour piloter et analyser.",
     features: [
-      "0 % de commission AMBYA",
-      "Toutes les fonctions AMBYA Pro",
-      "Rapports avancés",
-      "Visibilité renforcée",
-      "Support prioritaire",
+      "Tout le plan Essentiel",
+      "Registre de gestion",
+      "Espace dédié aux employés",
     ],
   },
+];
+
+const PAYMENT_METHODS: { id: SubscriptionPaymentMethod; label: string }[] = [
+  { id: "AIRTEL_MONEY", label: "Airtel Money" },
+  { id: "MOOV_MONEY", label: "Moov Money" },
+  { id: "CARD", label: "Carte bancaire" },
+  { id: "MANUAL_MOBILE_MONEY", label: "Mobile Money manuel" },
 ];
 
 type ScheduleSlot = {
@@ -226,11 +258,12 @@ export default function SalonSettingsScreen() {
   const [depositPercentage, setDepositPercentage] = useState(30);
   const [cancelPolicyHours, setCancelPolicyHours] = useState<12 | 24 | 48>(12);
 
-  // abonnement (configuration bêta, stockée dans paymentSettings)
-  const [subscriptionPlan, setSubscriptionPlan] = useState<SubscriptionPlan>("FREE");
-  const [subscriptionStatus, setSubscriptionStatus] = useState<SubscriptionStatus>("ACTIVE");
-  const [subscriptionStartedAt, setSubscriptionStartedAt] = useState<string | null>(null);
-  const [subscriptionCancelledAt, setSubscriptionCancelledAt] = useState<string | null>(null);
+  // abonnement réel : source de vérité = module subscriptions côté API
+  const [subscription, setSubscription] = useState<CurrentSubscription | null>(null);
+  const [subscriptionPayments, setSubscriptionPayments] = useState<SubscriptionPayment[]>([]);
+  const [subscriptionBusy, setSubscriptionBusy] = useState(false);
+  const [selectedPaymentMethod, setSelectedPaymentMethod] =
+    useState<SubscriptionPaymentMethod>("AIRTEL_MONEY");
 
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
@@ -246,6 +279,9 @@ export default function SalonSettingsScreen() {
         }
 
         const settings = await getSalonSettings(token);
+        const subscriptionData = await getCurrentSubscription(token);
+        setSubscription(subscriptionData.subscription);
+        setSubscriptionPayments(subscriptionData.payments);
 
         setName(settings.name ?? "");
         setDesc(settings.description ?? "");
@@ -295,10 +331,6 @@ export default function SalonSettingsScreen() {
         setCancelPolicyHours(
           (settings.paymentSettings?.cancelPolicyHours ?? 12) as 12 | 24 | 48
         );
-        setSubscriptionPlan(settings.paymentSettings?.subscriptionPlan ?? "FREE");
-        setSubscriptionStatus(settings.paymentSettings?.subscriptionStatus ?? "ACTIVE");
-        setSubscriptionStartedAt(settings.paymentSettings?.subscriptionStartedAt ?? null);
-        setSubscriptionCancelledAt(settings.paymentSettings?.subscriptionCancelledAt ?? null);
       } catch (error) {
         console.log("Load salon settings error:", error);
         Alert.alert("Erreur", "Impossible de charger les paramètres du salon.");
@@ -360,10 +392,6 @@ export default function SalonSettingsScreen() {
           iban: iban.trim(),
           bankOwner: bankOwner.trim(),
           cancelPolicyHours,
-          subscriptionPlan,
-          subscriptionStatus,
-          subscriptionStartedAt,
-          subscriptionCancelledAt,
         },
 
         depositEnabled,
@@ -381,41 +409,177 @@ export default function SalonSettingsScreen() {
     }
   }
 
+  const subscriptionPlan = subscription?.plan ?? "DISCOVERY";
   const hasActiveSubscription =
-    subscriptionPlan !== "FREE" && subscriptionStatus === "ACTIVE";
+    subscriptionPlan !== "DISCOVERY" && subscription?.status === "ACTIVE";
 
   const currentSubscriptionOffer = SUBSCRIPTION_OFFERS.find(
     (offer) => offer.id === subscriptionPlan
   );
 
-  function selectSubscription(plan: Exclude<SubscriptionPlan, "FREE">) {
-    const now = new Date().toISOString();
+  async function reloadSubscription(token?: string) {
+    const accessToken = token ?? (await SecureStore.getItemAsync("accessToken"));
+    if (!accessToken) {
+      Alert.alert("Session expirée", "Veuillez vous reconnecter.");
+      return;
+    }
 
-    setSubscriptionPlan(plan);
-    setSubscriptionStatus("ACTIVE");
-    setSubscriptionCancelledAt(null);
-    setSubscriptionStartedAt((current) =>
-      hasActiveSubscription && current ? current : now
-    );
+    const result = await getCurrentSubscription(accessToken);
+    setSubscription(result.subscription);
+    setSubscriptionPayments(result.payments);
   }
 
-  function cancelSubscription() {
+  /**
+   * MODE BÊTA TEMPORAIRE — activation immédiate de l'abonnement.
+   *
+   * Tant que l'API de paiement n'est pas complètement câblée, on crée la
+   * demande de souscription puis on confirme immédiatement le paiement bêta.
+   * Cela permet de tester les droits et l'affichage des offres sans passer
+   * manuellement par l'état "Paiement en attente".
+   *
+   * TODO PAIEMENT :
+   * Quand SingPay / Airtel Money / Moov Money / carte seront prêts,
+   * supprimer cette version temporaire et réactiver la version définitive
+   * commentée juste en dessous.
+   */
+  async function selectSubscription(plan: SubscriptionPlan) {
+    if (subscriptionBusy || plan === "DISCOVERY") return;
+
+    try {
+      setSubscriptionBusy(true);
+
+      const token = await SecureStore.getItemAsync("accessToken");
+      if (!token) {
+        Alert.alert("Session expirée", "Veuillez vous reconnecter.");
+        return;
+      }
+
+      // 1. On conserve le vrai flux backend : création de la souscription.
+      const result = await subscribeToPlan(
+        token,
+        plan as Exclude<SubscriptionPlan, "DISCOVERY">,
+        selectedPaymentMethod
+      );
+
+      // 2. TEMPORAIRE BÊTA :
+      // confirmation immédiate afin de ne pas bloquer les tests sur le paiement.
+      await confirmSubscriptionPaymentForBeta(token, result.payment.id);
+
+      // 3. Recharge la source de vérité depuis l'API.
+      await reloadSubscription(token);
+
+      const selectedOffer = SUBSCRIPTION_OFFERS.find(
+        (offer) => offer.id === plan
+      );
+
+      Alert.alert(
+        "Abonnement activé",
+        `L'offre ${selectedOffer?.name ?? plan} est maintenant active.`
+      );
+    } catch (error) {
+      console.log("Temporary beta subscription activation error:", error);
+      Alert.alert(
+        "Changement d’abonnement impossible",
+        error instanceof Error ? error.message : "Une erreur est survenue."
+      );
+    } finally {
+      setSubscriptionBusy(false);
+    }
+  }
+
+  /*
+   * ================================================================
+   * FLUX DÉFINITIF DE PAIEMENT — À RÉACTIVER PLUS TARD
+   * ================================================================
+   *
+   * Cette version est volontairement conservée dans le fichier.
+   * Elle crée le paiement PENDING et attend sa confirmation réelle.
+   *
+   * async function selectSubscription(plan: SubscriptionPlan) {
+   *   if (subscriptionBusy || plan === "DISCOVERY") return;
+   *
+   *   try {
+   *     setSubscriptionBusy(true);
+   *     const token = await SecureStore.getItemAsync("accessToken");
+   *     if (!token) {
+   *       Alert.alert("Session expirée", "Veuillez vous reconnecter.");
+   *       return;
+   *     }
+   *
+   *     const result = await subscribeToPlan(
+   *       token,
+   *       plan as Exclude<SubscriptionPlan, "DISCOVERY">,
+   *       selectedPaymentMethod
+   *     );
+   *
+   *     await reloadSubscription(token);
+   *
+   *     Alert.alert(
+   *       "Paiement en attente",
+   *       `Une demande de paiement de ${result.payment.amount.toLocaleString(
+   *         "fr-FR"
+   *       )} FCFA a été créée. L’abonnement ne sera actif qu’après confirmation du paiement.`
+   *     );
+   *   } catch (error) {
+   *     console.log("Subscription create error:", error);
+   *     Alert.alert(
+   *       "Souscription impossible",
+   *       error instanceof Error ? error.message : "Une erreur est survenue."
+   *     );
+   *   } finally {
+   *     setSubscriptionBusy(false);
+   *   }
+   * }
+   */
+
+  function requestCancellation() {
+    if (subscriptionBusy || !hasActiveSubscription) return;
+
     Alert.alert(
-      "Annuler l'abonnement ?",
-      "Votre salon repassera à l'offre sans abonnement. Une commission AMBYA de 10 % sera alors appliquée aux nouvelles réservations.",
+      "Annuler le renouvellement ?",
+      "Votre abonnement restera actif jusqu’à la fin de la période déjà payée. Ensuite, votre salon repassera automatiquement à Découverte.",
       [
-        { text: "Conserver l'abonnement", style: "cancel" },
+        { text: "Conserver l’abonnement", style: "cancel" },
         {
-          text: "Annuler l'abonnement",
+          text: "Annuler le renouvellement",
           style: "destructive",
-          onPress: () => {
-            setSubscriptionPlan("FREE");
-            setSubscriptionStatus("CANCELLED");
-            setSubscriptionCancelledAt(new Date().toISOString());
+          onPress: async () => {
+            try {
+              setSubscriptionBusy(true);
+              const token = await SecureStore.getItemAsync("accessToken");
+              if (!token) return;
+              await cancelSalonSubscription(token);
+              await reloadSubscription(token);
+            } catch (error) {
+              Alert.alert(
+                "Erreur",
+                error instanceof Error ? error.message : "Annulation impossible."
+              );
+            } finally {
+              setSubscriptionBusy(false);
+            }
           },
         },
       ]
     );
+  }
+
+  async function confirmPendingPayment(paymentId: string) {
+    try {
+      setSubscriptionBusy(true);
+      const token = await SecureStore.getItemAsync("accessToken");
+      if (!token) return;
+      await confirmSubscriptionPaymentForBeta(token, paymentId);
+      await reloadSubscription(token);
+      Alert.alert("Abonnement activé", "Le paiement bêta a été confirmé.");
+    } catch (error) {
+      Alert.alert(
+        "Confirmation impossible",
+        error instanceof Error ? error.message : "Une erreur est survenue."
+      );
+    } finally {
+      setSubscriptionBusy(false);
+    }
   }
 
   async function pickSingleImage() {
@@ -977,16 +1141,16 @@ export default function SalonSettingsScreen() {
                 <Text style={styles.help}>
                   {hasActiveSubscription
                     ? `Incluse dans votre abonnement ${currentSubscriptionOffer?.name ?? "AMBYA"}.`
-                    : "Uniquement pour les prestataires sans abonnement."}
+                    : "Commission appliquée au plan Découverte."}
                 </Text>
               </View>
-              <Text style={styles.rowValue}>{hasActiveSubscription ? "0 %" : "10 %"}</Text>
+              <Text style={styles.rowValue}>{subscription?.commissionPct ?? 12} %</Text>
             </View>
             <View style={styles.tipBoxGold}>
               <Text style={styles.tipTextGold}>
                 {hasActiveSubscription
                   ? "✓ Aucune commission AMBYA n'est prélevée sur vos nouvelles réservations."
-                  : "💡 Souscrivez à un abonnement AMBYA pour passer à 0 % de commission."}
+                  : "💡 Essentiel et Premium passent à 0 % de commission après confirmation du paiement."}
               </Text>
             </View>
           </View>
@@ -1054,57 +1218,95 @@ export default function SalonSettingsScreen() {
           <View style={{ gap: 14 }}>
             <Text style={styles.sectionTitle}>Votre abonnement</Text>
 
-            <View style={[styles.subscriptionCurrentCard, hasActiveSubscription && styles.subscriptionCurrentCardActive]}>
+            <View
+              style={[
+                styles.subscriptionCurrentCard,
+                hasActiveSubscription && styles.subscriptionCurrentCardActive,
+              ]}
+            >
               <View style={styles.subscriptionHeaderRow}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.subscriptionEyebrow}>OFFRE ACTUELLE</Text>
                   <Text style={styles.subscriptionCurrentTitle}>
-                    {hasActiveSubscription
-                      ? currentSubscriptionOffer?.name ?? "Abonnement AMBYA"
-                      : "Sans abonnement"}
+                    {currentSubscriptionOffer?.name ?? "Découverte"}
                   </Text>
                 </View>
-                <View style={[styles.subscriptionStatusBadge, hasActiveSubscription ? styles.subscriptionStatusBadgeActive : styles.subscriptionStatusBadgeFree]}>
-                  <Text style={[styles.subscriptionStatusText, hasActiveSubscription ? styles.subscriptionStatusTextActive : styles.subscriptionStatusTextFree]}>
-                    {hasActiveSubscription ? "Actif" : "Sans abonnement"}
+                <View style={styles.subscriptionStatusBadge}>
+                  <Text style={styles.subscriptionStatusText}>
+                    {subscription?.status === "PENDING_PAYMENT"
+                      ? "Paiement en attente"
+                      : subscription?.cancelAtPeriodEnd
+                      ? "Fin programmée"
+                      : "Actif"}
                   </Text>
                 </View>
               </View>
 
-              {hasActiveSubscription ? (
-                <>
-                  <Text style={styles.subscriptionPrice}>
-                    {currentSubscriptionOffer?.price.toLocaleString("fr-FR")} FCFA
-                    <Text style={styles.subscriptionPricePeriod}> / mois</Text>
-                  </Text>
-                  <Text style={styles.subscriptionCommissionGood}>✓ Commission AMBYA : 0 %</Text>
-                  {!!subscriptionStartedAt && (
-                    <Text style={styles.help}>
-                      Actif depuis le {new Date(subscriptionStartedAt).toLocaleDateString("fr-FR")}
-                    </Text>
-                  )}
-                </>
-              ) : (
-                <>
-                  <Text style={styles.subscriptionPrice}>0 FCFA</Text>
-                  <Text style={styles.subscriptionCommissionWarning}>Commission AMBYA : 10 %</Text>
-                  {subscriptionStatus === "CANCELLED" && !!subscriptionCancelledAt && (
-                    <Text style={styles.help}>
-                      Dernier abonnement annulé le {new Date(subscriptionCancelledAt).toLocaleDateString("fr-FR")}
-                    </Text>
-                  )}
-                </>
+              <Text style={styles.subscriptionPrice}>
+                {(currentSubscriptionOffer?.price ?? 0).toLocaleString("fr-FR")} FCFA
+                <Text style={styles.subscriptionPricePeriod}> / mois</Text>
+              </Text>
+              <Text style={
+                (subscription?.commissionPct ?? 12) === 0
+                  ? styles.subscriptionCommissionGood
+                  : styles.subscriptionCommissionWarning
+              }>
+                Commission AMBYA : {subscription?.commissionPct ?? 12} %
+              </Text>
+
+              {!!subscription?.currentPeriodEnd && subscriptionPlan !== "DISCOVERY" && (
+                <Text style={styles.help}>
+                  Période active jusqu’au {new Date(subscription.currentPeriodEnd).toLocaleDateString("fr-FR")}
+                </Text>
+              )}
+
+              {subscription?.cancelAtPeriodEnd && (
+                <Text style={styles.help}>
+                  Le salon repassera à Découverte à la fin de cette période.
+                </Text>
               )}
             </View>
 
-            <Text style={styles.sectionTitle}>Consulter les offres</Text>
-            <Text style={styles.help}>
-              Tarifs provisoires pour la bêta. Ils pourront être ajustés après validation commerciale.
-            </Text>
+            <View style={styles.tipBoxGold}>
+              <Text style={styles.tipTextGold}>
+                🧪 Mode test temporaire : le changement d’offre est activé immédiatement,
+                sans attendre la confirmation d’un paiement.
+              </Text>
+            </View>
 
+            {/*
+             * ================================================================
+             * UI DE PAIEMENT DÉFINITIVE — À RÉACTIVER PLUS TARD
+             * ================================================================
+             * Le sélecteur de moyen de paiement est masqué temporairement.
+             * Le code d'origine est conservé ci-dessous.
+             * <Text style={styles.sectionTitle}>Moyen de paiement</Text>
+             * <View style={styles.pillsWrap}>
+             * {PAYMENT_METHODS.map((method) => {
+             * const active = selectedPaymentMethod === method.id;
+             * return (
+             * <Pressable
+             * key={method.id}
+             * onPress={() => setSelectedPaymentMethod(method.id)}
+             * style={[styles.chip, active && styles.chipOn]}
+             * >
+             * <Text style={[styles.chipText, active && styles.chipTextOn]}>
+             * {method.label}
+             * </Text>
+             * </Pressable>
+             * );
+             * })}
+             * </View>
+             * <Text style={styles.help}>
+             * Le branchement SingPay / opérateur sera ajouté plus tard. Pour l’instant, la demande reste en attente jusqu’à validation bêta.
+             * </Text>
+             * 
+             */}
+
+            <Text style={styles.sectionTitle}>Les offres AMBYA</Text>
             {SUBSCRIPTION_OFFERS.map((offer) => {
-              const selected =
-                subscriptionPlan === offer.id && subscriptionStatus === "ACTIVE";
+              const selected = subscriptionPlan === offer.id;
+              const isDiscovery = offer.id === "DISCOVERY";
 
               return (
                 <View
@@ -1120,11 +1322,13 @@ export default function SalonSettingsScreen() {
                         <Text style={styles.subscriptionOfferName}>{offer.name}</Text>
                         {offer.recommended && (
                           <View style={styles.recommendedBadge}>
-                            <Text style={styles.recommendedBadgeText}>Recommandé</Text>
+                            <Text style={styles.recommendedBadgeText}>RECOMMANDÉ</Text>
                           </View>
                         )}
                       </View>
-                      <Text style={styles.subscriptionOfferDescription}>{offer.description}</Text>
+                      <Text style={styles.subscriptionOfferDescription}>
+                        {offer.description}
+                      </Text>
                     </View>
                   </View>
 
@@ -1132,61 +1336,107 @@ export default function SalonSettingsScreen() {
                     {offer.price.toLocaleString("fr-FR")} FCFA
                     <Text style={styles.subscriptionPricePeriod}> / mois</Text>
                   </Text>
+                  <Text style={
+                    offer.commissionPct === 0
+                      ? styles.subscriptionCommissionGood
+                      : styles.subscriptionCommissionWarning
+                  }>
+                    {offer.commissionPct === 0
+                      ? "Sans commission"
+                      : `${offer.commissionPct} % de commission / réservation`}
+                  </Text>
 
                   <View style={{ gap: 7, marginTop: 10 }}>
                     {offer.features.map((feature) => (
-                      <Text key={feature} style={styles.subscriptionFeature}>✓ {feature}</Text>
+                      <Text key={feature} style={styles.subscriptionFeature}>
+                        ✓ {feature}
+                      </Text>
                     ))}
                   </View>
 
-                  <Pressable
-                    onPress={() => selectSubscription(offer.id)}
-                    disabled={selected}
-                    style={[
-                      styles.subscriptionChooseBtn,
-                      selected && styles.subscriptionChooseBtnSelected,
-                    ]}
-                  >
-                    <Text style={[
-                      styles.subscriptionChooseBtnText,
-                      selected && styles.subscriptionChooseBtnTextSelected,
-                    ]}>
-                      {selected
-                        ? "Offre actuelle"
-                        : hasActiveSubscription
-                        ? "Changer pour cette offre"
-                        : "Choisir cette offre"}
-                    </Text>
-                  </Pressable>
+                  {!isDiscovery && (
+                    <Pressable
+                      onPress={() => selectSubscription(offer.id)}
+                      disabled={
+                        subscriptionBusy ||
+                        (selected && subscription?.status === "ACTIVE")
+                      }
+                      style={[
+                        styles.subscriptionChooseBtn,
+                        selected &&
+                          subscription?.status === "ACTIVE" &&
+                          styles.subscriptionChooseBtnSelected,
+                      ]}
+                    >
+                      <Text style={styles.subscriptionChooseBtnText}>
+                        {selected && subscription?.status === "ACTIVE"
+                          ? "Offre actuelle"
+                          : `Choisir ${offer.name}`}
+                      </Text>
+                    </Pressable>
+                  )}
                 </View>
               );
             })}
 
-            {hasActiveSubscription && (
-              <Pressable onPress={cancelSubscription} style={styles.subscriptionCancelBtn}>
-                <Text style={styles.subscriptionCancelBtnText}>Annuler mon abonnement</Text>
+            {/*
+             * ================================================================
+             * CARTE "PAIEMENT EN ATTENTE" — À RÉACTIVER PLUS TARD
+             * ================================================================
+             * Masquée pendant le mode de test à activation immédiate.
+             * {subscriptionPayments
+             * .filter((payment) => payment.status === "PENDING")
+             * .slice(0, 1)
+             * .map((payment) => (
+             * <View key={payment.id} style={styles.tipBoxGold}>
+             * <Text style={styles.tipTextGold}>
+             * Paiement en attente : {payment.amount.toLocaleString("fr-FR")} FCFA
+             * </Text>
+             * <Pressable
+             * onPress={() => confirmPendingPayment(payment.id)}
+             * disabled={subscriptionBusy}
+             * style={[styles.inlineBtn, { marginTop: 10 }]}
+             * >
+             * <Text style={styles.inlineBtnText}>
+             * Valider le paiement (BÊTA)
+             * </Text>
+             * </Pressable>
+             * </View>
+             * ))}
+             */}
+
+
+            {hasActiveSubscription && !subscription?.cancelAtPeriodEnd && (
+              <Pressable
+                onPress={requestCancellation}
+                disabled={subscriptionBusy}
+                style={styles.subscriptionCancelBtn}
+              >
+                <Text style={styles.subscriptionCancelBtnText}>
+                  Annuler le renouvellement
+                </Text>
               </Pressable>
             )}
-
-            <View style={styles.tipBoxGold}>
-              <Text style={styles.tipTextGold}>
-                ℹ️ Pour cette version bêta, le changement ou l'annulation prend effet après avoir appuyé sur « Enregistrer les modifications ».
-              </Text>
-            </View>
           </View>
         )}
 
-        <Pressable
-          onPress={handleSaveSettings}
-          style={[styles.primaryBtn, { marginTop: 18 }, savingSettings && { opacity: 0.7 }]}
-          disabled={savingSettings}
-        >
-          {savingSettings ? (
-            <ActivityIndicator color="#FFF" />
-          ) : (
-            <Text style={styles.primaryBtnText}>Enregistrer les modifications</Text>
-          )}
-        </Pressable>
+        {activeTab !== "abonnement" && (
+          <Pressable
+            onPress={handleSaveSettings}
+            style={[
+              styles.primaryBtn,
+              { marginTop: 18 },
+              savingSettings && { opacity: 0.7 },
+            ]}
+            disabled={savingSettings}
+          >
+            {savingSettings ? (
+              <ActivityIndicator color="#FFF" />
+            ) : (
+              <Text style={styles.primaryBtnText}>Enregistrer les modifications</Text>
+            )}
+          </Pressable>
+        )}
 
         <Pressable
           onPress={() => setShowLogoutModal(true)}
@@ -1687,8 +1937,38 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
 
-  logoutConfirmText: {
+ logoutConfirmText: {
     color: "#FFF",
     fontWeight: "800",
+  },
+
+  pillsWrap: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+
+  chip: {
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 999,
+    backgroundColor: "#FFF",
+    borderWidth: 1,
+    borderColor: "rgba(107,39,55,0.18)",
+  },
+
+  chipOn: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+
+  chipText: {
+    color: COLORS.text,
+    fontSize: 12,
+    fontWeight: "700",
+  },
+
+  chipTextOn: {
+    color: "#FFF",
   },
 });
