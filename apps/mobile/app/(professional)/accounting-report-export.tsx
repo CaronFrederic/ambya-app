@@ -5,7 +5,6 @@ import React, {
 import {
   ActivityIndicator,
   Alert,
-  Linking,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -18,11 +17,12 @@ import { useLocalSearchParams } from "expo-router";
 import { ProHeader } from "./components/ProHeader";
 import {
   getAccountingReport,
-  getAccountingReportExportUrl,
+  getAccountingReportExportPath,
   type AccountingReportResponse,
   type ExportFormat,
   type PeriodType,
 } from "../../src/api/accounting-reports";
+import { downloadAndShareFile } from "../../src/utils/export-file";
 
 const COLORS = {
   background: "#FAF7F2",
@@ -110,31 +110,64 @@ export default function AccountingReportExportScreen() {
   }, [periodType, startDate, endDate]);
 
   const generateDocument = async () => {
-    try {
-      setGenerating(true);
+  try {
+    setGenerating(true);
 
-      const url =
-        await getAccountingReportExportUrl(
-          {
-            periodType,
-            startDate,
-            endDate,
-          },
-          format
-        );
+    const params = {
+      periodType,
+      startDate,
+      endDate,
+    };
 
-      await Linking.openURL(url);
-    } catch (error) {
-      Alert.alert(
-        "Export impossible",
-        error instanceof Error
-          ? error.message
-          : "Une erreur est survenue."
-      );
-    } finally {
-      setGenerating(false);
+    const path = getAccountingReportExportPath(
+      params,
+      format,
+    );
+
+    const period =
+      report?.period.start.slice(0, 7) ??
+      new Date().toISOString().slice(0, 7);
+
+    const salon =
+      report?.establishment.name
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-zA-Z0-9_-]+/g, "-")
+        .replace(/^-+|-+$/g, "") ||
+      "Etablissement";
+
+    const isPdf = format === "pdf";
+
+    await downloadAndShareFile({
+      path,
+      filename: `AMBYA_Registre_${salon}_${period}.${
+        isPdf ? "pdf" : "xlsx"
+      }`,
+      mimeType: isPdf
+        ? "application/pdf"
+        : "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      dialogTitle: isPdf
+        ? "Partager le registre PDF"
+        : "Partager le registre Excel",
+    });
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message === "SESSION_EXPIRED"
+    ) {
+      return;
     }
-  };
+
+    Alert.alert(
+      "Export impossible",
+      error instanceof Error
+        ? error.message
+        : "Une erreur est survenue pendant la génération du document.",
+    );
+  } finally {
+    setGenerating(false);
+  }
+};
 
   if (loading || !report) {
     return (

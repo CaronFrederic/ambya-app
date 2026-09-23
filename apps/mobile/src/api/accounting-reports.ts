@@ -1,4 +1,4 @@
-import * as SecureStore from "expo-secure-store";
+
 
 import { apiFetch } from "./client";
 
@@ -102,6 +102,25 @@ function buildQuery(params: GetAccountingReportParams): string {
 
   return search.toString();
 }
+export function getAccountingReportExportPath(
+  params: GetAccountingReportParams,
+  format: ExportFormat,
+): string {
+  const search = new URLSearchParams();
+
+  search.set("periodType", params.periodType);
+  search.set("format", format);
+
+  if (params.startDate) {
+    search.set("startDate", params.startDate);
+  }
+
+  if (params.endDate) {
+    search.set("endDate", params.endDate);
+  }
+
+  return `/pro/accounting-reports/export?${search.toString()}`;
+}
 
 export function getAccountingReport(
   params: GetAccountingReportParams
@@ -114,39 +133,7 @@ export function getAccountingReport(
   );
 }
 
-const API_BASE_URL =
-  process.env.EXPO_PUBLIC_API_URL?.trim().replace(/\/+$/, "") || "";
 
-export async function getAccountingReportExportUrl(
-  params: GetAccountingReportParams,
-  format: ExportFormat
-): Promise<string> {
-  const token = await SecureStore.getItemAsync("accessToken");
-
-  if (!token) {
-    throw new Error("Utilisateur non authentifié.");
-  }
-
-  if (!API_BASE_URL) {
-    throw new Error("EXPO_PUBLIC_API_URL n'est pas configurée.");
-  }
-
-  const search = new URLSearchParams();
-
-  search.set("periodType", params.periodType);
-  search.set("format", format);
-  search.set("token", token);
-
-  if (params.startDate) {
-    search.set("startDate", params.startDate);
-  }
-
-  if (params.endDate) {
-    search.set("endDate", params.endDate);
-  }
-
-  return `${API_BASE_URL}/api/pro/accounting-reports/export?${search.toString()}`;
-}
 
 
 export function createManualProductSale(

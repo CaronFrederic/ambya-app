@@ -485,7 +485,7 @@ export default function TeamManagementScreen() {
     try {
       await markEmployeeAbsent(showAbsenceModal, {
         startDate: startDateForApi,
-        endDate: endDateForApi,
+        endDate: endDateForApi ?? undefined,
         reason: absenceReason || undefined,
       });
 

@@ -1,6 +1,11 @@
 import axios, { AxiosError, AxiosRequestConfig } from "axios";
 import * as SecureStore from "expo-secure-store";
+
 import { isLikelyNetworkError, setOfflineStatus } from "../offline/store";
+import {
+  AUTH_TOKEN_KEY,
+  expireSession,
+} from "../session/session";
 
 const API_BASE_URL =
   process.env.EXPO_PUBLIC_API_URL?.trim().replace(/\/+$/, "") ||
@@ -12,12 +17,12 @@ type RequestOptions = RequestInit & {
 
 async function getAuthToken(explicitToken?: string | null) {
   if (explicitToken) return explicitToken;
-  return SecureStore.getItemAsync("accessToken");
+
+  return SecureStore.getItemAsync(AUTH_TOKEN_KEY);
 }
 
-async function clearStoredAuth() {
-  await SecureStore.deleteItemAsync("accessToken");
-  await SecureStore.deleteItemAsync("userRole");
+async function handleUnauthorized() {
+  await expireSession();
 }
 
 export function normalizeApiPath(path: string) {
@@ -56,6 +61,7 @@ api.interceptors.request.use(async (config) => {
   const token = await getAuthToken();
 
   config.headers = config.headers ?? {};
+
   if (config.url) {
     config.url = normalizeApiPath(config.url);
   }
@@ -78,7 +84,7 @@ api.interceptors.response.use(
     }
 
     if (error?.response?.status === 401) {
-      await clearStoredAuth();
+      await handleUnauthorized();
     }
 
     return Promise.reject(error);
@@ -90,6 +96,7 @@ export async function apiFetch<T>(
   options: RequestOptions = {},
 ): Promise<T> {
   const { token, headers, ...rest } = options;
+
   const resolvedToken = await getAuthToken(token);
 
   try {
@@ -97,7 +104,11 @@ export async function apiFetch<T>(
       ...rest,
       headers: {
         "Content-Type": "application/json",
-        ...(resolvedToken ? { Authorization: `Bearer ${resolvedToken}` } : {}),
+        ...(resolvedToken
+          ? {
+              Authorization: `Bearer ${resolvedToken}`,
+            }
+          : {}),
         ...(headers ?? {}),
       },
     });
@@ -107,19 +118,34 @@ export async function apiFetch<T>(
     const contentType = response.headers.get("content-type") || "";
     const isJson = contentType.includes("application/json");
 
-    const data = isJson ? await response.json() : await response.text();
+    const data = isJson
+      ? await response.json()
+      : await response.text();
 
     if (!response.ok) {
       if (response.status === 401) {
-        await clearStoredAuth();
+        await handleUnauthorized();
+
         throw new Error("SESSION_EXPIRED");
       }
 
       const message =
-        typeof data === "object" && data && "message" in data
-          ? Array.isArray((data as { message?: unknown }).message)
-            ? (data as { message: unknown[] }).message.map(String).join(", ")
-            : String((data as { message?: unknown }).message)
+        typeof data === "object" &&
+        data &&
+        "message" in data
+          ? Array.isArray(
+              (data as { message?: unknown }).message,
+            )
+            ? (
+                data as {
+                  message: unknown[];
+                }
+              ).message
+                .map(String)
+                .join(", ")
+            : String(
+                (data as { message?: unknown }).message,
+              )
           : `Erreur HTTP ${response.status}`;
 
       throw new Error(message);
@@ -136,36 +162,50 @@ export async function apiFetch<T>(
 }
 
 export async function apiRequest<T = unknown>(
-  config: AxiosRequestConfig & { token?: string | null },
+  config: AxiosRequestConfig & {
+    token?: string | null;
+  },
 ): Promise<T> {
   try {
-    const resolvedToken = await getAuthToken(config.token);
+    const resolvedToken = await getAuthToken(
+      config.token,
+    );
 
     const response = await api.request<T>({
       ...config,
       headers: {
         "Content-Type": "application/json",
-        ...(resolvedToken ? { Authorization: `Bearer ${resolvedToken}` } : {}),
+        ...(resolvedToken
+          ? {
+              Authorization: `Bearer ${resolvedToken}`,
+            }
+          : {}),
         ...(config.headers ?? {}),
       },
     });
 
     return response.data;
   } catch (error) {
-    const axiosError = error as AxiosError<{
-      message?: string | string[];
-    }>;
+    const axiosError =
+      error as AxiosError<{
+        message?: string | string[];
+      }>;
 
     if (isLikelyNetworkError(error)) {
       setOfflineStatus(true);
     }
 
     if (axiosError.response?.status === 401) {
-      await clearStoredAuth();
+      // L'interceptor Axios a normalement déjà appelé expireSession().
+      // expireSession() est idempotent pour les 401 simultanés.
+      await handleUnauthorized();
+
       throw new Error("SESSION_EXPIRED");
     }
 
-    const message = Array.isArray(axiosError.response?.data?.message)
+    const message = Array.isArray(
+      axiosError.response?.data?.message,
+    )
       ? axiosError.response?.data?.message.join(", ")
       : axiosError.response?.data?.message ||
         axiosError.message ||
